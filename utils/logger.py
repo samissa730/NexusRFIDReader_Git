@@ -5,7 +5,7 @@ from logging.handlers import RotatingFileHandler
 from settings import ROOT_DIR
 
 
-LOG_FILE = os.path.join(ROOT_DIR, "starlink.log")
+LOG_FILE = os.path.join(ROOT_DIR, "NexusRFIDReader.log")
 
 
 class CustomFormatter(logging.Formatter):
