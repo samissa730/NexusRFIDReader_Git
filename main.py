@@ -1,17 +1,93 @@
+import os
+os.environ["QT_API"] = "pyside6"
+os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
+os.environ["QT_QPA_PLATFORM"] = "xcb"
+
 import sys
+import traceback
+from PySide6 import QtGui
+import glob
+import signal
+from utils.logger import logger
+import threading
+import time
+from screens import screens
+from settings import INIT_SCREEN, APP_DIR, CRASH_FILE
 from PySide6.QtWidgets import QApplication, QMainWindow
-from PySide6.QtUiTools import QUiLoader
-from PySide6.QtCore import QFile
+from PySide6.QtCore import Qt, QTimer
+from ui.ui_main import Ui_Main
+from functools import partial
+
+class RFIDReaderApp(QMainWindow):
+
+    _cur_screen = None
+    _cur_screen_name = ""
+    _snackbar = None
+    EXIT_CODE_CRASH = -12345678
+
+    def __init__(self):
+        super().__init__()
+        self.ui = Ui_Main()
+        self.ui.setupUi(self)
+        # for k in {"overview"}:
+        #     getattr(self.ui, f"btn_{k}").released.connect(
+        #         partial(self.switch_screen, k)
+        #     )
+        self.switch_screen(INIT_SCREEN)
+    
+    def switch_screen(self, screen_name, **kwargs):
+        if self._cur_screen_name == screen_name:
+            return
+        if self._cur_screen:
+            self._cur_screen.on_leave()
+            self.ui.stack.removeWidget(self._cur_screen)
+        self._cur_screen = (
+            screens[screen_name](app=self, **kwargs) if screen_name in screens else None
+        )
+        self._cur_screen_name = screen_name
+        if self._cur_screen:
+            self.ui.stack.addWidget(self._cur_screen)
+            self.ui.stack.setCurrentWidget(self._cur_screen)
+            logger.info(f"Added {screen_name} screen to stack widget")
+        else:
+            logger.error(f"Failed to create {screen_name} screen")
+            
+        # for k in screens.keys():
+        #     sh = (
+        #         "color:#FFFFFF;background-color:#262626;border-top-right-radius:5px;border-top-left-radius:5px;padding-left:10px"
+        #         if (k == self._cur_screen_name and k != "settings")
+        #         else "color:#FFFFFF;border:none;"
+        #     )
+        #     getattr(self.ui, f"btn_{k}").setStyleSheet(sh)
+        logger.info(f"Switched to {screen_name} screen")
 
 if __name__ == "__main__":
+
+    sys._excepthook = sys.excepthook
+
+    def exception_hook(exctype, value, exc_tb):
+        msg = f"Exctype: {exctype}, Value: {value}\nTraceback:\n {','.join(traceback.format_tb(exc_tb, limit=20))}"
+        logger.error(f"!!!! Crashed! {msg}")
+        with open(CRASH_FILE, "w") as f:
+            f.write(msg.replace("\\n", "\n"))
+        getattr(sys, "_excepthook")(exctype, value, exc_tb)
+        QApplication.exit(RFIDReaderApp.EXIT_CODE_CRASH)
+
+    sys.excepthook = exception_hook
+
+    logger.info("========== Starting Router Monitor Kiosk App ==========")
+
+    # Try different Qt platforms for Raspberry Pi
     app = QApplication(sys.argv)
 
-    loader = QUiLoader()
-    ui_file = QFile("ui/main.ui")
-    ui_file.open(QFile.ReadOnly)
-    window = loader.load(ui_file)
-    ui_file.close()
+    # Register fonts
+    for font in glob.glob(os.path.join(APP_DIR, "font", "*.ttf")):
+        QtGui.QFontDatabase.addApplicationFont(font)
 
-    window.show()
-    sys.exit(app.exec())
+    cur_exit_code = RFIDReaderApp.EXIT_CODE_CRASH
 
+    while cur_exit_code == RFIDReaderApp.EXIT_CODE_CRASH:
+        rm_form = RFIDReaderApp()
+        rm_form.show()
+        cur_exit_code = app.exec()
+        rm_form.close()

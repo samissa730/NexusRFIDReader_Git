@@ -1,0 +1,10 @@
+Exctype: <class 'AttributeError'>, Value: 'Ui_Main' object has no attribute 'btn_overview'
+Traceback:
+   File "E:\2_SamIssa\RFID\NexusRFID_Scan\NexusRFIDReader_Git\main.py", line 90, in <module>
+    rm_form = RFIDReaderApp()
+              ^^^^^^^^^^^^^^^
+,  File "E:\2_SamIssa\RFID\NexusRFID_Scan\NexusRFIDReader_Git\main.py", line 36, in __init__
+    self.switch_screen(INIT_SCREEN)
+,  File "E:\2_SamIssa\RFID\NexusRFID_Scan\NexusRFIDReader_Git\main.py", line 61, in switch_screen
+    getattr(self.ui, f"btn_{k}").setStyleSheet(sh)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
