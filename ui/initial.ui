@@ -14,7 +14,7 @@
    <string>NexusRFIDReader</string>
   </property>
   <property name="styleSheet">
-   <string notr="true">background-color: #e6e6e6;</string>
+   <string notr="true">background-color: #595959;</string>
   </property>
   <widget class="QWidget" name="centralwidget">
    <property name="minimumSize">
@@ -48,16 +48,6 @@
     <property name="bottomMargin">
      <number>5</number>
     </property>
-    <item>
-     <widget class="QStackedWidget" name="stack">
-      <property name="styleSheet">
-       <string notr="true">background-color: #595959;</string>
-      </property>
-      <property name="currentIndex">
-       <number>-1</number>
-      </property>
-     </widget>
-    </item>
    </layout>
   </widget>
  </widget>

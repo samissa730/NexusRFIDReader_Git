@@ -51,6 +51,6 @@ class Ui_Main(object):
     # setupUi
 
     def retranslateUi(self, Main):
-        Main.setWindowTitle(QCoreApplication.translate("Main", u"Router Monitor", None))
+        Main.setWindowTitle(QCoreApplication.translate("Main", u"NexusRFIDReader", None))
     # retranslateUi
 

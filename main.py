@@ -1,7 +1,7 @@
 import os
-os.environ["QT_API"] = "pyside6"
-os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
-os.environ["QT_QPA_PLATFORM"] = "xcb"
+# os.environ["QT_API"] = "pyside6"
+# os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
+# os.environ["QT_QPA_PLATFORM"] = "xcb"
 
 import sys
 import traceback
@@ -75,7 +75,7 @@ if __name__ == "__main__":
 
     sys.excepthook = exception_hook
 
-    logger.info("========== Starting Router Monitor Kiosk App ==========")
+    logger.info("========== Starting Kiosk App ==========")
 
     # Try different Qt platforms for Raspberry Pi
     app = QApplication(sys.argv)
