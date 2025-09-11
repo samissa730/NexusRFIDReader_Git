@@ -7,6 +7,7 @@ import threading
 from utils.logger import logger
 
 is_rpi = platform.system() == "Linux" and os.path.exists("/proc/device-tree/model")
+is_win = platform.system() == "Windows"
 
 
 def get_serial():
@@ -21,19 +22,51 @@ def get_serial():
             if line.startswith("Serial"):
                 cpuserial = line[10:26].lstrip("0")
         f.close()
-        return cpuserial[-8:]
+        return cpuserial
+    elif is_win:
+        # Prefer CPU ProcessorId to identify Windows device
+        try:
+            # Try PowerShell CIM first (modern and reliable)
+            ps_cmd = [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                "(Get-CimInstance Win32_Processor | Select-Object -First 1 -ExpandProperty ProcessorId)"
+            ]
+            result = subprocess.run(ps_cmd, capture_output=True, text=True, check=True)
+            proc_id = (result.stdout or "").strip().replace("\r", "").replace("\n", "")
+            if proc_id:
+                return proc_id
+        except Exception as e:
+            logger.debug(f"PowerShell ProcessorId retrieval failed: {str(e)}")
+
+        try:
+            # Fallback to legacy WMIC
+            wmic_cmd = ["wmic", "cpu", "get", "ProcessorId"]
+            result = subprocess.run(wmic_cmd, capture_output=True, text=True, check=True)
+            # Output example:\nProcessorId\nBFEBFBFF00090672\n
+            lines = [l.strip() for l in (result.stdout or "").splitlines() if l.strip()]
+            for line in lines:
+                if line and line.lower() != "processorid":
+                    return line
+        except Exception as e:
+            logger.debug(f"WMIC ProcessorId retrieval failed: {str(e)}")
+
+        try:
+            # Last resort: system UUID (not CPU but stable enough)
+            wmic_uuid_cmd = ["wmic", "csproduct", "get", "UUID"]
+            result = subprocess.run(wmic_uuid_cmd, capture_output=True, text=True, check=True)
+            lines = [l.strip() for l in (result.stdout or "").splitlines() if l.strip()]
+            for line in lines:
+                if line and line.lower() != "uuid":
+                    return line
+        except Exception as e:
+            logger.debug(f"WMIC UUID retrieval failed: {str(e)}")
+
+        logger.warning("Falling back to placeholder serial on Windows; unable to retrieve ProcessorId/UUID")
+        return "UNKNOWN-WIN"
     else:
         return "12345678"
-
-def drop_cache():
-    """Drop system cache to free memory"""
-    if is_rpi:
-        try:
-            subprocess.run(["sync"], check=True)
-            with open("/proc/sys/vm/drop_caches", "w") as f:
-                f.write("3")
-        except Exception as e:
-            logger.error(f"Error dropping cache: {str(e)}")
 
 
 def kill_process_by_name(proc_name, use_sudo=False, sig=None):
@@ -81,18 +114,6 @@ def is_numeric(val):
         return True
     except ValueError:
         return False
-
-
-def disable_screen_saver():
-    if is_rpi:
-        os.system('sudo sh -c "TERM=linux setterm -blank 0 >/dev/tty0"')
-
-
-def set_brightness(val):
-    logger.debug(f"Setting brightness to {val}")
-    if is_rpi:
-        os.system(f"echo {val} | sudo tee /sys/class/backlight/*/brightness")
-
 
 def check_internet_connection(host="8.8.8.8", port=53, timeout=3):
     try:
