@@ -9,7 +9,38 @@ TODO: Guide users through getting your code up and running on their own system. 
 4.	API references
 
 # Build and Test
-TODO: Describe and show how to build your code and run the tests. 
+
+## Run the app
+
+```bash
+python main.py
+```
+
+## Run unit tests
+
+This project uses Python's built-in `unittest` framework. Tests live in the `UnitTests` directory.
+
+Run all tests with discovery:
+
+```bash
+python -m unittest discover -s UnitTests -p "test_*.py" -v
+```
+
+Run a single test module:
+
+```bash
+python -m unittest UnitTests.test_common -v
+```
+
+On Windows using a virtual environment created in `venv`, prefix commands with `venv\Scripts\python`:
+
+```bash
+venv\Scripts\python -m unittest discover -s UnitTests -p "test_*.py" -v
+```
+
+Notes:
+- No extra testing dependencies are required; `unittest` is part of the Python standard library.
+- `utils.common.get_serial()` is tested via mocks to avoid calling PowerShell/WMIC or reading real system files.
 
 # Contribute
 TODO: Explain how other users and developers can contribute to make your code better. 
@@ -90,26 +121,3 @@ pyinstaller --onefile --add-data "ui/main.ui:ui" main.py
 - Test the generated executable on a clean system if possible.
 
 --- 
-
-## Running Unit Tests
-
-This project uses `pytest` and stores tests in the `UnitTests` directory.
-
-1. Ensure dependencies are installed:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-2. Run all tests:
-   ```bash
-   pytest
-   ```
-
-3. Run a specific test file:
-   ```bash
-   pytest UnitTests/test_common.py
-   ```
-
-Notes:
-- Tests mock OS and subprocess calls to safely verify behavior on Windows, Linux, and Raspberry Pi paths.
-- Default pytest configuration lives in `pytest.ini`.
