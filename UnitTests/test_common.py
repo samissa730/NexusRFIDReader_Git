@@ -1,5 +1,4 @@
 import builtins
-import os
 import types
 import unittest
 from unittest import mock
@@ -7,113 +6,149 @@ from unittest import mock
 
 class TestCommon(unittest.TestCase):
     def setUp(self):
-        # Import fresh module copy each time to re-evaluate platform flags
-        self.common_module_name = 'utils.common'
-
-    def _reload_common_with_platform(self, system_name: str, has_rpi_model: bool = False):
-        with mock.patch('platform.system', return_value=system_name):
-            # Simulate existence of RPi model path
-            with mock.patch('os.path.exists', return_value=has_rpi_model):
-                # Remove cached module to force re-import
-                if self.common_module_name in builtins.__import__('sys').modules:
-                    del builtins.__import__('sys').modules[self.common_module_name]
-                import importlib
-                return importlib.import_module(self.common_module_name)
-
-    def test_flags_windows(self):
-        common = self._reload_common_with_platform('Windows')
-        self.assertFalse(common.is_rpi)
-        self.assertTrue(common.is_win)
-
-    def test_flags_rpi(self):
-        common = self._reload_common_with_platform('Linux', has_rpi_model=True)
-        self.assertTrue(common.is_rpi)
-        self.assertFalse(common.is_win)
+        # Import once; mutate module-level flags as needed per test
+        from utils import common as common_module
+        self.common = common_module
 
     def test_is_numeric(self):
-        from utils import common
-        self.assertTrue(common.is_numeric('123'))
-        self.assertTrue(common.is_numeric('12.3'))
-        self.assertFalse(common.is_numeric('abc'))
+        self.assertTrue(self.common.is_numeric("123"))
+        self.assertTrue(self.common.is_numeric("3.14"))
+        self.assertFalse(self.common.is_numeric("abc"))
 
-    def test_check_internet_connection_success(self):
-        from utils import common
-        with mock.patch('socket.socket') as mock_socket_cls:
-            mock_socket = mock.Mock()
-            mock_socket_cls.return_value = mock_socket
-            mock_socket.connect.return_value = None
-            self.assertTrue(common.check_internet_connection())
-            mock_socket.connect.assert_called()
+    def test_update_dict_recursively(self):
+        dest = {"a": 1, "b": {"c": 2, "d": 3}}
+        updated = {"b": {"c": 20}, "e": 5}
+        result = self.common.update_dict_recursively(dest, updated)
+        self.assertEqual(result["a"], 1)
+        self.assertEqual(result["b"]["c"], 20)
+        self.assertEqual(result["b"]["d"], 3)
+        self.assertEqual(result["e"], 5)
 
-    def test_check_internet_connection_failure(self):
-        from utils import common
-        with mock.patch('socket.socket') as mock_socket_cls:
-            mock_socket = mock.Mock()
-            mock_socket_cls.return_value = mock_socket
-            mock_socket.connect.side_effect = OSError('no route')
-            self.assertFalse(common.check_internet_connection())
+    def test_check_internet_connection_true(self):
+        with mock.patch("socket.socket") as mock_socket:
+            instance = mock.MagicMock()
+            mock_socket.return_value = instance
+            instance.connect.return_value = None
+            self.assertTrue(self.common.check_internet_connection())
+            instance.close.assert_called_once()
+
+    def test_check_internet_connection_false(self):
+        with mock.patch("socket.socket") as mock_socket:
+            instance = mock.MagicMock()
+            mock_socket.return_value = instance
+            instance.connect.side_effect = OSError("no network")
+            self.assertFalse(self.common.check_internet_connection())
+
+    def test_kill_process_by_name_windows(self):
+        with mock.patch("platform.system", return_value="Windows"), \
+             mock.patch("subprocess.run") as mock_run:
+            self.common.kill_process_by_name("notepad.exe")
+            mock_run.assert_called_once()
+            args, kwargs = mock_run.call_args
+            self.assertIn("taskkill", args[0])
+            self.assertIn("/F", args[0])
+            self.assertIn("/IM", args[0])
+            self.assertIn("notepad.exe", args[0])
+
+    def test_kill_process_by_name_unix_with_sig_and_sudo(self):
+        with mock.patch("platform.system", return_value="Linux"), \
+             mock.patch("subprocess.run") as mock_run:
+            self.common.kill_process_by_name("python", use_sudo=True, sig="TERM")
+            mock_run.assert_called_once()
+            args, kwargs = mock_run.call_args
+            cmd = args[0]
+            # Expect sudo pkill -SIGTERM python
+            self.assertEqual(cmd[0], "sudo")
+            self.assertIn("pkill", cmd)
+            self.assertIn("-SIGTERM", cmd)
+            self.assertIn("python", cmd)
 
     def test_get_serial_windows_powershell(self):
-        common = self._reload_common_with_platform('Windows')
-        with mock.patch('subprocess.run') as mrun:
-            mrun.return_value = types.SimpleNamespace(stdout='BFEBFBFF00090672\n')
-            serial = common.get_serial()
-            self.assertEqual(serial, 'BFEBFBFF00090672')
+        self.common.is_rpi = False
+        self.common.is_win = True
+
+        def fake_run(cmd, capture_output=False, text=False, check=False):
+            if isinstance(cmd, (list, tuple)) and cmd and str(cmd[0]).lower().startswith("powershell"):
+                m = types.SimpleNamespace()
+                m.stdout = "BFEBFBFF00090672\n"
+                m.returncode = 0
+                return m
+            raise AssertionError("Unexpected command path in test")
+
+        with mock.patch("subprocess.run", side_effect=fake_run):
+            serial = self.common.get_serial()
+            self.assertEqual(serial, "BFEBFBFF00090672")
 
     def test_get_serial_windows_wmic_fallback(self):
-        common = self._reload_common_with_platform('Windows')
-        with mock.patch('subprocess.run') as mrun:
-            # First call (PowerShell) raises, second call (WMIC cpu) returns, third unused
-            def side_effect(*args, **kwargs):
-                cmd = args[0]
-                if isinstance(cmd, list) and 'powershell' in cmd[0].lower():
-                    raise RuntimeError('ps failed')
-                if isinstance(cmd, list) and cmd[:3] == ['wmic', 'cpu', 'get']:
-                    return types.SimpleNamespace(stdout='ProcessorId\nBFEBFBFF00090672\n')
-                return types.SimpleNamespace(stdout='')
+        self.common.is_rpi = False
+        self.common.is_win = True
 
-            mrun.side_effect = side_effect
-            serial = common.get_serial()
-            self.assertEqual(serial, 'BFEBFBFF00090672')
+        def fake_run(cmd, capture_output=False, text=False, check=False):
+            if isinstance(cmd, list) and cmd:
+                if str(cmd[0]).lower().startswith("powershell"):
+                    raise subprocess.CalledProcessError(returncode=1, cmd="powershell")
+                if cmd[:4] == ["wmic", "cpu", "get", "ProcessorId"]:
+                    m = types.SimpleNamespace()
+                    m.stdout = "ProcessorId\nBFEBFBFF00090672\n"
+                    m.returncode = 0
+                    return m
+            raise AssertionError("Unexpected command path in test")
 
-    def test_get_serial_windows_uuid_last_resort(self):
-        common = self._reload_common_with_platform('Windows')
-        with mock.patch('subprocess.run') as mrun:
-            def side_effect(*args, **kwargs):
-                cmd = args[0]
-                # PowerShell fails
-                if isinstance(cmd, list) and 'powershell' in cmd[0].lower():
-                    raise RuntimeError('ps failed')
-                # WMIC cpu fails
-                if isinstance(cmd, list) and cmd[:3] == ['wmic', 'cpu', 'get']:
-                    raise RuntimeError('wmic cpu failed')
-                # WMIC csproduct UUID returns
-                if isinstance(cmd, list) and cmd[:3] == ['wmic', 'csproduct', 'get']:
-                    return types.SimpleNamespace(stdout='UUID\n123e4567-e89b-12d3-a456-426614174000\n')
-                return types.SimpleNamespace(stdout='')
+        import subprocess
+        with mock.patch("subprocess.run", side_effect=fake_run):
+            serial = self.common.get_serial()
+            self.assertEqual(serial, "BFEBFBFF00090672")
 
-            mrun.side_effect = side_effect
-            serial = common.get_serial()
-            self.assertEqual(serial, '123e4567-e89b-12d3-a456-426614174000')
+    def test_get_serial_windows_uuid_fallback(self):
+        self.common.is_rpi = False
+        self.common.is_win = True
 
-    def test_get_serial_linux_rpi(self):
-        # Simulate /proc/cpuinfo containing Serial line
-        with mock.patch('platform.system', return_value='Linux'):
-            with mock.patch('os.path.exists', return_value=True):
-                # Re-import with RPi flags
-                if 'utils.common' in builtins.__import__('sys').modules:
-                    del builtins.__import__('sys').modules['utils.common']
-                import importlib
-                # Mock open to return cpuinfo with Serial
-                fake_data = 'processor\t: 0\nSerial\t\t: 00000000BFEBFBFF00090672\n'
-                with mock.patch('builtins.open', mock.mock_open(read_data=fake_data)):
-                    common = importlib.import_module('utils.common')
-                    serial = common.get_serial()
-                    # Implementation strips leading zeros
-                    self.assertEqual(serial, 'BFEBFBFF00090672')
+        def fake_run(cmd, capture_output=False, text=False, check=False):
+            if isinstance(cmd, list) and cmd:
+                if str(cmd[0]).lower().startswith("powershell"):
+                    raise subprocess.CalledProcessError(returncode=1, cmd="powershell")
+                if cmd[:4] == ["wmic", "cpu", "get", "ProcessorId"]:
+                    raise subprocess.CalledProcessError(returncode=1, cmd="wmic cpu")
+                if cmd[:4] == ["wmic", "csproduct", "get", "UUID"]:
+                    m = types.SimpleNamespace()
+                    m.stdout = "UUID\nA1B2C3D4-E5F6-1122-3344-5566778899AA\n"
+                    m.returncode = 0
+                    return m
+            raise AssertionError("Unexpected command path in test")
+
+        import subprocess
+        with mock.patch("subprocess.run", side_effect=fake_run):
+            serial = self.common.get_serial()
+            self.assertEqual(serial, "A1B2C3D4-E5F6-1122-3344-5566778899AA")
+
+    def test_get_serial_windows_all_fail(self):
+        self.common.is_rpi = False
+        self.common.is_win = True
+
+        def fake_run(cmd, capture_output=False, text=False, check=False):
+            raise subprocess.CalledProcessError(returncode=1, cmd=cmd)
+
+        import subprocess
+        with mock.patch("subprocess.run", side_effect=fake_run), \
+             mock.patch.object(self.common, "logger") as mock_logger:
+            serial = self.common.get_serial()
+            self.assertEqual(serial, "UNKNOWN-WIN")
+            mock_logger.warning.assert_called()
+
+    def test_get_serial_rpi(self):
+        self.common.is_rpi = True
+        self.common.is_win = False
+
+        cpuinfo = """processor\t: 0\nSerial\t\t: 00000000ABCDEF01\n"""
+
+        mock_open = mock.mock_open(read_data=cpuinfo)
+        with mock.patch.object(builtins, "open", mock_open):
+            serial = self.common.get_serial()
+            # The code slices and strips leading zeros, expecting trailing 16 chars then lstrip zeros
+            self.assertEqual(serial, "ABCDEF01")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
 
 

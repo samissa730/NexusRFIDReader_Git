@@ -9,38 +9,7 @@ TODO: Guide users through getting your code up and running on their own system. 
 4.	API references
 
 # Build and Test
-
-## Run the app
-
-```bash
-python main.py
-```
-
-## Run unit tests
-
-This project uses Python's built-in `unittest` framework. Tests live in the `UnitTests` directory.
-
-Run all tests with discovery:
-
-```bash
-python -m unittest discover -s UnitTests -p "test_*.py" -v
-```
-
-Run a single test module:
-
-```bash
-python -m unittest UnitTests.test_common -v
-```
-
-On Windows using a virtual environment created in `venv`, prefix commands with `venv\Scripts\python`:
-
-```bash
-venv\Scripts\python -m unittest discover -s UnitTests -p "test_*.py" -v
-```
-
-Notes:
-- No extra testing dependencies are required; `unittest` is part of the Python standard library.
-- `utils.common.get_serial()` is tested via mocks to avoid calling PowerShell/WMIC or reading real system files.
+TODO: Describe and show how to build your code and run the tests. 
 
 # Contribute
 TODO: Explain how other users and developers can contribute to make your code better. 
