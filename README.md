@@ -90,3 +90,26 @@ pyinstaller --onefile --add-data "ui/main.ui:ui" main.py
 - Test the generated executable on a clean system if possible.
 
 --- 
+
+## Running Unit Tests
+
+This project uses `pytest` and stores tests in the `UnitTests` directory.
+
+1. Ensure dependencies are installed:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. Run all tests:
+   ```bash
+   pytest
+   ```
+
+3. Run a specific test file:
+   ```bash
+   pytest UnitTests/test_common.py
+   ```
+
+Notes:
+- Tests mock OS and subprocess calls to safely verify behavior on Windows, Linux, and Raspberry Pi paths.
+- Default pytest configuration lives in `pytest.ini`.

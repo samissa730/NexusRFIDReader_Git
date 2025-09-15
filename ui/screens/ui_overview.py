@@ -279,8 +279,8 @@ class Ui_OverviewScreen(object):
         self.verticalLayout.addLayout(self.horizontalLayout)
 
         self.tableWidget = QTableWidget(OverviewScreen)
-        if (self.tableWidget.columnCount() < 7):
-            self.tableWidget.setColumnCount(7)
+        if (self.tableWidget.columnCount() < 6):
+            self.tableWidget.setColumnCount(6)
         __qtablewidgetitem = QTableWidgetItem()
         self.tableWidget.setHorizontalHeaderItem(0, __qtablewidgetitem)
         __qtablewidgetitem1 = QTableWidgetItem()
@@ -293,10 +293,8 @@ class Ui_OverviewScreen(object):
         self.tableWidget.setHorizontalHeaderItem(4, __qtablewidgetitem4)
         __qtablewidgetitem5 = QTableWidgetItem()
         self.tableWidget.setHorizontalHeaderItem(5, __qtablewidgetitem5)
-        __qtablewidgetitem6 = QTableWidgetItem()
-        self.tableWidget.setHorizontalHeaderItem(6, __qtablewidgetitem6)
-        if (self.tableWidget.rowCount() < 12):
-            self.tableWidget.setRowCount(12)
+        if (self.tableWidget.rowCount() < 8):
+            self.tableWidget.setRowCount(8)
         self.tableWidget.setObjectName(u"tableWidget")
         self.tableWidget.setStyleSheet(u"\n"
 "        QHeaderView::section {  \n"
@@ -318,12 +316,12 @@ class Ui_OverviewScreen(object):
 "            \n"
 "        } */")
         self.tableWidget.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.tableWidget.setRowCount(12)
-        self.tableWidget.setColumnCount(7)
+        self.tableWidget.setRowCount(8)
+        self.tableWidget.setColumnCount(6)
         self.tableWidget.horizontalHeader().setVisible(True)
         self.tableWidget.horizontalHeader().setCascadingSectionResizes(True)
         self.tableWidget.horizontalHeader().setMinimumSectionSize(110)
-        self.tableWidget.horizontalHeader().setDefaultSectionSize(110)
+        self.tableWidget.horizontalHeader().setDefaultSectionSize(129)
         self.tableWidget.horizontalHeader().setHighlightSections(True)
         self.tableWidget.horizontalHeader().setProperty(u"showSortIndicator", False)
         self.tableWidget.horizontalHeader().setStretchLastSection(False)
@@ -529,8 +527,6 @@ class Ui_OverviewScreen(object):
         ___qtablewidgetitem4.setText(QCoreApplication.translate("OverviewScreen", u"Speed", None));
         ___qtablewidgetitem5 = self.tableWidget.horizontalHeaderItem(5)
         ___qtablewidgetitem5.setText(QCoreApplication.translate("OverviewScreen", u"Heading", None));
-        ___qtablewidgetitem6 = self.tableWidget.horizontalHeaderItem(6)
-        ___qtablewidgetitem6.setText(QCoreApplication.translate("OverviewScreen", u"RSSI", None));
         self.label_15.setText(QCoreApplication.translate("OverviewScreen", u"Site Details:", None))
         self.label_16.setText(QCoreApplication.translate("OverviewScreen", u"Truck Number: ", None))
         self.truck_number.setText(QCoreApplication.translate("OverviewScreen", u"N/A", None))
