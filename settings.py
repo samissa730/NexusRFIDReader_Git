@@ -13,46 +13,73 @@ elif is_win:
 os.makedirs(ROOT_DIR, exist_ok=True)
 
 INIT_SCREEN = "overview"
-INTERNET_GPS_URL = "http://ip-api.com/json/"
 APP_DIR = os.path.dirname(os.path.realpath(__file__))
 CRASH_FILE = os.path.join(ROOT_DIR, "crash.dump")
 
 # GPS Configuration - All hardcoded for production
 GPS_CONFIG = {
-    "enabled": True,
-    "type": "internet",  # "internet" or "external"
-    "timeout_seconds": 3,
-    "retry_count": 1,
-    "retry_backoff_factor": 1,
-    "retry_status_codes": [429, 500, 502, 503, 504],
-    "update_interval_seconds": 4,
-    "external": {
-        "port": "/dev/ttyUSB1",
+    # GPS Type: "internet" or "external"
+    "gps_type": "internet",
+    
+    # Internet GPS Settings
+    "internet_gps": {
+        "url": "http://ip-api.com/json/",
+        "timeout": 3,
+        "retry_count": 1,
+        "retry_delay": 1,
+        "update_interval": 4,  # seconds
+        "retry_status_codes": [429, 500, 502, 503, 504]
+    },
+    
+    # External GPS Settings
+    "external_gps": {
+        "port": "/dev/ttyUSB1" if is_rpi else "COM4",
         "baud_rate": 115200,
         "timeout": 1,
         "write_timeout": 1,
+        "data_bits": 8,
+        "stop_bits": 1,
+        "parity": "N",
+        "handshake": "None",
+        "nmea_sentences": ["$GPRMC", "$GNRMC", "$GPGGA", "$GNGGA"],
+        "buffer_size": 80,
+        "read_delay": 0.2,
+        "reconnect_delay": 0.1
+    },
+    
+    # Cellular GPS Settings (for internal GPS)
+    "cellular_gps": {
+        "port": "/dev/ttyUSB2" if is_rpi else "COM3",
+        "baud_rate": 115200,
         "at_commands": {
             "enable": "AT+QGPS=1",
-            "status": "AT+QGPS?"
-        }
+            "status": "AT+QGPS?",
+            "disable": "AT+QGPS=0"
+        },
+        "command_delay": 1
     },
-    "internet": {
-        "url": "http://ip-api.com/json/",
-        "user_agent": "NexusRFIDReader/1.0",
-        "timeout": 3
+    
+    # GPS Data Processing
+    "data_processing": {
+        "speed_conversion": {
+            "from_knots_to_mph": 1.15078,
+            "from_mph_to_ms": 0.44704
+        },
+        "coordinate_precision": 4,
+        "max_age_seconds": 300,  # 5 minutes
+        "min_signal_quality": 1
+    },
+    
+    # GPS Status Display
+    "status_display": {
+        "update_interval": 1,  # seconds
+        "connection_timeout": 10,  # seconds
+        "stale_data_threshold": 5  # seconds
     }
 }
 
-# Serial Port Configuration
-BAUD_RATE_QUE = 115200
+# Legacy settings for backward compatibility
+INTERNET_GPS_URL = GPS_CONFIG["internet_gps"]["url"]
+BAUD_RATE_QUE = GPS_CONFIG["external_gps"]["baud_rate"]
 BAUD_RATE_DON = 9600
-GPS_PORT = "/dev/ttyUSB1"
-
-# GPS Data Processing Configuration
-GPS_DATA_CONFIG = {
-    "speed_unit": "mph",  # "mph", "kmh", "mps"
-    "coordinate_precision": 6,
-    "min_signal_strength": 0,
-    "max_age_seconds": 300,  # 5 minutes
-    "nmea_sentences": ["$GPRMC", "$GNRMC", "$GPGGA", "$GNGGA"]
-}
+GPS_PORT = GPS_CONFIG["external_gps"]["port"]
