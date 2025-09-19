@@ -4,16 +4,12 @@ import socket
 import subprocess
 import threading
 import time
-import re
-from datetime import datetime
-from typing import Tuple, Optional, Dict, Any
+from utils.logger import logger
 from geopy.distance import geodesic
 from geographiclib.geodesic import Geodesic
-
-from utils.logger import logger
 import serial
 import serial.tools.list_ports
-from settings import GPS_CONFIG, BAUD_RATE_QUE, BAUD_RATE_DON, GPS_PORT
+from settings import BAUD_RATE_QUE, BAUD_RATE_DON, GPS_PORT
 
 is_rpi = platform.system() == "Linux" and os.path.exists("/proc/device-tree/model")
 is_win = platform.system() == "Windows"
@@ -174,25 +170,29 @@ def find_gps_port(baud_rate):
     logger.info("No GPS port found")
     return None
 
-# =============================================================================
-# GPS UTILITY FUNCTIONS - Production Implementation
-# =============================================================================
+def send_at_command(command, delay=1):
+    ser = serial.Serial(port=GPS_PORT, baudrate=115200, timeout=1)
+    """Send AT command and read the response"""
+    ser.write((command + "\r\n").encode())  # Send command
+    time.sleep(delay)  # Wait for response
+    response = ser.read(ser.inWaiting()).decode(errors='ignore')  # Read response
+    return response
 
-def convert_to_decimal(coord: str, direction: str, is_latitude: bool = True) -> float:
+def convert_to_decimal(coord, direction, is_latitude):
     """
-    User Story 13172: Convert GPS coordinates to decimal degrees.
+    Convert GPS coordinates from degrees/minutes format to decimal degrees.
+    User Story 13172: Convert to speed, latitude, longitude
     
     Args:
-        coord: Coordinate string (e.g., "3342.1234")
-        direction: Direction indicator (N, S, E, W)
+        coord: Coordinate string (e.g., "3745.1234")
+        direction: Direction indicator ('N', 'S', 'E', 'W')
         is_latitude: True for latitude, False for longitude
         
     Returns:
-        Decimal degrees coordinate
+        float: Decimal degrees coordinate
     """
     try:
         sign = -1 if direction in ['S', 'W'] else 1
-        
         if is_latitude:
             if len(coord) < 4:
                 raise ValueError("Invalid latitude coordinate format")
@@ -203,67 +203,64 @@ def convert_to_decimal(coord: str, direction: str, is_latitude: bool = True) -> 
                 raise ValueError("Invalid longitude coordinate format")
             degrees = int(coord[:3])
             minutes = float(coord[3:])
-            
         decimal_coord = sign * (degrees + minutes / 60)
         return decimal_coord
-        
     except ValueError as e:
         logger.error(f"Error converting coordinate: {e}")
-        return 0.0
+        return 0
+    except Exception as e:
+        logger.error(f"Unexpected error in coordinate conversion: {e}")
+        return 0
 
-def extract_from_gps(gps_data: Dict[str, Any]) -> Tuple[float, float]:
+
+def extract_from_gps(gps_data):
     """
-    User Story 13172: Extract latitude and longitude from GPS data.
+    Extract latitude and longitude from GPS data dictionary.
+    User Story 13172: Convert to speed, latitude, longitude
     
     Args:
-        gps_data: GPS data dictionary
+        gps_data: Dictionary containing GPS data
         
     Returns:
-        Tuple of (latitude, longitude) in decimal degrees
+        tuple: (latitude, longitude) in decimal degrees
     """
-    if not gps_data:
-        return 0.0, 0.0
-        
+    if not gps_data or gps_data == {}:
+        return 0, 0
     try:
         # Extract and convert latitude and longitude
-        latitude = convert_to_decimal(
-            gps_data.get('lat', ''), 
-            gps_data.get('lat_dir', 'N'), 
-            is_latitude=True
-        )
-        longitude = convert_to_decimal(
-            gps_data.get('lon', ''), 
-            gps_data.get('lon_dir', 'E'), 
-            is_latitude=False
-        )
+        latitude = convert_to_decimal(gps_data['lat'], gps_data['lat_dir'], is_latitude=True)
+        longitude = convert_to_decimal(gps_data['lon'], gps_data['lon_dir'], is_latitude=False)
         return latitude, longitude
-        
     except KeyError as e:
         logger.error(f"Missing key in GPS data: {e}")
-        return 0.0, 0.0
+        return 0, 0
     except ValueError as e:
-        logger.error(f"Error extracting GPS coordinates: {e}")
-        return 0.0, 0.0
+        logger.error(f"Error extracting GPS data: {e}")
+        return 0, 0
+    except Exception as e:
+        logger.error(f"Unexpected error extracting GPS data: {e}")
+        return 0, 0
 
-def calculate_speed_bearing(lat1: float, lon1: float, time1: int, 
-                          lat2: float, lon2: float, time2: int) -> Tuple[float, float]:
+
+def calculate_speed_bearing(lat1, lon1, time1, lat2, lon2, time2):
     """
-    User Story 13172: Calculate speed and bearing between two GPS points.
+    Calculate speed and bearing between two GPS points.
+    User Story 13172: Convert to speed, latitude, longitude
     
     Args:
         lat1, lon1: First GPS coordinates
-        time1: First timestamp in microseconds
+        time1: First timestamp (microseconds)
         lat2, lon2: Second GPS coordinates  
-        time2: Second timestamp in microseconds
+        time2: Second timestamp (microseconds)
         
     Returns:
-        Tuple of (speed_mph, bearing_degrees)
+        tuple: (speed_mph, bearing_degrees)
     """
     try:
-        # Calculate distance in meters
+        # Calculate the distance in meters
         distance = geodesic((lat1, lon1), (lat2, lon2)).meters
         
-        # Calculate time difference in seconds
+        # Calculate the time difference in seconds
         time_diff = (time2 - time1) / 1_000_000
         
         # Calculate speed in m/s, then convert to mph
@@ -271,156 +268,104 @@ def calculate_speed_bearing(lat1: float, lon1: float, time1: int,
             speed_ms = distance / time_diff
             speed_mph = speed_ms * 2.23694  # Convert m/s to mph
         else:
-            speed_mph = 0.0
-            
-        # Calculate bearing using geodesic calculations
+            speed_mph = 0  # If time difference is 0, speed is undefined or considered 0
+        
+        # Calculate bearing using geodesic calculation
         bearing = Geodesic.WGS84.Inverse(lat1, lon1, lat2, lon2)['azi1']
         
         return speed_mph, bearing
         
     except Exception as e:
         logger.error(f"Error calculating speed and bearing: {e}")
-        return 0.0, 0.0
+        return 0, 0
 
-def get_date_from_utc(timestamp_microseconds: int) -> str:
+
+def validate_gps_coordinates(latitude, longitude):
     """
-    Convert UTC timestamp to formatted date string.
+    Validate GPS coordinates are within valid ranges.
     
     Args:
-        timestamp_microseconds: UTC timestamp in microseconds
+        latitude: Latitude in decimal degrees
+        longitude: Longitude in decimal degrees
         
     Returns:
-        Formatted date string
+        bool: True if coordinates are valid
     """
     try:
-        timestamp_seconds = timestamp_microseconds / 1_000_000
-        utc_datetime = datetime.utcfromtimestamp(timestamp_seconds)
+        # Check latitude range (-90 to 90)
+        if not (-90 <= latitude <= 90):
+            return False
         
-        # Format the datetime object
-        formatted_date = "{}/{}/{} {}:{}:{} {}".format(
-            utc_datetime.month,
-            utc_datetime.day,
-            utc_datetime.year,
-            utc_datetime.hour % 12 or 12,
-            f"{utc_datetime.minute:02}",
-            f"{utc_datetime.second:02}",
-            "AM" if utc_datetime.hour < 12 else "PM"
-        )
-        return formatted_date
+        # Check longitude range (-180 to 180)
+        if not (-180 <= longitude <= 180):
+            return False
         
-    except Exception as e:
-        logger.error(f"Error formatting date: {e}")
-        return "N/A"
+        return True
+    except (TypeError, ValueError):
+        return False
 
-def validate_gps_coordinates(lat: float, lon: float) -> bool:
-    """
-    Validate GPS coordinates are within reasonable ranges.
-    
-    Args:
-        lat: Latitude in decimal degrees
-        lon: Longitude in decimal degrees
-        
-    Returns:
-        True if coordinates are valid, False otherwise
-    """
-    return (-90 <= lat <= 90) and (-180 <= lon <= 180)
 
-def format_coordinates(lat: float, lon: float, precision: int = 4) -> str:
+def format_coordinates(latitude, longitude, precision=6):
     """
     Format GPS coordinates for display.
     
     Args:
-        lat: Latitude in decimal degrees
-        lon: Longitude in decimal degrees
+        latitude: Latitude in decimal degrees
+        longitude: Longitude in decimal degrees
         precision: Number of decimal places
         
     Returns:
-        Formatted coordinate string
-    """
-    if not validate_gps_coordinates(lat, lon):
-        return "N/A"
-        
-    return f"{lat:.{precision}f}, {lon:.{precision}f}"
-
-def format_speed(speed: float, unit: str = "mph") -> str:
-    """
-    Format speed for display.
-    
-    Args:
-        speed: Speed value
-        unit: Speed unit (mph, kmh, mps)
-        
-    Returns:
-        Formatted speed string
-    """
-    if unit == "mph":
-        return f"{speed:.1f} mph"
-    elif unit == "kmh":
-        return f"{speed:.1f} km/h"
-    elif unit == "mps":
-        return f"{speed:.1f} m/s"
-    else:
-        return f"{speed:.1f}"
-
-def format_bearing(bearing: float) -> str:
-    """
-    Format bearing for display with cardinal directions.
-    
-    Args:
-        bearing: Bearing in degrees
-        
-    Returns:
-        Formatted bearing string with cardinal direction
-    """
-    if bearing < 0:
-        bearing += 360
-        
-    directions = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
-                  "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
-    
-    index = int((bearing + 11.25) / 22.5) % 16
-    direction = directions[index]
-    
-    return f"{bearing:.0f}° {direction}"
-
-def is_ipv4_address(ip: str) -> bool:
-    """
-    Validate IPv4 address format.
-    
-    Args:
-        ip: IP address string
-        
-    Returns:
-        True if valid IPv4 address, False otherwise
-    """
-    ipv4_regex = re.compile(r'^(?:\d{1,3}\.){3}\d{1,3}$')
-    if ipv4_regex.match(ip):
-        parts = ip.split('.')
-        return all(0 <= int(part) <= 255 for part in parts)
-    return False
-
-def send_at_command(command: str, delay: float = 1) -> str:
-    """
-    User Story 13048: Send AT command to GPS module.
-    
-    Args:
-        command: AT command to send
-        delay: Delay before reading response
-        
-    Returns:
-        Response from GPS module
+        str: Formatted coordinate string
     """
     try:
-        at_port = GPS_CONFIG["external"]["at_command_port"]
-        at_baud = GPS_CONFIG["external"]["at_command_baud"]
+        return f"{latitude:.{precision}f}, {longitude:.{precision}f}"
+    except (TypeError, ValueError):
+        return "0.000000, 0.000000"
+
+
+def get_distance_between_points(lat1, lon1, lat2, lon2):
+    """
+    Calculate distance between two GPS points in meters.
+    
+    Args:
+        lat1, lon1: First GPS coordinates
+        lat2, lon2: Second GPS coordinates
         
-        ser = serial.Serial(port=at_port, baudrate=at_baud, timeout=1)
-        ser.write((command + "\r\n").encode())
-        time.sleep(delay)
-        response = ser.read(ser.inWaiting()).decode(errors='ignore')
-        ser.close()
-        return response
+    Returns:
+        float: Distance in meters
+    """
+    try:
+        return geodesic((lat1, lon1), (lat2, lon2)).meters
+    except Exception as e:
+        logger.error(f"Error calculating distance: {e}")
+        return 0
+
+
+def is_gps_data_valid(gps_data):
+    """
+    Check if GPS data contains valid location information.
+    
+    Args:
+        gps_data: GPS data dictionary
+        
+    Returns:
+        bool: True if GPS data is valid
+    """
+    try:
+        if not gps_data or not isinstance(gps_data, dict):
+            return False
+        
+        # Check for required fields
+        required_fields = ['latitude', 'longitude']
+        if not all(field in gps_data for field in required_fields):
+            return False
+        
+        # Validate coordinates
+        lat = gps_data.get('latitude', 0)
+        lon = gps_data.get('longitude', 0)
+        
+        return validate_gps_coordinates(lat, lon)
         
     except Exception as e:
-        logger.error(f"Error sending AT command: {e}")
-        return ""
+        logger.error(f"Error validating GPS data: {e}")
+        return False

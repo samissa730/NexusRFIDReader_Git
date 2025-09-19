@@ -13,61 +13,46 @@ elif is_win:
 os.makedirs(ROOT_DIR, exist_ok=True)
 
 INIT_SCREEN = "overview"
+INTERNET_GPS_URL = "http://ip-api.com/json/"
 APP_DIR = os.path.dirname(os.path.realpath(__file__))
 CRASH_FILE = os.path.join(ROOT_DIR, "crash.dump")
 
-# GPS Configuration - Hardcoded for Production
+# GPS Configuration - All hardcoded for production
 GPS_CONFIG = {
-    # GPS Type: "internet" or "external"
-    "type": "internet",
-    
-    # Internet GPS Settings (User Story 13047)
-    "internet": {
-        "url": "http://ip-api.com/json/",
-        "timeout": 3,  # seconds
-        "retry_count": 1,
-        "retry_backoff": 1,
-        "retry_status_codes": [429, 500, 502, 503, 504],
-        "cache_ttl": 30,  # seconds
-        "user_agent": "NexusRFIDReader/1.0"
-    },
-    
-    # External GPS Settings (User Story 13048)
+    "enabled": True,
+    "type": "internet",  # "internet" or "external"
+    "timeout_seconds": 3,
+    "retry_count": 1,
+    "retry_backoff_factor": 1,
+    "retry_status_codes": [429, 500, 502, 503, 504],
+    "update_interval_seconds": 4,
     "external": {
-        "port": "/dev/ttyUSB1" if is_rpi else "COM4",
+        "port": "/dev/ttyUSB1",
         "baud_rate": 115200,
         "timeout": 1,
         "write_timeout": 1,
-        "data_bits": 8,
-        "stop_bits": 1,
-        "parity": "N",
-        "handshake": "none",
-        "at_command_port": "/dev/ttyUSB2" if is_rpi else "COM5",
-        "at_command_baud": 115200
+        "at_commands": {
+            "enable": "AT+QGPS=1",
+            "status": "AT+QGPS?"
+        }
     },
-    
-    # GPS Data Processing Settings (User Stories 13170-13172)
-    "processing": {
-        "nmea_sentences": ["$GPRMC", "$GNRMC", "$GPGGA", "$GNGGA"],
-        "speed_unit": "mph",  # mph, kmh, mps
-        "coordinate_format": "decimal_degrees",
-        "update_interval": 1,  # seconds
-        "signal_quality_threshold": 3,  # minimum satellites
-        "accuracy_threshold": 10  # meters
-    },
-    
-    # Dashboard Settings (User Story 13173)
-    "dashboard": {
-        "update_rate": 1,  # seconds
-        "stale_data_threshold": 5,  # seconds
-        "show_signal_quality": True,
-        "show_accuracy": True,
-        "show_satellites": True
+    "internet": {
+        "url": "http://ip-api.com/json/",
+        "user_agent": "NexusRFIDReader/1.0",
+        "timeout": 3
     }
 }
 
-# Legacy constants for backward compatibility
-INTERNET_GPS_URL = GPS_CONFIG["internet"]["url"]
-BAUD_RATE_QUE = GPS_CONFIG["external"]["baud_rate"]
+# Serial Port Configuration
+BAUD_RATE_QUE = 115200
 BAUD_RATE_DON = 9600
-GPS_PORT = GPS_CONFIG["external"]["port"]
+GPS_PORT = "/dev/ttyUSB1"
+
+# GPS Data Processing Configuration
+GPS_DATA_CONFIG = {
+    "speed_unit": "mph",  # "mph", "kmh", "mps"
+    "coordinate_precision": 6,
+    "min_signal_strength": 0,
+    "max_age_seconds": 300,  # 5 minutes
+    "nmea_sentences": ["$GPRMC", "$GNRMC", "$GPGGA", "$GNGGA"]
+}
