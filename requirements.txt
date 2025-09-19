@@ -1,2 +1,8 @@
 PySide6
 PyInstaller
+requests
+urllib3
+pyserial
+pynmea2
+geopy
+geographiclib

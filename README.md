@@ -11,6 +11,37 @@ TODO: Guide users through getting your code up and running on their own system. 
 # Build and Test
 TODO: Describe and show how to build your code and run the tests. 
 
+## Run Unit Tests
+
+Unit tests live under the `UnitTests/` directory and use Python's built-in `unittest` framework.
+
+1. Ensure the virtual environment is activated (optional but recommended):
+   ```bash
+   # Windows PowerShell
+   .\venv\Scripts\Activate.ps1
+   # or CMD
+   .\venv\Scripts\activate.bat
+   ```
+
+2. Run all tests with discovery:
+   ```bash
+   python -m unittest discover -s UnitTests -p "test_*.py" -v
+   ```
+
+3. Run a single test file:
+   ```bash
+   python -m unittest UnitTests.test_common -v
+   ```
+
+4. Run a single test case or method:
+   ```bash
+   python -m unittest UnitTests.test_common.TestCommon.test_get_serial_windows_powershell -v
+   ```
+
+Notes:
+- Tests mock external system calls (e.g., `subprocess`, `socket`) so they are safe to run on any OS.
+- If you add new tests, place them in `UnitTests/` and name files `test_*.py`.
+
 # Contribute
 TODO: Explain how other users and developers can contribute to make your code better. 
 
