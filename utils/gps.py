@@ -30,14 +30,14 @@ class GPS(QThread):
     sig_data_updated = Signal(dict)    # New GPS data available
     sig_error_occurred = Signal(str)  # Error message
 
-    def __init__(self, gps_type: str = None, current_status: str = "N/A"):
+    def __init__(self, gps_type: str = None, current_status: str = None):
         super().__init__()
         self._ser = None
         self._gps_type = gps_type or GPS_CONFIG["type"]
         self._b_stop = threading.Event()
         self._data = {}
         self._sdata = [0, 0]  # [speed, bearing]
-        self._current_status = current_status
+        self._current_status = current_status or "Disconnected"
         self._last_update_time = 0
         self._cache_data = {}
         self._cache_timestamp = 0

@@ -48,6 +48,11 @@ class OverviewScreen(BaseScreen):
             self.gps.sig_data_updated.connect(self._on_gps_data_updated)
             self.gps.sig_error_occurred.connect(self._on_gps_error)
             
+            # Set initial status based on GPS type
+            initial_status = self.gps.get_status()
+            logger.info(f"Setting initial GPS status: {initial_status}")
+            self._update_gps_status(initial_status)
+            
             # Start GPS thread
             self.gps.start()
             
@@ -90,9 +95,11 @@ class OverviewScreen(BaseScreen):
 
     def _update_gps_status(self, status: str):
         """Update GPS connection status in UI."""
+        logger.info(f"Updating GPS status to: {status}")
         # Check if the UI has the GPS status label
         if hasattr(self.ui, 'gps_connection_status'):
             self.ui.gps_connection_status.setText(status)
+            logger.info(f"GPS status label updated to: {status}")
             
             # Update status color based on connection state
             if status == "External":
@@ -103,6 +110,8 @@ class OverviewScreen(BaseScreen):
                 self.ui.gps_connection_status.setStyleSheet("color: #ff0000;")  # Red
             else:
                 self.ui.gps_connection_status.setStyleSheet("color: #ffff00;")  # Yellow
+        else:
+            logger.warning("GPS connection status label not found in UI")
 
     def _update_gps_display(self):
         """Update GPS data display in UI."""
@@ -152,7 +161,7 @@ class OverviewScreen(BaseScreen):
             speed, bearing = self.gps.get_speed_bearing()
             
             # Format data for table
-            coord_text = format_coordinates(lat, lon, precision=2)
+            coord_text = format_coordinates(lat, lon, precision=6)  # Show full precision
             speed_text = format_speed(speed, GPS_CONFIG["processing"]["speed_unit"])
             bearing_text = format_bearing(bearing)
             time_text = get_date_from_utc(int(time.time() * 1_000_000))
