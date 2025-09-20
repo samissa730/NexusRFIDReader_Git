@@ -206,7 +206,7 @@ class GPS(QThread):
                 speed_knots = msg.spd_over_grnd if msg.spd_over_grnd is not None else 0
                 course_degrees = msg.true_course if msg.true_course is not None else 0
                 
-                # Convert speed based on configured unit
+                # Convert speed based on configured unit (m/s as requested)
                 speed_unit = self._processing_config["speed_unit"]
                 if speed_unit == "mph":
                     speed = speed_knots * 1.15078

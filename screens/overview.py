@@ -83,21 +83,25 @@ class OverviewScreen(BaseScreen):
 
     def _update_gps_status(self, status: str):
         """Update GPS connection status in UI."""
-        self.ui.gps_connection_status.setText(status)
-        
-        # Update status color based on connection state
-        if status == "Connected":
-            self.ui.gps_connection_status.setStyleSheet("color: #00ff00;")  # Green
-        elif status == "Disconnected":
-            self.ui.gps_connection_status.setStyleSheet("color: #ff0000;")  # Red
-        else:
-            self.ui.gps_connection_status.setStyleSheet("color: #ffff00;")  # Yellow
+        # Check if the UI has the GPS status label
+        if hasattr(self.ui, 'gps_connection_status'):
+            self.ui.gps_connection_status.setText(status)
+            
+            # Update status color based on connection state
+            if status == "Connected":
+                self.ui.gps_connection_status.setStyleSheet("color: #00ff00;")  # Green
+            elif status == "Disconnected":
+                self.ui.gps_connection_status.setStyleSheet("color: #ff0000;")  # Red
+            else:
+                self.ui.gps_connection_status.setStyleSheet("color: #ffff00;")  # Yellow
 
     def _update_gps_display(self):
         """Update GPS data display in UI."""
         if not self.gps_data:
-            self.ui.last_gps_read.setText("N/A")
-            self.ui.last_gps_time.setText("N/A")
+            if hasattr(self.ui, 'last_gps_read'):
+                self.ui.last_gps_read.setText("N/A")
+            if hasattr(self.ui, 'last_gps_time'):
+                self.ui.last_gps_time.setText("N/A")
             return
 
         try:
@@ -107,24 +111,30 @@ class OverviewScreen(BaseScreen):
             if validate_gps_coordinates(lat, lon):
                 # Format coordinates for display
                 coord_text = format_coordinates(lat, lon)
-                self.ui.last_gps_read.setText(coord_text)
+                if hasattr(self.ui, 'last_gps_read'):
+                    self.ui.last_gps_read.setText(coord_text)
                 
                 # Update timestamp
                 current_time = int(time.time() * 1_000_000)
                 time_text = get_date_from_utc(current_time)
-                self.ui.last_gps_time.setText(time_text)
+                if hasattr(self.ui, 'last_gps_time'):
+                    self.ui.last_gps_time.setText(time_text)
                 
                 # Update table with GPS data if available
                 self._update_gps_table_row(lat, lon)
                 
             else:
-                self.ui.last_gps_read.setText("Invalid Coordinates")
-                self.ui.last_gps_time.setText("N/A")
+                if hasattr(self.ui, 'last_gps_read'):
+                    self.ui.last_gps_read.setText("Invalid Coordinates")
+                if hasattr(self.ui, 'last_gps_time'):
+                    self.ui.last_gps_time.setText("N/A")
                 
         except Exception as e:
             logger.error(f"Error updating GPS display: {e}")
-            self.ui.last_gps_read.setText("Error")
-            self.ui.last_gps_time.setText("N/A")
+            if hasattr(self.ui, 'last_gps_read'):
+                self.ui.last_gps_read.setText("Error")
+            if hasattr(self.ui, 'last_gps_time'):
+                self.ui.last_gps_time.setText("N/A")
 
     def _update_gps_table_row(self, lat: float, lon: float):
         """Update GPS data in the main table."""
@@ -138,13 +148,14 @@ class OverviewScreen(BaseScreen):
             bearing_text = format_bearing(bearing)
             time_text = get_date_from_utc(int(time.time() * 1_000_000))
             
-            # Update first row with GPS data
-            self.ui.tableWidget.setItem(0, 0, QTableWidgetItem(time_text))
-            self.ui.tableWidget.setItem(0, 1, QTableWidgetItem("GPS"))
-            self.ui.tableWidget.setItem(0, 2, QTableWidgetItem("N/A"))
-            self.ui.tableWidget.setItem(0, 3, QTableWidgetItem(coord_text))
-            self.ui.tableWidget.setItem(0, 4, QTableWidgetItem(speed_text))
-            self.ui.tableWidget.setItem(0, 5, QTableWidgetItem(bearing_text))
+            # Update first row with GPS data if table exists
+            if hasattr(self.ui, 'tableWidget'):
+                self.ui.tableWidget.setItem(0, 0, QTableWidgetItem(time_text))
+                self.ui.tableWidget.setItem(0, 1, QTableWidgetItem("GPS"))
+                self.ui.tableWidget.setItem(0, 2, QTableWidgetItem("N/A"))
+                self.ui.tableWidget.setItem(0, 3, QTableWidgetItem(coord_text))
+                self.ui.tableWidget.setItem(0, 4, QTableWidgetItem(speed_text))
+                self.ui.tableWidget.setItem(0, 5, QTableWidgetItem(bearing_text))
             
         except Exception as e:
             logger.error(f"Error updating GPS table: {e}")
@@ -170,7 +181,7 @@ class OverviewScreen(BaseScreen):
                 quality = self.gps.get_signal_quality()
                 
                 # Add signal quality info to GPS display
-                if quality["status"] != "No Fix":
+                if quality["status"] != "No Fix" and hasattr(self.ui, 'last_gps_read'):
                     satellites = quality.get("satellites", 0)
                     accuracy = quality.get("accuracy", 0)
                     

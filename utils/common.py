@@ -257,7 +257,7 @@ def calculate_speed_bearing(lat1: float, lon1: float, time1: int,
         time2: Second timestamp in microseconds
         
     Returns:
-        Tuple of (speed_mph, bearing_degrees)
+        Tuple of (speed_mps, bearing_degrees) - using m/s as requested
     """
     try:
         # Calculate distance in meters
@@ -266,17 +266,16 @@ def calculate_speed_bearing(lat1: float, lon1: float, time1: int,
         # Calculate time difference in seconds
         time_diff = (time2 - time1) / 1_000_000
         
-        # Calculate speed in m/s, then convert to mph
+        # Calculate speed in m/s (keeping in m/s as requested)
         if time_diff > 0:
-            speed_ms = distance / time_diff
-            speed_mph = speed_ms * 2.23694  # Convert m/s to mph
+            speed_mps = distance / time_diff
         else:
-            speed_mph = 0.0
+            speed_mps = 0.0
             
         # Calculate bearing using geodesic calculations
         bearing = Geodesic.WGS84.Inverse(lat1, lon1, lat2, lon2)['azi1']
         
-        return speed_mph, bearing
+        return speed_mps, bearing
         
     except Exception as e:
         logger.error(f"Error calculating speed and bearing: {e}")
@@ -342,7 +341,7 @@ def format_coordinates(lat: float, lon: float, precision: int = 4) -> str:
         
     return f"{lat:.{precision}f}, {lon:.{precision}f}"
 
-def format_speed(speed: float, unit: str = "mph") -> str:
+def format_speed(speed: float, unit: str = "mps") -> str:
     """
     Format speed for display.
     

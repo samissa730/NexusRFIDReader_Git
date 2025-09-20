@@ -6,7 +6,7 @@ is_rpi = platform.system() == "Linux" and os.path.exists("/proc/device-tree/mode
 is_win = platform.system() == "Windows"
 
 if is_rpi:
-    ROOT_DIR = os.path.expanduser("~/.pl")
+    ROOT_DIR = os.path.expanduser("~/.nexusrfid")
 elif is_win:
     ROOT_DIR = os.path.expanduser("~/Documents")
 
@@ -19,7 +19,7 @@ CRASH_FILE = os.path.join(ROOT_DIR, "crash.dump")
 # GPS Configuration - Hardcoded for Production
 GPS_CONFIG = {
     # GPS Type: "internet" or "external"
-    "type": "internet",
+    "type": "external",
     
     # Internet GPS Settings (User Story 13047)
     "internet": {
@@ -49,7 +49,7 @@ GPS_CONFIG = {
     # GPS Data Processing Settings (User Stories 13170-13172)
     "processing": {
         "nmea_sentences": ["$GPRMC", "$GNRMC", "$GPGGA", "$GNGGA"],
-        "speed_unit": "mph",  # mph, kmh, mps
+        "speed_unit": "mps",  # mph, kmh, mps - using m/s as requested
         "coordinate_format": "decimal_degrees",
         "update_interval": 1,  # seconds
         "signal_quality_threshold": 3,  # minimum satellites
