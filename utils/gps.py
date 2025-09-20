@@ -2,226 +2,232 @@ import threading
 import time
 import serial
 import pynmea2
+from datetime import datetime
+from typing import Dict, Optional, Tuple, Any
 
 from PySide6.QtCore import Signal, QThread
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from settings import GPS_CONFIG
-from utils.common import (
-    send_at_command, extract_gps_from_internet_data, validate_gps_data,
-    format_coordinates, format_speed, format_bearing, get_gps_age_seconds,
-    is_gps_data_stale, convert_speed_units, get_date_from_utc
-)
+from utils.common import send_at_command, find_gps_port, pre_config_gps, convert_to_decimal, calculate_speed_bearing
 from utils.logger import logger
 
 
 class GPS(QThread):
-    """Enhanced GPS class supporting both internet and external GPS sources."""
+    """
+    Production GPS class implementing all user story requirements:
+    - User Story 13047: IP-based geolocation service
+    - User Story 13048: GPS device detection and configuration
+    - User Story 13170: GPS data listener initialization and processing
+    - User Story 13171: Parse incoming GPS data
+    - User Story 13172: Convert speed, latitude, longitude
+    - User Story 13173: Update dashboard with latest GPS data
+    """
 
-    sig_msg = Signal(bool)  # Connection status signal
-    sig_data = Signal(dict)  # GPS data signal
+    # Signals for UI updates
+    sig_status_changed = Signal(bool)  # GPS connection status
+    sig_data_updated = Signal(dict)    # New GPS data available
+    sig_error_occurred = Signal(str)  # Error message
 
-    def __init__(self, gps_type=None, current_status="N/A"):
+    def __init__(self, gps_type: str = None, current_status: str = "N/A"):
         super().__init__()
         self._ser = None
-        self._gps_type = gps_type or GPS_CONFIG["gps_type"]
+        self._gps_type = gps_type or GPS_CONFIG["type"]
         self._b_stop = threading.Event()
         self._data = {}
         self._sdata = [0, 0]  # [speed, bearing]
         self._current_status = current_status
         self._last_update_time = 0
-        self._connectivity = False
+        self._cache_data = {}
+        self._cache_timestamp = 0
         
-        # Load configuration based on GPS type
-        if self._gps_type == "internet":
-            self._config = GPS_CONFIG["internet_gps"]
-        elif self._gps_type == "external":
-            self._config = GPS_CONFIG["external_gps"]
-        elif self._gps_type == "cellular":
-            self._config = GPS_CONFIG["cellular_gps"]
+        # Configuration from settings
+        self._config = GPS_CONFIG
+        self._internet_config = self._config["internet"]
+        self._external_config = self._config["external"]
+        self._processing_config = self._config["processing"]
+        
+        # Initialize based on GPS type
+        if self._gps_type == "external":
+            self._baud_rate = pre_config_gps()
+            self._port = find_gps_port(self._baud_rate)
+            if self._port:
+                self._current_status = "Connected"
+            else:
+                self._current_status = "Disconnected"
         else:
-            logger.error(f"Unsupported GPS type: {self._gps_type}")
-            self._gps_type = "internet"
-            self._config = GPS_CONFIG["internet_gps"]
+            self._current_status = "N/A"
 
     def run(self):
-        """Main GPS processing loop."""
-        logger.info(f"Starting GPS thread with type: {self._gps_type}")
+        """Background task: continuous GPS data processing based on type."""
+        logger.info(f"Starting GPS thread for type: {self._gps_type}")
         
         if self._gps_type == "internet":
             self._run_internet_gps()
         elif self._gps_type == "external":
             self._run_external_gps()
-        elif self._gps_type == "cellular":
-            self._run_cellular_gps()
         else:
             logger.error(f"Unsupported GPS type: {self._gps_type}")
-
-    def stop(self):
-        """Stop GPS processing."""
-        logger.info("Stopping GPS thread")
-        self._b_stop.set()
-        self.wait(1)
-        self._close_serial()
-
-    def _close_serial(self):
-        """Close serial connection if open."""
-        if self._ser and self._ser.is_open:
-            self._ser.close()
-            logger.info("Serial connection closed.")
-        self._ser = None
-
-    def get_data(self):
-        """Get latest GPS data."""
-        return self._data
-
-    def get_sdata(self):
-        """Get latest speed and bearing data."""
-        return self._sdata
-
-    def get_status(self):
-        """Get current GPS status."""
-        return self._current_status
-
-    def is_connected(self):
-        """Check if GPS is connected."""
-        return self._connectivity
+            self.sig_error_occurred.emit(f"Unsupported GPS type: {self._gps_type}")
 
     def _run_internet_gps(self):
-        """Run internet GPS processing loop."""
-        logger.info("Starting internet GPS processing")
-        
+        """User Story 13047: IP-based geolocation service with caching."""
         while not self._b_stop.is_set():
-            success = self._fetch_internet_gps()
-            self.sig_msg.emit(success)
-            
-            if success:
-                self._last_update_time = int(time.time() * 1_000_000)
-                self.sig_data.emit(self._data)
-            
-            # Wait for next update
-            time.sleep(self._config["update_interval"])
+            try:
+                # Check cache first
+                current_time = time.time()
+                if (self._cache_data and 
+                    current_time - self._cache_timestamp < self._internet_config["cache_ttl"]):
+                    self._data = self._cache_data.copy()
+                    self.sig_data_updated.emit(self._data)
+                    self._last_update_time = current_time
+                else:
+                    # Fetch new data
+                    success = self._fetch_internet_gps()
+                    if success:
+                        self._cache_data = self._data.copy()
+                        self._cache_timestamp = current_time
+                        self.sig_data_updated.emit(self._data)
+                        self._last_update_time = current_time
+                        if self._current_status != "Connected":
+                            self._current_status = "Connected"
+                            self.sig_status_changed.emit(True)
+                    else:
+                        if self._current_status == "Connected":
+                            self._current_status = "Disconnected"
+                            self.sig_status_changed.emit(False)
+                
+                # Wait for next update
+                time.sleep(self._processing_config["update_interval"])
+                
+            except Exception as e:
+                logger.error(f"Internet GPS error: {e}")
+                self.sig_error_occurred.emit(f"Internet GPS error: {e}")
+                time.sleep(5)  # Wait before retry
 
     def _run_external_gps(self):
-        """Run external GPS processing loop."""
-        logger.info("Starting external GPS processing")
+        """User Story 13170: External GPS data listener with continuous processing."""
+        # Initialize serial connection
+        self._ser = self._connect_serial()
         
-        # Try to connect to GPS device
-        self._ser = self._connect_external_gps()
+        # Wait for connection
+        while self._ser is None and not self._b_stop.is_set():
+            self._ser = self._connect_serial()
+            time.sleep(1)
         
+        if self._ser is None:
+            logger.error("Failed to establish GPS serial connection")
+            self.sig_error_occurred.emit("Failed to establish GPS serial connection")
+            return
+        
+        # Continuous data processing
         while not self._b_stop.is_set():
-            if self._ser is None:
-                # Try to reconnect
-                self._ser = self._connect_external_gps()
-                if self._ser is None:
-                    time.sleep(self._config["reconnect_delay"])
-                    continue
-            
             try:
-                self._read_external_gps_data()
-                if not self._connectivity:
-                    self._connectivity = True
-                    self.sig_msg.emit(True)
+                if self._ser is None:
+                    self._ser = self._connect_serial()
+                    time.sleep(0.1)
+                else:
+                    self._read_serial_data()
+                    if self._data:  # Only emit if we have valid data
+                        self.sig_data_updated.emit(self._data)
+                        self._last_update_time = time.time()
+                        
+                        # Update status if needed
+                        if self._current_status != "Connected":
+                            self._current_status = "Connected"
+                            self.sig_status_changed.emit(True)
+                            
             except Exception as e:
                 logger.error(f"External GPS error: {e}")
                 self._data = {}
                 self._sdata = [0, 0]
                 self._ser = None
-                if self._connectivity:
-                    self._connectivity = False
-                    self.sig_msg.emit(False)
-
-    def _run_cellular_gps(self):
-        """Run cellular GPS processing loop."""
-        logger.info("Starting cellular GPS processing")
-        
-        # Enable cellular GPS
-        self._enable_cellular_gps()
-        
-        while not self._b_stop.is_set():
-            try:
-                # Check cellular GPS status
-                status = self._check_cellular_gps_status()
-                if status:
-                    self._current_status = "Connected"
-                    if not self._connectivity:
-                        self._connectivity = True
-                        self.sig_msg.emit(True)
-                else:
+                if self._current_status == "Connected":
                     self._current_status = "Disconnected"
-                    if self._connectivity:
-                        self._connectivity = False
-                        self.sig_msg.emit(False)
-                
-                time.sleep(5)  # Check every 5 seconds
-            except Exception as e:
-                logger.error(f"Cellular GPS error: {e}")
-                self._current_status = "Error"
+                    self.sig_status_changed.emit(False)
+                time.sleep(1)
 
-    def _connect_external_gps(self):
-        """Connect to external GPS device."""
+    def _connect_serial(self) -> Optional[serial.Serial]:
+        """User Story 13048: Connect to external GPS device."""
+        if not self._port:
+            return None
+            
         try:
             ser = serial.Serial(
-                port=self._config["port"],
-                baudrate=self._config["baud_rate"],
-                timeout=self._config["timeout"],
-                write_timeout=self._config["write_timeout"]
+                port=self._port,
+                baudrate=self._baud_rate,
+                timeout=self._external_config["timeout"],
+                write_timeout=self._external_config["write_timeout"],
+                bytesize=self._external_config["data_bits"],
+                stopbits=self._external_config["stop_bits"],
+                parity=self._external_config["parity"]
             )
-            logger.info(f"Connected to external GPS on {self._config['port']}")
+            logger.info(f"Connected to GPS on port: {self._port}")
             return ser
         except serial.SerialException as e:
-            logger.error(f"Failed to connect to external GPS: {e}")
+            logger.error(f"Failed to connect to GPS port {self._port}: {e}")
             return None
 
-    def _read_external_gps_data(self):
-        """Read and parse external GPS data."""
-        buffer = self._ser.in_waiting
-        if buffer < self._config["buffer_size"]:
-            time.sleep(self._config["read_delay"])
-        
-        line = self._ser.readline().decode('utf-8', errors='ignore').strip()
-        
-        # Check if it's a supported NMEA sentence
-        nmea_sentences = self._config["nmea_sentences"]
-        if any(line.startswith(sentence) for sentence in nmea_sentences):
-            try:
-                msg = pynmea2.parse(line)
+    def _read_serial_data(self):
+        """User Story 13171: Parse incoming GPS data from serial port."""
+        if not self._ser or not self._ser.is_open:
+            return
+            
+        try:
+            buffer = self._ser.in_waiting
+            if buffer < 80:
+                time.sleep(0.2)
+            
+            line = self._ser.readline().decode('utf-8', errors='ignore').strip()
+            
+            # Check for supported NMEA sentences
+            nmea_sentences = self._processing_config["nmea_sentences"]
+            if any(line.startswith(sentence) for sentence in nmea_sentences):
+                self._parse_nmea_data(line)
                 
-                # Extract GPS data
-                gps_data = {}
-                for field in msg.fields:
-                    label, attr = field[:2]
-                    value = getattr(msg, attr)
-                    gps_data[attr] = value
+        except Exception as e:
+            logger.error(f"Error reading serial data: {e}")
+            raise
+
+    def _parse_nmea_data(self, line: str):
+        """User Story 13171: Parse NMEA sentence and extract GPS data."""
+        try:
+            msg = pynmea2.parse(line)
+            
+            # Extract all fields
+            for field in msg.fields:
+                label, attr = field[:2]
+                value = getattr(msg, attr)
+                self._data[attr] = value
+            
+            # Extract speed and course (User Story 13172)
+            if hasattr(msg, 'spd_over_grnd') and hasattr(msg, 'true_course'):
+                speed_knots = msg.spd_over_grnd if msg.spd_over_grnd is not None else 0
+                course_degrees = msg.true_course if msg.true_course is not None else 0
                 
-                # Validate and store data
-                if validate_gps_data(gps_data):
-                    self._data = gps_data
-                    self._last_update_time = int(time.time() * 1_000_000)
-                    
-                    # Extract speed and bearing
-                    speed_knots = getattr(msg, 'spd_over_grnd', 0) or 0
-                    course_degrees = getattr(msg, 'true_course', 0) or 0
-                    
-                    # Convert speed to mph
-                    speed_mph = convert_speed_units(speed_knots, "knots", "mph")
-                    self._sdata = [speed_mph, course_degrees]
-                    
-                    # Emit data signal
-                    self.sig_data.emit(self._data)
-                    
-            except pynmea2.ParseError as e:
-                logger.debug(f"NMEA parse error: {e}")
-                self._data = {}
-                self._sdata = [0, 0]
+                # Convert speed based on configured unit
+                speed_unit = self._processing_config["speed_unit"]
+                if speed_unit == "mph":
+                    speed = speed_knots * 1.15078
+                elif speed_unit == "kmh":
+                    speed = speed_knots * 1.852
+                else:  # mps
+                    speed = speed_knots * 0.514444
+                
+                self._sdata = [speed, course_degrees]
+                
+        except pynmea2.ParseError as e:
+            logger.error(f"NMEA parse error: {e}")
+            self._data = {}
+            self._sdata = [0, 0]
 
     def _fetch_internet_gps(self) -> bool:
-        """Fetch GPS data from internet geolocation service."""
+        """User Story 13047: Fetch coarse location from IP-based service."""
         retry_strategy = Retry(
-            total=self._config["retry_count"],
-            backoff_factor=self._config["retry_delay"],
-            status_forcelist=self._config["retry_status_codes"],
+            total=self._internet_config["retry_count"],
+            backoff_factor=self._internet_config["retry_backoff"],
+            status_forcelist=self._internet_config["retry_status_codes"],
             allowed_methods=["HEAD", "GET", "OPTIONS", "POST"],
         )
 
@@ -229,93 +235,124 @@ class GPS(QThread):
         session = requests.Session()
         session.mount("http://", adapter)
         session.mount("https://", adapter)
+        
+        # Set user agent
+        headers = {"User-Agent": self._internet_config["user_agent"]}
 
         try:
             response = session.get(
-                self._config["url"], 
-                timeout=self._config["timeout"]
+                self._internet_config["url"], 
+                timeout=self._internet_config["timeout"],
+                headers=headers
             )
             response.raise_for_status()
             data = response.json()
             
             if isinstance(data, dict) and data.get("status") == "success":
                 self._data = data
-                self._last_update_time = int(time.time() * 1_000_000)
                 return True
                 
         except Exception as e:
-            logger.debug(f"Internet GPS fetch error: {e}")
+            logger.error(f"Internet GPS fetch error: {e}")
 
         self._data = {}
         return False
 
-    def _enable_cellular_gps(self):
-        """Enable cellular GPS using AT commands."""
-        try:
-            response = send_at_command(
-                GPS_CONFIG["cellular_gps"]["at_commands"]["enable"],
-                GPS_CONFIG["cellular_gps"]["command_delay"]
-            )
-            logger.debug(f"Cellular GPS enable response: {response}")
-        except Exception as e:
-            logger.error(f"Failed to enable cellular GPS: {e}")
+    def set_GPS_port(self):
+        """User Story 13048: Configure GPS port for external GPS."""
+        if self._gps_type == "external" and self._current_status == "N/A":
+            try:
+                response = send_at_command("AT+QGPS=1")
+                logger.debug(f"GPS Port Response: {response}")
+                
+                # Check GPS status
+                status = send_at_command("AT+QGPS?")
+                logger.debug(f"GPS Port Status: {status}")
+                self._current_status = "Connected"
 
-    def _check_cellular_gps_status(self):
-        """Check cellular GPS status."""
-        try:
-            status = send_at_command(
-                GPS_CONFIG["cellular_gps"]["at_commands"]["status"],
-                GPS_CONFIG["cellular_gps"]["command_delay"]
-            )
-            logger.debug(f"Cellular GPS status: {status}")
-            return "OK" in status or "1" in status
-        except Exception as e:
-            logger.error(f"Failed to check cellular GPS status: {e}")
-            return False
+            except Exception as e:
+                logger.error(f"GPS Port Error: {e}")
+                self._current_status = "Error"
 
-    def get_formatted_data(self):
-        """Get formatted GPS data for display."""
-        if not self._data:
-            return {
-                "coordinates": "N/A",
-                "speed": "0.0 mph",
-                "bearing": "0°",
-                "status": self._current_status,
-                "last_update": "N/A"
-            }
-        
-        # Extract coordinates
-        if self._gps_type == "internet":
-            lat, lon = extract_gps_from_internet_data(self._data)
-        else:
-            lat, lon = self._extract_coordinates_from_nmea()
-        
-        # Format data
-        coordinates = format_coordinates(lat, lon)
-        speed = format_speed(self._sdata[0], "mph") + " mph"
-        bearing = format_bearing(self._sdata[1])
-        
-        # Format last update time
-        if self._last_update_time > 0:
-            last_update = get_date_from_utc(self._last_update_time)
-        else:
-            last_update = "N/A"
-        
-        return {
-            "coordinates": coordinates,
-            "speed": speed,
-            "bearing": bearing,
-            "status": self._current_status,
-            "last_update": last_update
-        }
+    def stop(self):
+        """Stop GPS thread and cleanup resources."""
+        logger.info("Stopping GPS thread")
+        self._b_stop.set()
+        self.wait(1)
+        self._close_serial()
 
-    def _extract_coordinates_from_nmea(self):
-        """Extract coordinates from NMEA data."""
-        try:
-            if 'lat' in self._data and 'lon' in self._data:
-                lat = float(self._data['lat'])
-                lon = float(self._data['lon'])
+    def _close_serial(self):
+        """Close serial connection."""
+        if self._ser and self._ser.is_open:
+            self._ser.close()
+            logger.info("Serial connection closed.")
+        self._ser = None
+
+    def get_data(self) -> Dict[str, Any]:
+        """Get latest GPS data."""
+        return self._data.copy()
+
+    def get_sdata(self) -> list:
+        """Get speed and bearing data."""
+        return self._sdata.copy()
+
+    def get_status(self) -> str:
+        """Get current GPS status."""
+        return self._current_status
+
+    def get_coordinates(self) -> Tuple[float, float]:
+        """Get current latitude and longitude."""
+        if self._gps_type == "external" and self._data:
+            try:
+                lat = convert_to_decimal(self._data.get('lat', ''), 
+                                       self._data.get('lat_dir', 'N'), 
+                                       is_latitude=True)
+                lon = convert_to_decimal(self._data.get('lon', ''), 
+                                       self._data.get('lon_dir', 'E'), 
+                                       is_latitude=False)
                 return lat, lon
-        except (ValueError, TypeError):
-            pass
+            except Exception:
+                pass
+        elif self._gps_type == "internet" and self._data:
+            return self._data.get('lat', 0), self._data.get('lon', 0)
+        
         return 0, 0
+
+    def get_speed_bearing(self) -> Tuple[float, float]:
+        """Get current speed and bearing."""
+        if self._sdata:
+            return self._sdata[0], self._sdata[1]
+        return 0, 0
+
+    def is_data_stale(self) -> bool:
+        """Check if GPS data is stale based on configured threshold."""
+        if not self._last_update_time:
+            return True
+        
+        stale_threshold = self._config["dashboard"]["stale_data_threshold"]
+        return (time.time() - self._last_update_time) > stale_threshold
+
+    def get_signal_quality(self) -> Dict[str, Any]:
+        """Get GPS signal quality information."""
+        quality = {
+            "satellites": 0,
+            "accuracy": 0,
+            "fix_quality": 0,
+            "status": "No Fix"
+        }
+        
+        if self._gps_type == "external" and self._data:
+            quality["satellites"] = self._data.get('num_sats', 0)
+            quality["fix_quality"] = self._data.get('fix_quality', 0)
+            quality["accuracy"] = self._data.get('horizontal_dil', 0)
+            
+            if quality["fix_quality"] > 0:
+                quality["status"] = "Fix"
+            else:
+                quality["status"] = "No Fix"
+                
+        elif self._gps_type == "internet" and self._data:
+            quality["status"] = "Internet Fix"
+            quality["accuracy"] = 1000  # Internet GPS is less accurate
+            
+        return quality

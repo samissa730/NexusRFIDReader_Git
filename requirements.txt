@@ -3,6 +3,6 @@ PyInstaller
 requests
 urllib3
 pyserial
+pynmea2
 geopy
 geographiclib
-pynmea2

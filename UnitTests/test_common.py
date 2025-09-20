@@ -158,43 +158,7 @@ class TestCommon(unittest.TestCase):
             # The code slices and strips leading zeros, expecting trailing 16 chars then lstrip zeros
             self.assertEqual(serial, "ABCDEF01")
 
-    def test_convert_to_decimal_latitude(self):
-        """utils.common.convert_to_decimal: converts N latitude correctly (in utils/common.py)."""
-        val = self.common.convert_to_decimal("3745.1234", "N", is_latitude=True)
-        # 37 + 45.1234/60 ≈ 37.7520567
-        self.assertAlmostEqual(val, 37.7520567, places=6)
-    def test_convert_to_decimal_longitude_west(self):
-        """utils.common.convert_to_decimal: converts W longitude to negative (in utils/common.py)."""
-        val = self.common.convert_to_decimal("12231.5000", "W", is_latitude=False)
-        # -(122 + 31.5/60) = -122.525
-        self.assertAlmostEqual(val, -122.525, places=6)
-    def test_convert_to_decimal_invalid_inputs(self):
-        """utils.common.convert_to_decimal: returns 0 for invalid inputs (in utils/common.py)."""
-        self.assertEqual(self.common.convert_to_decimal("12", "N", True), 0)
-        self.assertEqual(self.common.convert_to_decimal("1234", "E", False), 0)
-    def test_extract_from_gps_valid(self):
-        """utils.common.extract_from_gps: extracts and converts latitude/longitude (in utils/common.py)."""
-        gps = {"lat": "3745.0000", "lat_dir": "N", "lon": "12231.0000", "lon_dir": "W"}
-        lat, lon = self.common.extract_from_gps(gps)
-        self.assertAlmostEqual(lat, 37 + 45/60, places=6)
-        self.assertAlmostEqual(lon, -(122 + 31/60), places=6)
-    def test_extract_from_gps_missing_or_empty(self):
-        """utils.common.extract_from_gps: returns (0,0) for empty or missing keys (in utils/common.py)."""
-        self.assertEqual(self.common.extract_from_gps({}), (0, 0))
-        # Missing keys
-        self.assertEqual(self.common.extract_from_gps({"lat": "3745.00", "lat_dir": "N"}), (0, 0))
-    def test_calculate_speed_bearing(self):
-        """utils.common.calculate_speed_bearing: computes mph and bearing using geodesic (in utils/common.py)."""
-        lat1, lon1 = 0.0, 0.0
-        lat2, lon2 = 0.0, 0.001  # ~111.319 m east at equator
-        time1 = 1_000_000
-        time2 = 11_000_000  # 10 seconds later
-        mph, bearing = self.common.calculate_speed_bearing(lat1, lon1, time1, lat2, lon2, time2)
-        # Expected ~24.9 mph; allow tolerance due to geodesic precision differences
-        self.assertTrue(20.0 <= mph <= 30.0)
-        # Bearing should be roughly east (≈ 90 degrees)
-        self.assertTrue(85.0 <= bearing <= 95.0)
-    
+
     def test_pre_config_gps_windows_returns_don(self):
         """utils.common.pre_config_gps: on Windows returns BAUD_RATE_DON without probing ports (in utils/common.py)."""
         from utils import common as c

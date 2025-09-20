@@ -16,23 +16,24 @@ INIT_SCREEN = "overview"
 APP_DIR = os.path.dirname(os.path.realpath(__file__))
 CRASH_FILE = os.path.join(ROOT_DIR, "crash.dump")
 
-# GPS Configuration - All hardcoded for production
+# GPS Configuration - Hardcoded for Production
 GPS_CONFIG = {
     # GPS Type: "internet" or "external"
-    "gps_type": "internet",
+    "type": "internet",
     
-    # Internet GPS Settings
-    "internet_gps": {
+    # Internet GPS Settings (User Story 13047)
+    "internet": {
         "url": "http://ip-api.com/json/",
-        "timeout": 3,
+        "timeout": 3,  # seconds
         "retry_count": 1,
-        "retry_delay": 1,
-        "update_interval": 4,  # seconds
-        "retry_status_codes": [429, 500, 502, 503, 504]
+        "retry_backoff": 1,
+        "retry_status_codes": [429, 500, 502, 503, 504],
+        "cache_ttl": 30,  # seconds
+        "user_agent": "NexusRFIDReader/1.0"
     },
     
-    # External GPS Settings
-    "external_gps": {
+    # External GPS Settings (User Story 13048)
+    "external": {
         "port": "/dev/ttyUSB1" if is_rpi else "COM4",
         "baud_rate": 115200,
         "timeout": 1,
@@ -40,46 +41,33 @@ GPS_CONFIG = {
         "data_bits": 8,
         "stop_bits": 1,
         "parity": "N",
-        "handshake": "None",
+        "handshake": "none",
+        "at_command_port": "/dev/ttyUSB2" if is_rpi else "COM5",
+        "at_command_baud": 115200
+    },
+    
+    # GPS Data Processing Settings (User Stories 13170-13172)
+    "processing": {
         "nmea_sentences": ["$GPRMC", "$GNRMC", "$GPGGA", "$GNGGA"],
-        "buffer_size": 80,
-        "read_delay": 0.2,
-        "reconnect_delay": 0.1
-    },
-    
-    # Cellular GPS Settings (for internal GPS)
-    "cellular_gps": {
-        "port": "/dev/ttyUSB2" if is_rpi else "COM3",
-        "baud_rate": 115200,
-        "at_commands": {
-            "enable": "AT+QGPS=1",
-            "status": "AT+QGPS?",
-            "disable": "AT+QGPS=0"
-        },
-        "command_delay": 1
-    },
-    
-    # GPS Data Processing
-    "data_processing": {
-        "speed_conversion": {
-            "from_knots_to_mph": 1.15078,
-            "from_mph_to_ms": 0.44704
-        },
-        "coordinate_precision": 4,
-        "max_age_seconds": 300,  # 5 minutes
-        "min_signal_quality": 1
-    },
-    
-    # GPS Status Display
-    "status_display": {
+        "speed_unit": "mph",  # mph, kmh, mps
+        "coordinate_format": "decimal_degrees",
         "update_interval": 1,  # seconds
-        "connection_timeout": 10,  # seconds
-        "stale_data_threshold": 5  # seconds
+        "signal_quality_threshold": 3,  # minimum satellites
+        "accuracy_threshold": 10  # meters
+    },
+    
+    # Dashboard Settings (User Story 13173)
+    "dashboard": {
+        "update_rate": 1,  # seconds
+        "stale_data_threshold": 5,  # seconds
+        "show_signal_quality": True,
+        "show_accuracy": True,
+        "show_satellites": True
     }
 }
 
-# Legacy settings for backward compatibility
-INTERNET_GPS_URL = GPS_CONFIG["internet_gps"]["url"]
-BAUD_RATE_QUE = GPS_CONFIG["external_gps"]["baud_rate"]
+# Legacy constants for backward compatibility
+INTERNET_GPS_URL = GPS_CONFIG["internet"]["url"]
+BAUD_RATE_QUE = GPS_CONFIG["external"]["baud_rate"]
 BAUD_RATE_DON = 9600
-GPS_PORT = GPS_CONFIG["external_gps"]["port"]
+GPS_PORT = GPS_CONFIG["external"]["port"]
