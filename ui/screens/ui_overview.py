@@ -24,7 +24,7 @@ class Ui_OverviewScreen(object):
     def setupUi(self, OverviewScreen):
         if not OverviewScreen.objectName():
             OverviewScreen.setObjectName(u"OverviewScreen")
-        OverviewScreen.resize(800, 480)
+        OverviewScreen.resize(1080, 480)
         OverviewScreen.setMinimumSize(QSize(790, 420))
         OverviewScreen.setStyleSheet(u"")
         self.verticalLayout_20 = QVBoxLayout(OverviewScreen)
@@ -320,8 +320,8 @@ class Ui_OverviewScreen(object):
         self.tableWidget.setColumnCount(6)
         self.tableWidget.horizontalHeader().setVisible(True)
         self.tableWidget.horizontalHeader().setCascadingSectionResizes(True)
-        self.tableWidget.horizontalHeader().setMinimumSectionSize(110)
-        self.tableWidget.horizontalHeader().setDefaultSectionSize(129)
+        self.tableWidget.horizontalHeader().setMinimumSectionSize(175)
+        self.tableWidget.horizontalHeader().setDefaultSectionSize(175)
         self.tableWidget.horizontalHeader().setHighlightSections(True)
         self.tableWidget.horizontalHeader().setProperty(u"showSortIndicator", False)
         self.tableWidget.horizontalHeader().setStretchLastSection(False)

@@ -127,8 +127,8 @@ class OverviewScreen(BaseScreen):
             lat, lon = self.gps.get_coordinates()
             
             if validate_gps_coordinates(lat, lon):
-                # Format coordinates for display
-                coord_text = format_coordinates(lat, lon)
+                # Format coordinates for display with full precision
+                coord_text = format_coordinates(lat, lon, precision=6)
                 if hasattr(self.ui, 'last_gps_read'):
                     self.ui.last_gps_read.setText(coord_text)
                 
