@@ -184,14 +184,14 @@ class TestCommon(unittest.TestCase):
         # Missing keys
         self.assertEqual(self.common.extract_from_gps({"lat": "3745.00", "lat_dir": "N"}), (0, 0))
     def test_calculate_speed_bearing(self):
-        """utils.common.calculate_speed_bearing: computes mph and bearing using geodesic (in utils/common.py)."""
+        """utils.common.calculate_speed_bearing: computes m/s and bearing using geodesic (in utils/common.py)."""
         lat1, lon1 = 0.0, 0.0
         lat2, lon2 = 0.0, 0.001  # ~111.319 m east at equator
         time1 = 1_000_000
         time2 = 11_000_000  # 10 seconds later
-        mph, bearing = self.common.calculate_speed_bearing(lat1, lon1, time1, lat2, lon2, time2)
-        # Expected ~24.9 mph; allow tolerance due to geodesic precision differences
-        self.assertTrue(20.0 <= mph <= 30.0)
+        speed_mps, bearing = self.common.calculate_speed_bearing(lat1, lon1, time1, lat2, lon2, time2)
+        # Expected ~11.13 m/s; allow tolerance due to geodesic precision differences
+        self.assertTrue(10.0 <= speed_mps <= 12.0)
         # Bearing should be roughly east (≈ 90 degrees)
         self.assertTrue(85.0 <= bearing <= 95.0)
     
@@ -270,6 +270,109 @@ class TestCommon(unittest.TestCase):
             ser_mock.write.assert_called()
             mock_time.sleep.assert_called()
             self.assertEqual(resp, "OK\r\n")
+
+    def test_get_date_from_utc_valid_timestamp(self):
+        """utils.common.get_date_from_utc: formats UTC timestamp as YYYY/MM/DD HH:MM:SS (in utils/common.py)."""
+        # Test with a known timestamp: 2024-09-20 17:09:38 UTC
+        timestamp = 1726852178 * 1_000_000  # microseconds
+        result = self.common.get_date_from_utc(timestamp)
+        self.assertEqual(result, "2024/09/20 17:09:38")
+
+    def test_get_date_from_utc_invalid_timestamp(self):
+        """utils.common.get_date_from_utc: returns N/A for invalid timestamp (in utils/common.py)."""
+        with mock.patch.object(self.common, "logger"):
+            # Test with a very large timestamp that would cause an error
+            result = self.common.get_date_from_utc(999999999999999999999)
+            self.assertEqual(result, "N/A")
+
+    def test_validate_gps_coordinates_valid(self):
+        """utils.common.validate_gps_coordinates: returns True for valid coordinates (in utils/common.py)."""
+        self.assertTrue(self.common.validate_gps_coordinates(33.2640, -96.8844))
+        self.assertTrue(self.common.validate_gps_coordinates(0, 0))
+        self.assertTrue(self.common.validate_gps_coordinates(90, 180))
+        self.assertTrue(self.common.validate_gps_coordinates(-90, -180))
+
+    def test_validate_gps_coordinates_invalid(self):
+        """utils.common.validate_gps_coordinates: returns False for invalid coordinates (in utils/common.py)."""
+        self.assertFalse(self.common.validate_gps_coordinates(91, 0))  # lat > 90
+        self.assertFalse(self.common.validate_gps_coordinates(-91, 0))  # lat < -90
+        self.assertFalse(self.common.validate_gps_coordinates(0, 181))  # lon > 180
+        self.assertFalse(self.common.validate_gps_coordinates(0, -181))  # lon < -180
+
+    def test_format_coordinates_valid(self):
+        """utils.common.format_coordinates: formats valid coordinates with specified precision (in utils/common.py)."""
+        result = self.common.format_coordinates(33.2640, -96.8844, precision=6)
+        self.assertEqual(result, "33.264000, -96.884400")
+
+    def test_format_coordinates_invalid(self):
+        """utils.common.format_coordinates: returns N/A for invalid coordinates (in utils/common.py)."""
+        result = self.common.format_coordinates(91, 0)
+        self.assertEqual(result, "N/A")
+
+    def test_format_speed_mps(self):
+        """utils.common.format_speed: formats speed in m/s (in utils/common.py)."""
+        result = self.common.format_speed(5.5, "mps")
+        self.assertEqual(result, "5.5 m/s")
+
+    def test_format_speed_mph(self):
+        """utils.common.format_speed: formats speed in mph (in utils/common.py)."""
+        result = self.common.format_speed(10.2, "mph")
+        self.assertEqual(result, "10.2 mph")
+
+    def test_format_speed_kmh(self):
+        """utils.common.format_speed: formats speed in km/h (in utils/common.py)."""
+        result = self.common.format_speed(15.7, "kmh")
+        self.assertEqual(result, "15.7 km/h")
+
+    def test_format_speed_default(self):
+        """utils.common.format_speed: uses default unit when not specified (in utils/common.py)."""
+        result = self.common.format_speed(8.3)
+        self.assertEqual(result, "8.3 m/s")
+
+    def test_format_bearing_north(self):
+        """utils.common.format_bearing: formats bearing with cardinal directions (in utils/common.py)."""
+        result = self.common.format_bearing(0)
+        self.assertEqual(result, "0° N")
+
+    def test_format_bearing_east(self):
+        """utils.common.format_bearing: formats east bearing (in utils/common.py)."""
+        result = self.common.format_bearing(90)
+        self.assertEqual(result, "90° E")
+
+    def test_format_bearing_south(self):
+        """utils.common.format_bearing: formats south bearing (in utils/common.py)."""
+        result = self.common.format_bearing(180)
+        self.assertEqual(result, "180° S")
+
+    def test_format_bearing_west(self):
+        """utils.common.format_bearing: formats west bearing (in utils/common.py)."""
+        result = self.common.format_bearing(270)
+        self.assertEqual(result, "270° W")
+
+    def test_format_bearing_northeast(self):
+        """utils.common.format_bearing: formats northeast bearing (in utils/common.py)."""
+        result = self.common.format_bearing(45)
+        self.assertEqual(result, "45° NE")
+
+    def test_format_bearing_negative(self):
+        """utils.common.format_bearing: normalizes negative bearing (in utils/common.py)."""
+        result = self.common.format_bearing(-45)
+        self.assertEqual(result, "315° NW")
+
+    def test_is_ipv4_address_valid(self):
+        """utils.common.is_ipv4_address: validates correct IPv4 addresses (in utils/common.py)."""
+        self.assertTrue(self.common.is_ipv4_address("192.168.1.1"))
+        self.assertTrue(self.common.is_ipv4_address("127.0.0.1"))
+        self.assertTrue(self.common.is_ipv4_address("255.255.255.255"))
+        self.assertTrue(self.common.is_ipv4_address("0.0.0.0"))
+
+    def test_is_ipv4_address_invalid(self):
+        """utils.common.is_ipv4_address: rejects invalid IPv4 addresses (in utils/common.py)."""
+        self.assertFalse(self.common.is_ipv4_address("256.1.1.1"))  # > 255
+        self.assertFalse(self.common.is_ipv4_address("192.168.1"))  # missing octet
+        self.assertFalse(self.common.is_ipv4_address("192.168.1.1.1"))  # extra octet
+        self.assertFalse(self.common.is_ipv4_address("192.168.1.a"))  # non-numeric
+        self.assertFalse(self.common.is_ipv4_address(""))  # empty string
 
 
 if __name__ == "__main__":

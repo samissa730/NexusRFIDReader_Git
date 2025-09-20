@@ -225,15 +225,22 @@ def extract_from_gps(gps_data: Dict[str, Any]) -> Tuple[float, float]:
     if not gps_data:
         return 0.0, 0.0
         
+    # Check if required keys exist and have values
+    lat = gps_data.get('lat', '')
+    lon = gps_data.get('lon', '')
+    
+    if not lat or not lon:
+        return 0.0, 0.0
+        
     try:
         # Extract and convert latitude and longitude
         latitude = convert_to_decimal(
-            gps_data.get('lat', ''), 
+            lat, 
             gps_data.get('lat_dir', 'N'), 
             is_latitude=True
         )
         longitude = convert_to_decimal(
-            gps_data.get('lon', ''), 
+            lon, 
             gps_data.get('lon_dir', 'E'), 
             is_latitude=False
         )
@@ -294,6 +301,7 @@ def get_date_from_utc(timestamp_microseconds: int) -> str:
     """
     try:
         timestamp_seconds = timestamp_microseconds / 1_000_000
+        # Use utcfromtimestamp for compatibility with older Python versions
         utc_datetime = datetime.utcfromtimestamp(timestamp_seconds)
         
         # Format the datetime object as YYYY/MM/DD HH:MM:SS

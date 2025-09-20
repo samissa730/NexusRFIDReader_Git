@@ -48,16 +48,17 @@ class GPS(QThread):
         self._external_config = self._config["external"]
         self._processing_config = self._config["processing"]
         
-        # Initialize based on GPS type
-        if self._gps_type == "external":
-            self._baud_rate = pre_config_gps()
-            self._port = find_gps_port(self._baud_rate)
-            if self._port:
-                self._current_status = "External"
+        # Initialize based on GPS type (only if no explicit status provided)
+        if current_status is None:
+            if self._gps_type == "external":
+                self._baud_rate = pre_config_gps()
+                self._port = find_gps_port(self._baud_rate)
+                if self._port:
+                    self._current_status = "External"
+                else:
+                    self._current_status = "Disconnected"
             else:
-                self._current_status = "Disconnected"
-        else:
-            self._current_status = "Internal"
+                self._current_status = "Internal"
 
     def run(self):
         """Background task: continuous GPS data processing based on type."""
