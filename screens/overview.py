@@ -66,7 +66,14 @@ class OverviewScreen(BaseScreen):
 
     def _on_gps_status_changed(self, connected: bool):
         """Handle GPS connection status changes."""
-        status = "Connected" if connected else "Disconnected"
+        if connected:
+            # Determine status based on GPS type
+            if self.gps and self.gps._gps_type == "external":
+                status = "External"
+            else:
+                status = "Internal"
+        else:
+            status = "Disconnected"
         self._update_gps_status(status)
         logger.info(f"GPS status changed: {status}")
 
@@ -88,8 +95,10 @@ class OverviewScreen(BaseScreen):
             self.ui.gps_connection_status.setText(status)
             
             # Update status color based on connection state
-            if status == "Connected":
+            if status == "External":
                 self.ui.gps_connection_status.setStyleSheet("color: #00ff00;")  # Green
+            elif status == "Internal":
+                self.ui.gps_connection_status.setStyleSheet("color: #00bfff;")  # Blue
             elif status == "Disconnected":
                 self.ui.gps_connection_status.setStyleSheet("color: #ff0000;")  # Red
             else:

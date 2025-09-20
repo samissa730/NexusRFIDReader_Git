@@ -53,11 +53,11 @@ class GPS(QThread):
             self._baud_rate = pre_config_gps()
             self._port = find_gps_port(self._baud_rate)
             if self._port:
-                self._current_status = "Connected"
+                self._current_status = "External"
             else:
                 self._current_status = "Disconnected"
         else:
-            self._current_status = "N/A"
+            self._current_status = "Internal"
 
     def run(self):
         """Background task: continuous GPS data processing based on type."""
@@ -90,11 +90,11 @@ class GPS(QThread):
                         self._cache_timestamp = current_time
                         self.sig_data_updated.emit(self._data)
                         self._last_update_time = current_time
-                        if self._current_status != "Connected":
-                            self._current_status = "Connected"
+                        if self._current_status != "Internal":
+                            self._current_status = "Internal"
                             self.sig_status_changed.emit(True)
                     else:
-                        if self._current_status == "Connected":
+                        if self._current_status == "Internal":
                             self._current_status = "Disconnected"
                             self.sig_status_changed.emit(False)
                 
@@ -134,8 +134,8 @@ class GPS(QThread):
                         self._last_update_time = time.time()
                         
                         # Update status if needed
-                        if self._current_status != "Connected":
-                            self._current_status = "Connected"
+                        if self._current_status != "External":
+                            self._current_status = "External"
                             self.sig_status_changed.emit(True)
                             
             except Exception as e:
@@ -143,7 +143,7 @@ class GPS(QThread):
                 self._data = {}
                 self._sdata = [0, 0]
                 self._ser = None
-                if self._current_status == "Connected":
+                if self._current_status == "External":
                     self._current_status = "Disconnected"
                     self.sig_status_changed.emit(False)
                 time.sleep(1)
@@ -268,7 +268,7 @@ class GPS(QThread):
                 # Check GPS status
                 status = send_at_command("AT+QGPS?")
                 logger.debug(f"GPS Port Status: {status}")
-                self._current_status = "Connected"
+                self._current_status = "External"
 
             except Exception as e:
                 logger.error(f"GPS Port Error: {e}")

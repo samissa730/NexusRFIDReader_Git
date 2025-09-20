@@ -13,7 +13,7 @@ from geographiclib.geodesic import Geodesic
 from utils.logger import logger
 import serial
 import serial.tools.list_ports
-from settings import GPS_CONFIG, BAUD_RATE_QUE, BAUD_RATE_DON, GPS_PORT
+from settings import GPS_CONFIG
 
 is_rpi = platform.system() == "Linux" and os.path.exists("/proc/device-tree/model")
 is_win = platform.system() == "Windows"
@@ -139,18 +139,19 @@ def pre_config_gps():
     serial_ports = [port.device for port in serial.tools.list_ports.comports()]
     logger.debug(f"Available ports:{serial_ports}")
     if platform.system() == 'Windows':
-        return BAUD_RATE_DON
+        return 9600  # BAUD_RATE_DON equivalent
     for port in serial_ports:
         try:
-            with serial.Serial(port, baudrate=BAUD_RATE_QUE, timeout=1, rtscts=True, dsrdtr=True) as serw:
+            baud_rate = GPS_CONFIG["external"]["baud_rate"]
+            with serial.Serial(port, baudrate=baud_rate, timeout=1, rtscts=True, dsrdtr=True) as serw:
                 serw.write('AT+QGPS=1\r'.encode())
                 logger.debug(f"AT-{port}")
                 serw.close()
                 time.sleep(2)
-                return BAUD_RATE_QUE
+                return baud_rate
         except (OSError, serial.SerialException):
             pass  # Ignore if the port can't be opened
-    return BAUD_RATE_DON
+    return 9600  # BAUD_RATE_DON equivalent
 
 def find_gps_port(baud_rate):
     serial_ports = [port.device for port in serial.tools.list_ports.comports()]
@@ -295,15 +296,14 @@ def get_date_from_utc(timestamp_microseconds: int) -> str:
         timestamp_seconds = timestamp_microseconds / 1_000_000
         utc_datetime = datetime.utcfromtimestamp(timestamp_seconds)
         
-        # Format the datetime object
-        formatted_date = "{}/{}/{} {}:{}:{} {}".format(
-            utc_datetime.month,
-            utc_datetime.day,
+        # Format the datetime object as YYYY/MM/DD HH:MM:SS
+        formatted_date = "{}/{}/{} {}:{}:{}".format(
             utc_datetime.year,
-            utc_datetime.hour % 12 or 12,
-            f"{utc_datetime.minute:02}",
-            f"{utc_datetime.second:02}",
-            "AM" if utc_datetime.hour < 12 else "PM"
+            f"{utc_datetime.month:02d}",
+            f"{utc_datetime.day:02d}",
+            f"{utc_datetime.hour:02d}",
+            f"{utc_datetime.minute:02d}",
+            f"{utc_datetime.second:02d}"
         )
         return formatted_date
         

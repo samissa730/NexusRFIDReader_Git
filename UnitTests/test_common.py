@@ -196,16 +196,15 @@ class TestCommon(unittest.TestCase):
         self.assertTrue(85.0 <= bearing <= 95.0)
     
     def test_pre_config_gps_windows_returns_don(self):
-        """utils.common.pre_config_gps: on Windows returns BAUD_RATE_DON without probing ports (in utils/common.py)."""
+        """utils.common.pre_config_gps: on Windows returns 9600 without probing ports (in utils/common.py)."""
         from utils import common as c
         with mock.patch("platform.system", return_value="Windows"), \
-             mock.patch.object(c, "serial") as mock_serial, \
-             mock.patch.object(c, "BAUD_RATE_DON", 9600):
+             mock.patch.object(c, "serial") as mock_serial:
             result = c.pre_config_gps()
             self.assertEqual(result, 9600)
 
     def test_pre_config_gps_linux_probes_and_returns_que(self):
-        """utils.common.pre_config_gps: on Linux sends AT and returns BAUD_RATE_QUE after first success (in utils/common.py)."""
+        """utils.common.pre_config_gps: on Linux sends AT and returns GPS baud rate after first success (in utils/common.py)."""
         from utils import common as c
         fake_ports = [types.SimpleNamespace(device="/dev/ttyUSB0"), types.SimpleNamespace(device="/dev/ttyUSB1")]
         ser_mock = mock.MagicMock()
@@ -215,7 +214,7 @@ class TestCommon(unittest.TestCase):
         with mock.patch("platform.system", return_value="Linux"), \
              mock.patch.object(c, "serial") as mock_serial, \
              mock.patch.object(c, "time") as mock_time, \
-             mock.patch.object(c, "BAUD_RATE_QUE", 115200):
+             mock.patch.object(c, "GPS_CONFIG", {"external": {"baud_rate": 115200}}):
             mock_serial.tools.list_ports.comports.return_value = fake_ports
             mock_serial.Serial.return_value = context_mgr
             result = c.pre_config_gps()
@@ -265,7 +264,7 @@ class TestCommon(unittest.TestCase):
         ser_mock.read.return_value = b"OK\r\n"
         with mock.patch.object(c, "serial") as mock_serial, \
              mock.patch.object(c, "time") as mock_time, \
-             mock.patch.object(c, "GPS_PORT", "COM3"):
+             mock.patch.object(c, "GPS_CONFIG", {"external": {"at_command_port": "COM3", "at_command_baud": 115200}}):
             mock_serial.Serial.return_value = ser_mock  # direct instance (since code does not use context manager)
             resp = c.send_at_command("AT+QGPS=1", delay=0.1)
             ser_mock.write.assert_called()
