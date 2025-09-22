@@ -17,7 +17,7 @@ from utils.logger import logger
 class GPS(QThread):
 
     # Signals for UI updates
-    sig_status_changed = Signal(bool)  # GPS connection status
+    sig_status_changed = Signal(str)  # GPS connection status text
     sig_data_updated = Signal(dict)    # New GPS data available
     sig_error_occurred = Signal(str)  # Error message
 
@@ -29,6 +29,8 @@ class GPS(QThread):
         self._data = {}
         self._sdata = [0, 0]  # [speed, bearing]
         self._current_status = current_status or "Disconnected"
+        self._external_connected = False
+        self._internal_connected = False
         self._last_update_time = 0
         self._cache_data = {}
         self._cache_timestamp = 0
@@ -45,17 +47,20 @@ class GPS(QThread):
                 self._baud_rate = pre_config_gps()
                 self._port = find_gps_port(self._baud_rate)
                 if self._port:
+                    self._external_connected = True
                     self._current_status = "External(Connected)"
                 else:
+                    self._external_connected = False
                     self._current_status = "Disconnected"
             else:
-                self._current_status = "Internal(Connected)"
+                # Start disconnected; will switch to Internal(Connected) when data arrives
+                self._current_status = "Disconnected"
 
     def run(self):
         """Background task: continuous GPS data processing based on type."""
         logger.info(f"Starting GPS thread for type: {self._gps_type}")
         
-        if self._gps_type == "internet":
+        if self._gps_type in ("internet", "internal"):
             self._run_internet_gps()
         elif self._gps_type == "external":
             self._run_external_gps()
@@ -83,12 +88,14 @@ class GPS(QThread):
                         self.sig_data_updated.emit(self._data)
                         self._last_update_time = current_time
                         if self._current_status != "Internal(Connected)":
+                            self._internal_connected = True
                             self._current_status = "Internal(Connected)"
-                            self.sig_status_changed.emit(True)
+                            self.sig_status_changed.emit(self._current_status)
                     else:
-                        if self._current_status == "Internal(Connected)":
+                        if self._current_status != "Disconnected":
+                            self._internal_connected = False
                             self._current_status = "Disconnected"
-                            self.sig_status_changed.emit(False)
+                            self.sig_status_changed.emit(self._current_status)
                 
                 # Wait for next update
                 time.sleep(self._processing_config["update_interval"])
@@ -99,45 +106,57 @@ class GPS(QThread):
                 time.sleep(5)  # Wait before retry
 
     def _run_external_gps(self):
-        """External GPS data listener with continuous processing."""
-        # Initialize serial connection
-        self._ser = self._connect_serial()
-        
-        # Wait for connection
-        while self._ser is None and not self._b_stop.is_set():
-            self._ser = self._connect_serial()
-            time.sleep(1)
-        
-        if self._ser is None:
-            logger.error("Failed to establish GPS serial connection")
-            self.sig_error_occurred.emit("Failed to establish GPS serial connection")
-            return
-        
-        # Continuous data processing
+        """External GPS with fallback to internal (IP-based) when unavailable."""
+        next_external_retry_time = 0
+        external_retry_interval = 3
         while not self._b_stop.is_set():
             try:
-                if self._ser is None:
+                now = time.time()
+                if (self._ser is None) and (now >= next_external_retry_time):
                     self._ser = self._connect_serial()
-                    time.sleep(0.1)
-                else:
+                    next_external_retry_time = now + external_retry_interval
+
+                if self._ser is not None:
+                    # External path
                     self._read_serial_data()
-                    if self._data:  # Only emit if we have valid data
+                    if self._data:
                         self.sig_data_updated.emit(self._data)
                         self._last_update_time = time.time()
-                        
-                        # Update status if needed
                         if self._current_status != "External(Connected)":
+                            self._external_connected = True
+                            self._internal_connected = False
                             self._current_status = "External(Connected)"
-                            self.sig_status_changed.emit(True)
-                            
+                            self.sig_status_changed.emit(self._current_status)
+                else:
+                    # Fallback to internal (internet geolocation)
+                    success = self._fetch_internet_gps()
+                    if success:
+                        self.sig_data_updated.emit(self._data)
+                        self._last_update_time = time.time()
+                        status = "Internal(Connected), External(Disconnected)"
+                        if self._current_status != status:
+                            self._external_connected = False
+                            self._internal_connected = True
+                            self._current_status = status
+                            self.sig_status_changed.emit(self._current_status)
+                    else:
+                        # Both unavailable
+                        status = "Disconnected"
+                        if self._current_status != status:
+                            self._external_connected = False
+                            self._internal_connected = False
+                            self._current_status = status
+                            self.sig_status_changed.emit(self._current_status)
+
+                time.sleep(self._processing_config["update_interval"])            
+
             except Exception as e:
                 logger.error(f"External GPS error: {e}")
                 self._data = {}
                 self._sdata = [0, 0]
                 self._ser = None
-                if self._current_status == "External(Connected)":
-                    self._current_status = "Disconnected"
-                    self.sig_status_changed.emit(False)
+                time.sleep(1)
+                # status updates handled by outer loop
                 time.sleep(1)
 
     def _connect_serial(self) -> Optional[serial.Serial]:
@@ -305,7 +324,7 @@ class GPS(QThread):
                 return lat, lon
             except Exception:
                 pass
-        elif self._gps_type == "internet" and self._data:
+        elif self._gps_type in ("internet", "internal") and self._data:
             return self._data.get('lat', 0), self._data.get('lon', 0)
         
         return 0, 0
