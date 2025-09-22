@@ -34,6 +34,7 @@ class GPS(QThread):
         self._last_update_time = 0
         self._cache_data = {}
         self._cache_timestamp = 0
+        self._last_external_retry = 0  # Track last external retry attempt
         
         # Configuration from settings
         self._config = GPS_CONFIG
@@ -52,6 +53,8 @@ class GPS(QThread):
                 else:
                     self._external_connected = False
                     self._current_status = "Disconnected"
+                    # Initialize retry timer to start retries immediately
+                    self._last_external_retry = 0
             else:
                 # Start disconnected; will switch to Internal(Connected) when data arrives
                 self._current_status = "Disconnected"
@@ -69,11 +72,24 @@ class GPS(QThread):
             self.sig_error_occurred.emit(f"Unsupported GPS type: {self._gps_type}")
 
     def _run_internet_gps(self):
-        """IP-based geolocation service with caching."""
+        """IP-based geolocation service with caching and external retry."""
         while not self._b_stop.is_set():
             try:
-                # Check cache first
                 current_time = time.time()
+                
+                # Check if we should retry external GPS (every interval*10 seconds)
+                retry_interval = self._processing_config["update_interval"] * 10
+                should_retry_external = (
+                    not self._external_connected and 
+                    (current_time - self._last_external_retry) >= retry_interval
+                )
+                
+                if should_retry_external:
+                    self._last_external_retry = current_time
+                    logger.info("Attempting external GPS reconnection...")
+                    self._try_external_connection()
+                
+                # Check cache first
                 if (self._cache_data and 
                     current_time - self._cache_timestamp < self._internet_config["cache_ttl"]):
                     self._data = self._cache_data.copy()
@@ -87,9 +103,16 @@ class GPS(QThread):
                         self._cache_timestamp = current_time
                         self.sig_data_updated.emit(self._data)
                         self._last_update_time = current_time
-                        if self._current_status != "Internal(Connected)":
+                        
+                        # Update status based on external connection state
+                        if self._external_connected:
+                            status = "External(Connected)"
+                        else:
+                            status = "Internal(Connected), External(Disconnected)"
+                        
+                        if self._current_status != status:
                             self._internal_connected = True
-                            self._current_status = "Internal(Connected)"
+                            self._current_status = status
                             self.sig_status_changed.emit(self._current_status)
                     else:
                         if self._current_status != "Disconnected":
@@ -105,18 +128,75 @@ class GPS(QThread):
                 self.sig_error_occurred.emit(f"Internet GPS error: {e}")
                 time.sleep(5)  # Wait before retry
 
+    def _try_external_connection(self):
+        """Attempt to connect to external GPS and update status if successful."""
+        try:
+            # Try to find a GPS port
+            if not hasattr(self, '_baud_rate'):
+                self._baud_rate = pre_config_gps()
+            
+            # Re-scan for GPS ports
+            port = find_gps_port(self._baud_rate)
+            
+            if port:
+                # Update the port and try to connect
+                self._port = port
+                ser = self._connect_serial()
+                if ser:
+                    # Test for NMEA data
+                    test_data = self._test_serial_connection(ser)
+                    if test_data:
+                        self._external_connected = True
+                        self._ser = ser
+                        logger.info(f"External GPS reconnected on port: {port}")
+                        return True
+                    else:
+                        ser.close()
+                        logger.debug("External GPS port found but no valid NMEA data")
+                else:
+                    logger.debug("Failed to connect to external GPS port")
+            else:
+                logger.debug("No external GPS port found during retry")
+        except Exception as e:
+            logger.error(f"Error during external GPS retry: {e}")
+        
+        return False
+
+    def _test_serial_connection(self, ser) -> bool:
+        """Test if serial connection produces valid NMEA data."""
+        try:
+            # Wait for data and read a few lines
+            for _ in range(3):
+                if ser.in_waiting < 80:
+                    time.sleep(0.5)
+                line = ser.readline().decode('utf-8', errors='ignore').strip()
+                if line.startswith('$G'):
+                    return True
+        except Exception:
+            pass
+        return False
+
     def _run_external_gps(self):
         """External GPS with fallback to internal (IP-based) when unavailable."""
-        next_external_retry_time = 0
-        external_retry_interval = 3
         while not self._b_stop.is_set():
             try:
-                now = time.time()
-                if (self._ser is None) and (now >= next_external_retry_time):
-                    self._ser = self._connect_serial()
-                    next_external_retry_time = now + external_retry_interval
+                current_time = time.time()
+                
+                # Check if we should retry external GPS (every interval*10 seconds)
+                retry_interval = self._processing_config["update_interval"] * 10
+                should_retry_external = (
+                    not self._external_connected and 
+                    (current_time - self._last_external_retry) >= retry_interval
+                )
+                
+                if should_retry_external:
+                    self._last_external_retry = current_time
+                    logger.info("Attempting external GPS reconnection...")
+                    if self._try_external_connection():
+                        # External GPS reconnected, continue with external data
+                        continue
 
-                if self._ser is not None:
+                if self._ser is not None and self._external_connected:
                     # External path
                     self._read_serial_data()
                     if self._data:
@@ -129,7 +209,6 @@ class GPS(QThread):
                             self.sig_status_changed.emit(self._current_status)
                 else:
                     # Fallback to internal (internet geolocation)
-                    current_time = time.time()
                     if (self._cache_data and 
                         current_time - self._cache_timestamp < self._internet_config["cache_ttl"]):
                         # Use cached data
@@ -148,7 +227,7 @@ class GPS(QThread):
                             self._cache_data = self._data.copy()
                             self._cache_timestamp = current_time
                             self.sig_data_updated.emit(self._data)
-                            self._last_update_time = time.time()
+                            self._last_update_time = current_time
                             status = "Internal(Connected), External(Disconnected)"
                             if self._current_status != status:
                                 self._external_connected = False
@@ -171,8 +250,7 @@ class GPS(QThread):
                 self._data = {}
                 self._sdata = [0, 0]
                 self._ser = None
-                time.sleep(1)
-                # status updates handled by outer loop
+                self._external_connected = False
                 time.sleep(1)
 
     def _connect_serial(self) -> Optional[serial.Serial]:
