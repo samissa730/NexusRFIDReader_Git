@@ -212,29 +212,35 @@ class GPS(QThread):
                     if (self._cache_data and 
                         current_time - self._cache_timestamp < self._internet_config["cache_ttl"]):
                         # Use cached data
+                        logger.debug("Using cached internal GPS data")
                         self._data = self._cache_data.copy()
                         self.sig_data_updated.emit(self._data)
                         self._last_update_time = current_time
                         status = "Internal(Connected)"
                         if self._current_status != status:
+                            logger.info(f"Changing GPS status from {self._current_status} to {status} (cached data)")
                             self._external_connected = False
                             self._internal_connected = True
                             self._current_status = status
                             self.sig_status_changed.emit(self._current_status)
                     else:
+                        logger.debug("Fetching internet GPS data...")
                         success = self._fetch_internet_gps()
                         if success:
+                            logger.info("Internet GPS fetch successful")
                             self._cache_data = self._data.copy()
                             self._cache_timestamp = current_time
                             self.sig_data_updated.emit(self._data)
                             self._last_update_time = current_time
                             status = "Internal(Connected)"
                             if self._current_status != status:
+                                logger.info(f"Changing GPS status from {self._current_status} to {status}")
                                 self._external_connected = False
                                 self._internal_connected = True
                                 self._current_status = status
                                 self.sig_status_changed.emit(self._current_status)
                         else:
+                            logger.debug("Internet GPS fetch failed")
                             # Internal GPS failed, but maintain status if we have cached data
                             if self._cache_data and self._current_status == "Internal(Connected)":
                                 # Keep using cached data and maintain status
