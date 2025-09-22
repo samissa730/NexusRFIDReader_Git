@@ -181,9 +181,12 @@ class OverviewScreen(BaseScreen):
     def _update_dashboard(self):
         """Periodic dashboard update."""
         try:
-            # Check if GPS data is stale
+            # Check if GPS data is stale - but don't override if GPS is actively working
             if self.gps and self.gps.is_data_stale():
-                self._update_gps_status("Disconnected")
+                # Only set to Disconnected if GPS is truly not working
+                current_status = self.gps.get_status()
+                if current_status not in ["External(Connected)", "Internal(Connected)"]:
+                    self._update_gps_status("Disconnected")
             
             # Update signal quality if enabled
             if GPS_CONFIG["dashboard"]["show_signal_quality"]:
