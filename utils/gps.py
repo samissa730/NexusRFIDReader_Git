@@ -331,13 +331,20 @@ class GPS(QThread):
         """Get current latitude and longitude."""
         if self._gps_type == "external" and self._data:
             try:
-                lat = convert_to_decimal(self._data.get('lat', ''), 
-                                       self._data.get('lat_dir', 'N'), 
-                                       is_latitude=True)
-                lon = convert_to_decimal(self._data.get('lon', ''), 
-                                       self._data.get('lon_dir', 'E'), 
-                                       is_latitude=False)
-                return lat, lon
+                # If we have NMEA-style fields, convert; otherwise, if we have
+                # internet GPS style decimal coordinates, return directly.
+                has_nmea_fields = 'lat_dir' in self._data or 'lon_dir' in self._data
+                if has_nmea_fields:
+                    lat = convert_to_decimal(self._data.get('lat', ''), 
+                                           self._data.get('lat_dir', 'N'), 
+                                           is_latitude=True)
+                    lon = convert_to_decimal(self._data.get('lon', ''), 
+                                           self._data.get('lon_dir', 'E'), 
+                                           is_latitude=False)
+                    return lat, lon
+                else:
+                    # Internet fallback while type == external
+                    return float(self._data.get('lat', 0) or 0), float(self._data.get('lon', 0) or 0)
             except Exception:
                 pass
         elif self._gps_type in ("internet", "internal") and self._data:
