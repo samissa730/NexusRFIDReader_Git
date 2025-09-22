@@ -77,8 +77,8 @@ class GPS(QThread):
             try:
                 current_time = time.time()
                 
-                # Check if we should retry external GPS (every interval*10 seconds)
-                retry_interval = self._processing_config["update_interval"] * 10
+                # Check if we should retry external GPS (every interval*30 seconds)
+                retry_interval = self._processing_config["update_interval"] * 30
                 should_retry_external = (
                     not self._external_connected and 
                     (current_time - self._last_external_retry) >= retry_interval
@@ -108,7 +108,7 @@ class GPS(QThread):
                         if self._external_connected:
                             status = "External(Connected)"
                         else:
-                            status = "Internal(Connected), External(Disconnected)"
+                            status = "Internal(Connected)"
                         
                         if self._current_status != status:
                             self._internal_connected = True
@@ -182,8 +182,8 @@ class GPS(QThread):
             try:
                 current_time = time.time()
                 
-                # Check if we should retry external GPS (every interval*10 seconds)
-                retry_interval = self._processing_config["update_interval"] * 10
+                # Check if we should retry external GPS (every interval*30 seconds)
+                retry_interval = self._processing_config["update_interval"] * 30
                 should_retry_external = (
                     not self._external_connected and 
                     (current_time - self._last_external_retry) >= retry_interval
@@ -215,7 +215,7 @@ class GPS(QThread):
                         self._data = self._cache_data.copy()
                         self.sig_data_updated.emit(self._data)
                         self._last_update_time = current_time
-                        status = "Internal(Connected), External(Disconnected)"
+                        status = "Internal(Connected)"
                         if self._current_status != status:
                             self._external_connected = False
                             self._internal_connected = True
@@ -228,7 +228,7 @@ class GPS(QThread):
                             self._cache_timestamp = current_time
                             self.sig_data_updated.emit(self._data)
                             self._last_update_time = current_time
-                            status = "Internal(Connected), External(Disconnected)"
+                            status = "Internal(Connected)"
                             if self._current_status != status:
                                 self._external_connected = False
                                 self._internal_connected = True
