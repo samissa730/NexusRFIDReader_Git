@@ -101,9 +101,15 @@ class OverviewScreen(BaseScreen):
             elif status == "Disconnected":
                 self.ui.gps_connection_status.setStyleSheet("color: #ff0000;")  # Red
             else:
-                # All other statuses should show as Disconnected
-                self.ui.gps_connection_status.setText("Disconnected")
-                self.ui.gps_connection_status.setStyleSheet("color: #ff0000;")  # Red
+                # Handle other statuses like "Internal(Connected), External(Disconnected)"
+                if "Internal(Connected)" in status:
+                    self.ui.gps_connection_status.setStyleSheet("color: #00bfff;")  # Blue
+                elif "External(Connected)" in status:
+                    self.ui.gps_connection_status.setStyleSheet("color: #00ff00;")  # Green
+                else:
+                    # All other statuses should show as Disconnected
+                    self.ui.gps_connection_status.setText("Disconnected")
+                    self.ui.gps_connection_status.setStyleSheet("color: #ff0000;")  # Red
         else:
             logger.warning("GPS connection status label not found in UI")
 
