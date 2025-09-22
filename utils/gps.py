@@ -129,10 +129,13 @@ class GPS(QThread):
                             self.sig_status_changed.emit(self._current_status)
                 else:
                     # Fallback to internal (internet geolocation)
-                    success = self._fetch_internet_gps()
-                    if success:
+                    current_time = time.time()
+                    if (self._cache_data and 
+                        current_time - self._cache_timestamp < self._internet_config["cache_ttl"]):
+                        # Use cached data
+                        self._data = self._cache_data.copy()
                         self.sig_data_updated.emit(self._data)
-                        self._last_update_time = time.time()
+                        self._last_update_time = current_time
                         status = "Internal(Connected), External(Disconnected)"
                         if self._current_status != status:
                             self._external_connected = False
@@ -140,13 +143,26 @@ class GPS(QThread):
                             self._current_status = status
                             self.sig_status_changed.emit(self._current_status)
                     else:
-                        # Both unavailable
-                        status = "Disconnected"
-                        if self._current_status != status:
-                            self._external_connected = False
-                            self._internal_connected = False
-                            self._current_status = status
-                            self.sig_status_changed.emit(self._current_status)
+                        success = self._fetch_internet_gps()
+                        if success:
+                            self._cache_data = self._data.copy()
+                            self._cache_timestamp = current_time
+                            self.sig_data_updated.emit(self._data)
+                            self._last_update_time = time.time()
+                            status = "Internal(Connected), External(Disconnected)"
+                            if self._current_status != status:
+                                self._external_connected = False
+                                self._internal_connected = True
+                                self._current_status = status
+                                self.sig_status_changed.emit(self._current_status)
+                        else:
+                            # Both unavailable
+                            status = "Disconnected"
+                            if self._current_status != status:
+                                self._external_connected = False
+                                self._internal_connected = False
+                                self._current_status = status
+                                self.sig_status_changed.emit(self._current_status)
 
                 time.sleep(self._processing_config["update_interval"])            
 
