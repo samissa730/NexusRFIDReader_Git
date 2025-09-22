@@ -235,13 +235,20 @@ class GPS(QThread):
                                 self._current_status = status
                                 self.sig_status_changed.emit(self._current_status)
                         else:
-                            # Both unavailable
-                            status = "Disconnected"
-                            if self._current_status != status:
-                                self._external_connected = False
-                                self._internal_connected = False
-                                self._current_status = status
-                                self.sig_status_changed.emit(self._current_status)
+                            # Internal GPS failed, but maintain status if we have cached data
+                            if self._cache_data and self._current_status == "Internal(Connected)":
+                                # Keep using cached data and maintain status
+                                self._data = self._cache_data.copy()
+                                self.sig_data_updated.emit(self._data)
+                                self._last_update_time = current_time
+                            else:
+                                # Only set to Disconnected if we don't have any working GPS
+                                status = "Disconnected"
+                                if self._current_status != status:
+                                    self._external_connected = False
+                                    self._internal_connected = False
+                                    self._current_status = status
+                                    self.sig_status_changed.emit(self._current_status)
 
                 time.sleep(self._processing_config["update_interval"])            
 
