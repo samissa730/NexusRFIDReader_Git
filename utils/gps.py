@@ -15,15 +15,6 @@ from utils.logger import logger
 
 
 class GPS(QThread):
-    """
-    Production GPS class implementing all user story requirements:
-    - User Story 13047: IP-based geolocation service
-    - User Story 13048: GPS device detection and configuration
-    - User Story 13170: GPS data listener initialization and processing
-    - User Story 13171: Parse incoming GPS data
-    - User Story 13172: Convert speed, latitude, longitude
-    - User Story 13173: Update dashboard with latest GPS data
-    """
 
     # Signals for UI updates
     sig_status_changed = Signal(bool)  # GPS connection status
@@ -54,11 +45,11 @@ class GPS(QThread):
                 self._baud_rate = pre_config_gps()
                 self._port = find_gps_port(self._baud_rate)
                 if self._port:
-                    self._current_status = "External"
+                    self._current_status = "External(Connected)"
                 else:
                     self._current_status = "Disconnected"
             else:
-                self._current_status = "Internal"
+                self._current_status = "Internal(Connected)"
 
     def run(self):
         """Background task: continuous GPS data processing based on type."""
@@ -73,7 +64,7 @@ class GPS(QThread):
             self.sig_error_occurred.emit(f"Unsupported GPS type: {self._gps_type}")
 
     def _run_internet_gps(self):
-        """User Story 13047: IP-based geolocation service with caching."""
+        """IP-based geolocation service with caching."""
         while not self._b_stop.is_set():
             try:
                 # Check cache first
@@ -91,11 +82,11 @@ class GPS(QThread):
                         self._cache_timestamp = current_time
                         self.sig_data_updated.emit(self._data)
                         self._last_update_time = current_time
-                        if self._current_status != "Internal":
-                            self._current_status = "Internal"
+                        if self._current_status != "Internal(Connected)":
+                            self._current_status = "Internal(Connected)"
                             self.sig_status_changed.emit(True)
                     else:
-                        if self._current_status == "Internal":
+                        if self._current_status == "Internal(Connected)":
                             self._current_status = "Disconnected"
                             self.sig_status_changed.emit(False)
                 
@@ -108,7 +99,7 @@ class GPS(QThread):
                 time.sleep(5)  # Wait before retry
 
     def _run_external_gps(self):
-        """User Story 13170: External GPS data listener with continuous processing."""
+        """External GPS data listener with continuous processing."""
         # Initialize serial connection
         self._ser = self._connect_serial()
         
@@ -135,8 +126,8 @@ class GPS(QThread):
                         self._last_update_time = time.time()
                         
                         # Update status if needed
-                        if self._current_status != "External":
-                            self._current_status = "External"
+                        if self._current_status != "External(Connected)":
+                            self._current_status = "External(Connected)"
                             self.sig_status_changed.emit(True)
                             
             except Exception as e:
@@ -144,13 +135,13 @@ class GPS(QThread):
                 self._data = {}
                 self._sdata = [0, 0]
                 self._ser = None
-                if self._current_status == "External":
+                if self._current_status == "External(Connected)":
                     self._current_status = "Disconnected"
                     self.sig_status_changed.emit(False)
                 time.sleep(1)
 
     def _connect_serial(self) -> Optional[serial.Serial]:
-        """User Story 13048: Connect to external GPS device."""
+        """Connect to external GPS device."""
         if not self._port:
             return None
             
@@ -171,7 +162,7 @@ class GPS(QThread):
             return None
 
     def _read_serial_data(self):
-        """User Story 13171: Parse incoming GPS data from serial port."""
+        """Parse incoming GPS data from serial port."""
         if not self._ser or not self._ser.is_open:
             return
             
@@ -192,7 +183,7 @@ class GPS(QThread):
             raise
 
     def _parse_nmea_data(self, line: str):
-        """User Story 13171: Parse NMEA sentence and extract GPS data."""
+        """Parse NMEA sentence and extract GPS data."""
         try:
             msg = pynmea2.parse(line)
             
@@ -202,7 +193,7 @@ class GPS(QThread):
                 value = getattr(msg, attr)
                 self._data[attr] = value
             
-            # Extract speed and course (User Story 13172)
+            # Extract speed and course
             if hasattr(msg, 'spd_over_grnd') and hasattr(msg, 'true_course'):
                 speed_knots = msg.spd_over_grnd if msg.spd_over_grnd is not None else 0
                 course_degrees = msg.true_course if msg.true_course is not None else 0
@@ -224,7 +215,7 @@ class GPS(QThread):
             self._sdata = [0, 0]
 
     def _fetch_internet_gps(self) -> bool:
-        """User Story 13047: Fetch coarse location from IP-based service."""
+        """Fetch coarse location from IP-based service."""
         retry_strategy = Retry(
             total=self._internet_config["retry_count"],
             backoff_factor=self._internet_config["retry_backoff"],
@@ -260,7 +251,7 @@ class GPS(QThread):
         return False
 
     def set_GPS_port(self):
-        """User Story 13048: Configure GPS port for external GPS."""
+        """Configure GPS port for external GPS."""
         if self._gps_type == "external" and self._current_status == "N/A":
             try:
                 response = send_at_command("AT+QGPS=1")
@@ -269,11 +260,11 @@ class GPS(QThread):
                 # Check GPS status
                 status = send_at_command("AT+QGPS?")
                 logger.debug(f"GPS Port Status: {status}")
-                self._current_status = "External"
+                self._current_status = "External(Connected)"
 
             except Exception as e:
                 logger.error(f"GPS Port Error: {e}")
-                self._current_status = "Error"
+                self._current_status = "Disconnected"
 
     def stop(self):
         """Stop GPS thread and cleanup resources."""

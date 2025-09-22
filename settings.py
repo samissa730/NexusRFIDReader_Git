@@ -21,7 +21,7 @@ GPS_CONFIG = {
     # GPS Type: "internet" or "external"
     "type": "external",
     
-    # Internet GPS Settings (User Story 13047)
+    # Internet GPS Settings
     "internet": {
         "url": "http://ip-api.com/json/",
         "timeout": 3,  # seconds
@@ -32,7 +32,7 @@ GPS_CONFIG = {
         "user_agent": "NexusRFIDReader/1.0"
     },
     
-    # External GPS Settings (User Story 13048)
+    # External GPS Settings
     "external": {
         "port": "/dev/ttyUSB1" if is_rpi else "COM4",
         "baud_rate": 115200,
@@ -46,7 +46,7 @@ GPS_CONFIG = {
         "at_command_baud": 115200
     },
     
-    # GPS Data Processing Settings (User Stories 13170-13172)
+    # GPS Data Processing Settings
     "processing": {
         "nmea_sentences": ["$GPRMC", "$GNRMC", "$GPGGA", "$GNGGA"],
         "speed_unit": "mps",  # mph, kmh, mps - using m/s as requested
@@ -56,7 +56,7 @@ GPS_CONFIG = {
         "accuracy_threshold": 10  # meters
     },
     
-    # Dashboard Settings (User Story 13173)
+    # Dashboard Settings
     "dashboard": {
         "update_rate": 1,  # seconds
         "stale_data_threshold": 5,  # seconds

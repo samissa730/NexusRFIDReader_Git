@@ -60,7 +60,7 @@ class OverviewScreen(BaseScreen):
             
         except Exception as e:
             logger.error(f"Failed to initialize GPS: {e}")
-            self._update_gps_status("Error")
+            self._update_gps_status("Disconnected")
 
     def _setup_update_timer(self):
         """Setup timer for periodic UI updates."""
@@ -74,9 +74,9 @@ class OverviewScreen(BaseScreen):
         if connected:
             # Determine status based on GPS type
             if self.gps and self.gps._gps_type == "external":
-                status = "External"
+                status = "External(Connected)"
             else:
-                status = "Internal"
+                status = "Internal(Connected)"
         else:
             status = "Disconnected"
         self._update_gps_status(status)
@@ -91,7 +91,7 @@ class OverviewScreen(BaseScreen):
     def _on_gps_error(self, error_message: str):
         """Handle GPS errors."""
         logger.error(f"GPS error: {error_message}")
-        self._update_gps_status("Error")
+        self._update_gps_status("Disconnected")
 
     def _update_gps_status(self, status: str):
         """Update GPS connection status in UI."""
@@ -102,14 +102,16 @@ class OverviewScreen(BaseScreen):
             logger.info(f"GPS status label updated to: {status}")
             
             # Update status color based on connection state
-            if status == "External":
+            if status == "External(Connected)":
                 self.ui.gps_connection_status.setStyleSheet("color: #00ff00;")  # Green
-            elif status == "Internal":
+            elif status == "Internal(Connected)":
                 self.ui.gps_connection_status.setStyleSheet("color: #00bfff;")  # Blue
             elif status == "Disconnected":
                 self.ui.gps_connection_status.setStyleSheet("color: #ff0000;")  # Red
             else:
-                self.ui.gps_connection_status.setStyleSheet("color: #ffff00;")  # Yellow
+                # All other statuses should show as Disconnected
+                self.ui.gps_connection_status.setText("Disconnected")
+                self.ui.gps_connection_status.setStyleSheet("color: #ff0000;")  # Red
         else:
             logger.warning("GPS connection status label not found in UI")
 
@@ -183,7 +185,7 @@ class OverviewScreen(BaseScreen):
         try:
             # Check if GPS data is stale
             if self.gps and self.gps.is_data_stale():
-                self._update_gps_status("Stale Data")
+                self._update_gps_status("Disconnected")
             
             # Update signal quality if enabled
             if GPS_CONFIG["dashboard"]["show_signal_quality"]:

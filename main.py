@@ -8,6 +8,8 @@ import traceback
 from PySide6 import QtGui
 import glob
 import signal
+import subprocess
+import platform
 from utils.logger import logger
 import threading
 import time
@@ -74,6 +76,20 @@ if __name__ == "__main__":
         QApplication.exit(RFIDReaderApp.EXIT_CODE_CRASH)
 
     sys.excepthook = exception_hook
+
+    # Run network initialization command before app starts
+    try:
+        if platform.system() == "Linux":
+            result = subprocess.run(["sudo", "-n", "dhclient", "usb0"], capture_output=True, text=True, timeout=20)
+            logger.info(f"Executed 'sudo dhclient usb0' (rc={result.returncode})")
+            if result.stdout:
+                logger.info(result.stdout.strip())
+            if result.stderr:
+                logger.warning(result.stderr.strip())
+        else:
+            logger.info("Skipping 'sudo dhclient usb0' (non-Linux platform)")
+    except Exception as e:
+        logger.error(f"Error executing 'sudo dhclient usb0': {e}")
 
     logger.info("========== Starting Kiosk App ==========")
 

@@ -17,14 +17,14 @@ class TestGPS(unittest.TestCase):
             self.assertEqual(mock_send.call_count, 2)
             self.assertEqual(mock_send.call_args_list[0].args[0], "AT+QGPS=1")
             self.assertEqual(mock_send.call_args_list[1].args[0], "AT+QGPS?")
-            self.assertEqual(gps._current_status, "External")
+            self.assertEqual(gps._current_status, "External(Connected)")
 
     def test_set_GPS_port_error(self):
         """utils.gps.GPS.set_GPS_port: sets status Error when send_at_command raises (in utils/gps.py)."""
         with mock.patch.object(self.gps_module, "send_at_command", side_effect=Exception("serial error")) as _, mock.patch.object(self.gps_module, "logger"):
             gps = self.gps_module.GPS("external", current_status="N/A")
             gps.set_GPS_port()
-            self.assertEqual(gps._current_status, "Error")
+            self.assertEqual(gps._current_status, "Disconnected")
 
     def test_stop_closes_serial(self):
         """utils.gps.GPS.stop: closes open serial via _close_serial and clears reference (in utils/gps.py)."""
@@ -100,7 +100,7 @@ class TestGPS(unittest.TestCase):
              mock.patch.object(self.gps_module, "find_gps_port", return_value="/dev/ttyUSB0"):
             gps = self.gps_module.GPS("external")
             self.assertEqual(gps._gps_type, "external")
-            self.assertEqual(gps._current_status, "External")
+            self.assertEqual(gps._current_status, "External(Connected)")
             self.assertEqual(gps._port, "/dev/ttyUSB0")
             self.assertEqual(gps._baud_rate, 115200)
 
@@ -117,7 +117,7 @@ class TestGPS(unittest.TestCase):
         """utils.gps.GPS.__init__: initializes internet GPS with Internal status (in utils/gps.py)."""
         gps = self.gps_module.GPS("internet")
         self.assertEqual(gps._gps_type, "internet")
-        self.assertEqual(gps._current_status, "Internal")
+        self.assertEqual(gps._current_status, "Internal(Connected)")
 
     def test_get_coordinates_external(self):
         """utils.gps.GPS.get_coordinates: returns coordinates for external GPS (in utils/gps.py)."""
@@ -168,10 +168,10 @@ class TestGPS(unittest.TestCase):
     def test_get_status(self):
         """utils.gps.GPS.get_status: returns current GPS status (in utils/gps.py)."""
         gps = self.gps_module.GPS("external")
-        gps._current_status = "External"
+        gps._current_status = "External(Connected)"
         
         status = gps.get_status()
-        self.assertEqual(status, "External")
+        self.assertEqual(status, "External(Connected)")
 
     def test_is_data_stale_true(self):
         """utils.gps.GPS.is_data_stale: returns True when data is older than threshold (in utils/gps.py)."""

@@ -175,19 +175,13 @@ def find_gps_port(baud_rate):
     logger.info("No GPS port found")
     return None
 
-# =============================================================================
-# GPS UTILITY FUNCTIONS - Production Implementation
-# =============================================================================
-
 def convert_to_decimal(coord: str, direction: str, is_latitude: bool = True) -> float:
     """
-    User Story 13172: Convert GPS coordinates to decimal degrees.
-    
+    Convert GPS coordinates to decimal degrees.
     Args:
         coord: Coordinate string (e.g., "3342.1234")
         direction: Direction indicator (N, S, E, W)
         is_latitude: True for latitude, False for longitude
-        
     Returns:
         Decimal degrees coordinate
     """
@@ -214,11 +208,9 @@ def convert_to_decimal(coord: str, direction: str, is_latitude: bool = True) -> 
 
 def extract_from_gps(gps_data: Dict[str, Any]) -> Tuple[float, float]:
     """
-    User Story 13172: Extract latitude and longitude from GPS data.
-    
+    Extract latitude and longitude from GPS data.
     Args:
         gps_data: GPS data dictionary
-        
     Returns:
         Tuple of (latitude, longitude) in decimal degrees
     """
@@ -256,14 +248,12 @@ def extract_from_gps(gps_data: Dict[str, Any]) -> Tuple[float, float]:
 def calculate_speed_bearing(lat1: float, lon1: float, time1: int, 
                           lat2: float, lon2: float, time2: int) -> Tuple[float, float]:
     """
-    User Story 13172: Calculate speed and bearing between two GPS points.
-    
+    Calculate speed and bearing between two GPS points.
     Args:
         lat1, lon1: First GPS coordinates
         time1: First timestamp in microseconds
         lat2, lon2: Second GPS coordinates  
-        time2: Second timestamp in microseconds
-        
+        time2: Second timestamp in microsecond
     Returns:
         Tuple of (speed_mps, bearing_degrees) - using m/s as requested
     """
@@ -292,10 +282,8 @@ def calculate_speed_bearing(lat1: float, lon1: float, time1: int,
 def get_date_from_utc(timestamp_microseconds: int) -> str:
     """
     Convert UTC timestamp to formatted date string.
-    
     Args:
         timestamp_microseconds: UTC timestamp in microseconds
-        
     Returns:
         Formatted date string
     """
@@ -322,11 +310,9 @@ def get_date_from_utc(timestamp_microseconds: int) -> str:
 def validate_gps_coordinates(lat: float, lon: float) -> bool:
     """
     Validate GPS coordinates are within reasonable ranges.
-    
     Args:
         lat: Latitude in decimal degrees
-        lon: Longitude in decimal degrees
-        
+        lon: Longitude in decimal degree
     Returns:
         True if coordinates are valid, False otherwise
     """
@@ -334,13 +320,11 @@ def validate_gps_coordinates(lat: float, lon: float) -> bool:
 
 def format_coordinates(lat: float, lon: float, precision: int = 4) -> str:
     """
-    Format GPS coordinates for display.
-    
+    Format GPS coordinates for display
     Args:
         lat: Latitude in decimal degrees
         lon: Longitude in decimal degrees
         precision: Number of decimal places
-        
     Returns:
         Formatted coordinate string
     """
@@ -352,11 +336,9 @@ def format_coordinates(lat: float, lon: float, precision: int = 4) -> str:
 def format_speed(speed: float, unit: str = "mps") -> str:
     """
     Format speed for display.
-    
     Args:
         speed: Speed value
         unit: Speed unit (mph, kmh, mps)
-        
     Returns:
         Formatted speed string
     """
@@ -372,10 +354,8 @@ def format_speed(speed: float, unit: str = "mps") -> str:
 def format_bearing(bearing: float) -> str:
     """
     Format bearing for display with cardinal directions.
-    
     Args:
-        bearing: Bearing in degrees
-        
+        bearing: Bearing in degree
     Returns:
         Formatted bearing string with cardinal direction
     """
@@ -392,11 +372,9 @@ def format_bearing(bearing: float) -> str:
 
 def is_ipv4_address(ip: str) -> bool:
     """
-    Validate IPv4 address format.
-    
+    Validate IPv4 address format.    
     Args:
         ip: IP address string
-        
     Returns:
         True if valid IPv4 address, False otherwise
     """
@@ -408,12 +386,10 @@ def is_ipv4_address(ip: str) -> bool:
 
 def send_at_command(command: str, delay: float = 1) -> str:
     """
-    User Story 13048: Send AT command to GPS module.
-    
+    Send AT command to GPS module.
     Args:
         command: AT command to send
         delay: Delay before reading response
-        
     Returns:
         Response from GPS module
     """
