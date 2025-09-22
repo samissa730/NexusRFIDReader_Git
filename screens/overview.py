@@ -98,8 +98,6 @@ class OverviewScreen(BaseScreen):
                 self.ui.gps_connection_status.setStyleSheet("color: #00ff00;")  # Green
             elif status == "Internal(Connected)":
                 self.ui.gps_connection_status.setStyleSheet("color: #00bfff;")  # Blue
-            elif status == "Internal(Connected), External(Disconnected)":
-                self.ui.gps_connection_status.setStyleSheet("color: #00bfff;")  # Blue
             elif status == "Disconnected":
                 self.ui.gps_connection_status.setStyleSheet("color: #ff0000;")  # Red
             else:
