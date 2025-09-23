@@ -200,7 +200,7 @@ border-bottom: 2px solid #404040;</string>
                 <string notr="true">color: #ffffff;</string>
                </property>
                <property name="text">
-                <string>N/A</string>
+                <string>Disconnected</string>
                </property>
               </widget>
              </item>
@@ -448,7 +448,7 @@ border-bottom: 2px solid #404040;</string>
                 <string notr="true">color: #ffffff;</string>
                </property>
                <property name="text">
-                <string>N/A</string>
+                <string>Disconnected</string>
                </property>
               </widget>
              </item>

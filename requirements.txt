@@ -6,3 +6,4 @@ pyserial
 geopy
 geographiclib
 pynmea2
+psutil
