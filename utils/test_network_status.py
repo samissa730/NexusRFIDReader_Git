@@ -331,9 +331,9 @@ class NetworkStatusChecker:
         
         # Summary
         print(f"\nSUMMARY:")
-        print(f"  WiFi Connected: {'✓' if status['summary']['wifi_connected'] else '✗'}")
-        print(f"  Cellular Connected: {'✓' if status['summary']['cellular_connected'] else '✗'}")
-        print(f"  Internet Available: {'✓' if status['summary']['internet_available'] else '✗'}")
+        print(f"  WiFi Connected: {'Yes' if status['summary']['wifi_connected'] else 'No'}")
+        print(f"  Cellular Connected: {'Yes' if status['summary']['cellular_connected'] else 'No'}")
+        print(f"  Internet Available: {'Yes' if status['summary']['internet_available'] else 'No'}")
         
         # WiFi Interfaces
         if status['wifi_interfaces']:
@@ -356,9 +356,9 @@ class NetworkStatusChecker:
         # Internet Connectivity
         print(f"\nINTERNET CONNECTIVITY:")
         connectivity = status['internet_connectivity']
-        print(f"  DNS Resolution: {'✓' if connectivity['dns_resolution'] else '✗'}")
-        print(f"  HTTP Connectivity: {'✓' if connectivity['http_connectivity'] else '✗'}")
-        print(f"  Ping Test: {'✓' if connectivity['ping_test'] else '✗'}")
+        print(f"  DNS Resolution: {'Yes' if connectivity['dns_resolution'] else 'No'}")
+        print(f"  HTTP Connectivity: {'Yes' if connectivity['http_connectivity'] else 'No'}")
+        print(f"  Ping Test: {'Yes' if connectivity['ping_test'] else 'No'}")
         if connectivity['response_time']:
             print(f"  Response Time: {connectivity['response_time']} ms")
         
@@ -367,7 +367,7 @@ class NetworkStatusChecker:
 
 def _print_interface_details(self, interface: Dict):
     """Print detailed interface information."""
-    status_icon = '✓' if interface.get('is_up', False) else '✗'
+    status_icon = 'Yes' if interface.get('is_up', False) else 'No'
     print(f"  {status_icon} {interface['interface']}")
     
     if interface.get('is_up', False):
