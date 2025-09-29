@@ -293,14 +293,14 @@ class OverviewScreen(BaseScreen):
             rfid_tag = tag_data.get('EPC-96', 'N/A')
             antenna = tag_data.get('AntennaID', 0)
             rssi = tag_data.get('PeakRSSI', 0)
+            ts_utc = int(tag_data.get('LastSeenTimestampUTC', int(time.time() * 1_000_000)))
             
             # Update RFID fields if they exist in UI
             if hasattr(self.ui, 'last_rfid_read'):
                 self.ui.last_rfid_read.setText(rfid_tag)
             
             if hasattr(self.ui, 'last_rfid_time'):
-                current_time = int(time.time() * 1_000_000)
-                time_text = get_date_from_utc(current_time)
+                time_text = get_date_from_utc(ts_utc)
                 self.ui.last_rfid_time.setText(time_text)
             
             # Update table with RFID data if available
@@ -326,7 +326,8 @@ class OverviewScreen(BaseScreen):
             if hasattr(self.ui, 'tableWidget'):
                 self.ui.tableWidget.setItem(0, 0, QTableWidgetItem(time_text))
                 self.ui.tableWidget.setItem(0, 1, QTableWidgetItem(rfid_tag))
-                self.ui.tableWidget.setItem(0, 2, QTableWidgetItem(f"Ant:{antenna}, RSSI:{rssi}"))
+                # Show only antenna number in the Antenna column (match POC)
+                self.ui.tableWidget.setItem(0, 2, QTableWidgetItem(str(antenna)))
                 self.ui.tableWidget.setItem(0, 3, QTableWidgetItem(coord_text))
                 self.ui.tableWidget.setItem(0, 4, QTableWidgetItem(speed_text))
                 self.ui.tableWidget.setItem(0, 5, QTableWidgetItem(bearing_text))
