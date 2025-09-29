@@ -6,4 +6,8 @@ pyserial
 geopy
 geographiclib
 pynmea2
-psutil
+sllurp
+schedule
+pygame
+ping3
+numpy

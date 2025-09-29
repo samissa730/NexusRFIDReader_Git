@@ -186,24 +186,40 @@ def convert_to_decimal(coord: str, direction: str, is_latitude: bool = True) -> 
         Decimal degrees coordinate
     """
     try:
+        # Validate input parameters
+        if not coord or not isinstance(coord, str):
+            return 0.0
+            
+        if not direction or direction not in ['N', 'S', 'E', 'W']:
+            return 0.0
+            
+        # Clean the coordinate string
+        coord = coord.strip()
+        if not coord:
+            return 0.0
+            
         sign = -1 if direction in ['S', 'W'] else 1
         
         if is_latitude:
             if len(coord) < 4:
-                raise ValueError("Invalid latitude coordinate format")
+                return 0.0
             degrees = int(coord[:2])
             minutes = float(coord[2:])
         else:
             if len(coord) < 5:
-                raise ValueError("Invalid longitude coordinate format")
+                return 0.0
             degrees = int(coord[:3])
             minutes = float(coord[3:])
             
         decimal_coord = sign * (degrees + minutes / 60)
+        logger.debug(f"Converted {coord} {direction} to {decimal_coord}")
         return decimal_coord
         
     except ValueError as e:
-        logger.error(f"Error converting coordinate: {e}")
+        logger.error(f"Error converting coordinate '{coord}' {direction}: {e}")
+        return 0.0
+    except Exception as e:
+        logger.error(f"Unexpected error converting coordinate '{coord}' {direction}: {e}")
         return 0.0
 
 def extract_from_gps(gps_data: Dict[str, Any]) -> Tuple[float, float]:
@@ -215,11 +231,14 @@ def extract_from_gps(gps_data: Dict[str, Any]) -> Tuple[float, float]:
         Tuple of (latitude, longitude) in decimal degrees
     """
     if not gps_data:
+        logger.debug("No GPS data provided")
         return 0.0, 0.0
         
     # Check if required keys exist and have values
     lat = gps_data.get('lat', '')
     lon = gps_data.get('lon', '')
+    lat_dir = gps_data.get('lat_dir', 'N')
+    lon_dir = gps_data.get('lon_dir', 'E')
     
     if not lat or not lon:
         return 0.0, 0.0
@@ -227,13 +246,13 @@ def extract_from_gps(gps_data: Dict[str, Any]) -> Tuple[float, float]:
     try:
         # Extract and convert latitude and longitude
         latitude = convert_to_decimal(
-            lat, 
-            gps_data.get('lat_dir', 'N'), 
+            str(lat), 
+            str(lat_dir), 
             is_latitude=True
         )
         longitude = convert_to_decimal(
-            lon, 
-            gps_data.get('lon_dir', 'E'), 
+            str(lon), 
+            str(lon_dir), 
             is_latitude=False
         )
         return latitude, longitude

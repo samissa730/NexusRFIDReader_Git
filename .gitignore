@@ -5,3 +5,4 @@ env.json
 __pycache__
 *.log
 *.dump
+*.db

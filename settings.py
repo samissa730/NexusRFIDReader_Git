@@ -66,8 +66,120 @@ GPS_CONFIG = {
     }
 }
 
+# RFID Configuration
+RFID_CONFIG = {
+    "reader_ip": "169.254.216.147",
+    "port": 5084,  # LLRP_DEFAULT_PORT
+    "antennas": [1],
+    "tx_power": 0,  # Max power
+    "modulation": "M8",
+    "tari": 0,  # Auto
+    "session": 1,
+    "tag_population": 4,
+    "report_every_n_tags": 1,
+    "impinj_search_mode": "1",  # Single
+    "impinj_reports": False,
+    "tag_content_selector": {
+        "EnableROSpecID": True,
+        "EnableSpecIndex": True,
+        "EnableInventoryParameterSpecID": True,
+        "EnableAntennaID": True,
+        "EnableChannelIndex": True,
+        "EnablePeakRSSI": True,
+        "EnableFirstSeenTimestamp": True,
+        "EnableLastSeenTimestamp": True,
+        "EnableTagSeenCount": True,
+        "EnableAccessSpecID": True,
+        "C1G2EPCMemorySelector": {
+            "EnableCRC": True,
+            "EnablePCBits": True,
+        }
+    }
+}
+
+# API Configuration
+API_CONFIG = {
+    "login_url": "https://rfidngpsinventory.com/rfid/user/userLogin",
+    "record_upload_url": "https://rfidngpsinventory.com/rfid/mobileApp/updateRfidScanning",
+    "health_upload_url": "https://rfidngpsinventory.com/rfid/dashBoard/rfidapphealth",
+    "timeout": 4,
+    "retry_count": 3,
+    "retry_backoff": 1,
+    "retry_status_codes": [429, 500, 502, 503, 504],
+    "chunk_size": 1000,
+    "upload_interval": 7,  # seconds
+    "health_interval": 15,  # seconds
+    "token_refresh_interval": 600,  # 10 minutes
+    "data_retention_hours": 10  # hours
+}
+
+# API Authentication (choose one: token, or username/password)
+API_CREDENTIALS = {
+    "token": "",          # Paste pre-issued token here (takes priority if set)
+    "username": "",       # Used if token is empty
+    "password": ""        # Used if token is empty
+}
+
+# Data Storage Configuration
+DATABASE_CONFIG = {
+    "use_database": True,
+    "db_file": "database.db",
+    "table_name": "records",
+    "schema": {
+        "id": "INTEGER PRIMARY KEY",
+        "rfidTag": "TEXT NOT NULL",
+        "antenna": "INTEGER NOT NULL",
+        "RSSI": "INTEGER NOT NULL",
+        "latitude": "REAL NOT NULL",
+        "longitude": "REAL NOT NULL",
+        "speed": "REAL NOT NULL",
+        "heading": "REAL NOT NULL",
+        "locationCode": "TEXT NOT NULL",
+        "username": "TEXT NOT NULL",
+        "tag1": "TEXT NOT NULL",
+        "value1": "TEXT NOT NULL",
+        "tag2": "TEXT NOT NULL",
+        "value2": "TEXT NOT NULL",
+        "tag3": "TEXT NOT NULL",
+        "value3": "TEXT NOT NULL",
+        "tag4": "TEXT NOT NULL",
+        "value4": "TEXT NOT NULL",
+        "timestamp": "INTEGER NOT NULL"
+    }
+}
+
+# Filter Configuration
+FILTER_CONFIG = {
+    "speed": {
+        "enabled": False,
+        "min": 0,
+        "max": 100
+    },
+    "rssi": {
+        "enabled": False,
+        "min": -100,
+        "max": 0
+    },
+    "tag_range": {
+        "enabled": False,
+        "min": 0,
+        "max": 999999999
+    },
+    "duplicate_window": 10_000_000  # microseconds (10 seconds)
+}
+
+# Sound Configuration
+SOUND_CONFIG = {
+    "enabled": True,
+    "frequency": 1000,
+    "duration": 800
+}
+
 # Legacy constants for backward compatibility
 INTERNET_GPS_URL = GPS_CONFIG["internet"]["url"]
 BAUD_RATE_QUE = GPS_CONFIG["external"]["baud_rate"]
 BAUD_RATE_DON = 9600
 GPS_PORT = GPS_CONFIG["external"]["port"]
+RFID_CARD_READER = RFID_CONFIG["reader_ip"]
+SOUND_FREQUENCY = SOUND_CONFIG["frequency"]
+SOUND_DURATION = SOUND_CONFIG["duration"]

@@ -307,6 +307,10 @@ class GPS(QThread):
     def _parse_nmea_data(self, line: str):
         """Parse NMEA sentence and extract GPS data."""
         try:
+            # Ignore obviously malformed/partial lines to avoid noisy errors
+            if not line or not line.startswith('$') or '*' not in line:
+                return
+
             msg = pynmea2.parse(line)
             
             # Extract all fields
@@ -314,6 +318,12 @@ class GPS(QThread):
                 label, attr = field[:2]
                 value = getattr(msg, attr)
                 self._data[attr] = value
+            
+            # Log only when we have valid coordinate data
+            lat = self._data.get('lat', '')
+            lon = self._data.get('lon', '')
+            if lat and lon and lat.strip() and lon.strip():
+                logger.info(f"GPS Fix acquired: {lat} {self._data.get('lat_dir', '')}, {lon} {self._data.get('lon_dir', '')}")
             
             # Extract speed and course
             if hasattr(msg, 'spd_over_grnd') and hasattr(msg, 'true_course'):
@@ -331,10 +341,10 @@ class GPS(QThread):
                 
                 self._sdata = [speed, course_degrees]
                 
-        except pynmea2.ParseError as e:
-            logger.error(f"NMEA parse error: {e}")
-            self._data = {}
-            self._sdata = [0, 0]
+        except pynmea2.ParseError:
+            # Malformed/partial NMEA line; ignore quietly to prevent log spam
+            logger.debug("Skipping malformed NMEA line")
+            return
 
     def _fetch_internet_gps(self) -> bool:
         """Fetch coarse location from IP-based service."""
