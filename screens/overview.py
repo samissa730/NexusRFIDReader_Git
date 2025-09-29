@@ -49,6 +49,10 @@ class OverviewScreen(BaseScreen):
         self.current_speed = 0.0
         self.current_bearing = 0.0
         
+        # Latest combined values for table
+        self._last_rfid_tag = "N/A"
+        self._last_rfid_antenna = "N/A"
+        
         # Initialize components
         self._initialize_gps()
         self._initialize_rfid()
@@ -303,37 +307,14 @@ class OverviewScreen(BaseScreen):
                 time_text = get_date_from_utc(ts_utc)
                 self.ui.last_rfid_time.setText(time_text)
             
-            # Update table with RFID data if available
-            self._update_rfid_table_row(tag_data, lat, lon, speed, bearing)
+            # Cache latest RFID fields for table; table is rendered on timer
+            self._last_rfid_tag = rfid_tag
+            self._last_rfid_antenna = str(antenna)
             
         except Exception as e:
             logger.error(f"Error updating RFID display: {e}")
 
-    def _update_rfid_table_row(self, tag_data: Dict[str, Any], lat: float, lon: float, speed: float, bearing: float):
-        """Update RFID data in the main table."""
-        try:
-            rfid_tag = tag_data.get('EPC-96', 'N/A')
-            antenna = tag_data.get('AntennaID', 0)
-            rssi = tag_data.get('PeakRSSI', 0)
-            
-            # Format data for table
-            coord_text = format_coordinates(lat, lon, precision=6)
-            speed_text = format_speed(speed, GPS_CONFIG["processing"]["speed_unit"])
-            bearing_text = format_bearing(bearing)
-            time_text = get_date_from_utc(int(time.time() * 1_000_000))
-            
-            # Update first row with RFID data if table exists
-            if hasattr(self.ui, 'tableWidget'):
-                self.ui.tableWidget.setItem(0, 0, QTableWidgetItem(time_text))
-                self.ui.tableWidget.setItem(0, 1, QTableWidgetItem(rfid_tag))
-                # Show only antenna number in the Antenna column (match POC)
-                self.ui.tableWidget.setItem(0, 2, QTableWidgetItem(str(antenna)))
-                self.ui.tableWidget.setItem(0, 3, QTableWidgetItem(coord_text))
-                self.ui.tableWidget.setItem(0, 4, QTableWidgetItem(speed_text))
-                self.ui.tableWidget.setItem(0, 5, QTableWidgetItem(bearing_text))
-            
-        except Exception as e:
-            logger.error(f"Error updating RFID table: {e}")
+    # (Old per-source table row updaters removed; table is rendered centrally on timer)
 
     def _update_gps_display(self):
         """Update GPS data display in UI."""
@@ -369,8 +350,8 @@ class OverviewScreen(BaseScreen):
                 if hasattr(self.ui, 'last_gps_time'):
                     self.ui.last_gps_time.setText(time_text)
                 
-                # Update table with GPS data if available
-                self._update_gps_table_row(lat, lon)
+                # Cache GPS fields; table is rendered on timer
+                # (No direct table update here to keep one render point)
                 
             else:
                 if hasattr(self.ui, 'last_gps_read'):
@@ -385,29 +366,21 @@ class OverviewScreen(BaseScreen):
             if hasattr(self.ui, 'last_gps_time'):
                 self.ui.last_gps_time.setText("N/A")
 
-    def _update_gps_table_row(self, lat: float, lon: float):
-        """Update GPS data in the main table."""
+    # (Old per-source table row updater removed; use central render)
+
+    def _set_table_row(self, *, time_text: str, tag_text: str, antenna_text: str,
+                        coord_text: str, speed_text: str, bearing_text: str):
+        """Unified helper to set the first row of the table."""
         try:
-            # Get speed and bearing
-            speed, bearing = self.gps.get_speed_bearing()
-            
-            # Format data for table
-            coord_text = format_coordinates(lat, lon, precision=6)  # Show full precision
-            speed_text = format_speed(speed, GPS_CONFIG["processing"]["speed_unit"])
-            bearing_text = format_bearing(bearing)
-            time_text = get_date_from_utc(int(time.time() * 1_000_000))
-            
-            # Update first row with GPS data if table exists
             if hasattr(self.ui, 'tableWidget'):
                 self.ui.tableWidget.setItem(0, 0, QTableWidgetItem(time_text))
-                self.ui.tableWidget.setItem(0, 1, QTableWidgetItem("GPS"))
-                self.ui.tableWidget.setItem(0, 2, QTableWidgetItem("N/A"))
+                self.ui.tableWidget.setItem(0, 1, QTableWidgetItem(tag_text))
+                self.ui.tableWidget.setItem(0, 2, QTableWidgetItem(antenna_text))
                 self.ui.tableWidget.setItem(0, 3, QTableWidgetItem(coord_text))
                 self.ui.tableWidget.setItem(0, 4, QTableWidgetItem(speed_text))
                 self.ui.tableWidget.setItem(0, 5, QTableWidgetItem(bearing_text))
-            
         except Exception as e:
-            logger.error(f"Error updating GPS table: {e}")
+            logger.error(f"Error setting table row: {e}")
 
     def _update_dashboard(self):
         """Periodic dashboard update."""
@@ -422,6 +395,20 @@ class OverviewScreen(BaseScreen):
             # Update signal quality if enabled
             if GPS_CONFIG["dashboard"]["show_signal_quality"]:
                 self._update_signal_quality()
+            
+            # Render single combined table row with a unified timestamp
+            coord_text = format_coordinates(self.current_lat, self.current_lon, precision=6)
+            speed_text = format_speed(self.current_speed, GPS_CONFIG["processing"]["speed_unit"])
+            bearing_text = format_bearing(self.current_bearing)
+            now_text = get_date_from_utc(int(time.time() * 1_000_000))
+            self._set_table_row(
+                time_text=now_text,
+                tag_text=self._last_rfid_tag,
+                antenna_text=self._last_rfid_antenna,
+                coord_text=coord_text,
+                speed_text=speed_text,
+                bearing_text=bearing_text,
+            )
                 
         except Exception as e:
             logger.error(f"Error in dashboard update: {e}")
