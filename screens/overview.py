@@ -101,6 +101,10 @@ class OverviewScreen(BaseScreen):
             else:
                 lat, lon, speed, bearing = self.cur_lat, self.cur_lon, self.speed, self.bearing
 
+            # round to 7 decimals for storage and display
+            lat = round(lat, 7)
+            lon = round(lon, 7)
+
             upload_flag = True
             # Apply filters from settings
             sp = FILTER_CONFIG.get('speed', {})
@@ -157,13 +161,16 @@ class OverviewScreen(BaseScreen):
                                 "", "", "", "", "", "", "", ""]
                     self.storage.add_record(new_data)
 
+            # one-line debug for real-time processing
+            logger.debug(f"TAG {tag['EPC-96']} ant={tag['AntennaID']} rssi={tag['PeakRSSI']} pos=({lat:.7f},{lon:.7f}) speed={speed} heading={bearing}")
+
             # UI updates
             self._refresh_table([get_date_from_utc(tag['LastSeenTimestampUTC']), tag['EPC-96'], f"{tag['AntennaID']}",
-                                 f"{lat:.4f}".rstrip('0').rstrip('.') + ", " + f"{lon:.4f}".rstrip('0').rstrip('.'),
+                                 f"{lat:.7f}".rstrip('0').rstrip('.') + ", " + f"{lon:.7f}".rstrip('0').rstrip('.'),
                                  f"{speed:.4f}".rstrip('0').rstrip('.'), f"{bearing}"])
             self.ui.last_rfid_read.setText(tag['EPC-96'])
             self.ui.last_rfid_time.setText(get_date_from_utc(tag['LastSeenTimestampUTC']))
-            self.ui.last_gps_read.setText(f"{lat}, {lon}")
+            self.ui.last_gps_read.setText(f"{lat:.7f}, {lon:.7f}")
             self.ui.last_gps_time.setText(get_date_from_utc(tag['LastSeenTimestampUTC']))
 
     def _refresh_table(self, new_data):

@@ -49,14 +49,13 @@ def extract_from_gps(gps_data):
 def get_date_from_utc(timestamp_microseconds):
     timestamp_seconds = timestamp_microseconds / 1_000_000
     utc_datetime = datetime.utcfromtimestamp(timestamp_seconds)
-    formatted_date = "{}/{}/{} {}:{}:{} {}".format(
+    formatted_date = "{}/{:02}/{:02} {:02}:{:02}:{:02}".format(
+        utc_datetime.year,
         utc_datetime.month,
         utc_datetime.day,
-        utc_datetime.year,
-        utc_datetime.hour % 12 or 12,
-        f"{utc_datetime.minute:02}",
-        f"{utc_datetime.second:02}",
-        "AM" if utc_datetime.hour < 12 else "PM"
+        utc_datetime.hour,
+        utc_datetime.minute,
+        utc_datetime.second,
     )
     return formatted_date
 
