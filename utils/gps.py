@@ -322,8 +322,8 @@ class GPS(QThread):
             # Log only when we have valid coordinate data
             lat = self._data.get('lat', '')
             lon = self._data.get('lon', '')
-            if lat and lon and lat.strip() and lon.strip():
-                logger.info(f"GPS Fix acquired: {lat} {self._data.get('lat_dir', '')}, {lon} {self._data.get('lon_dir', '')}")
+            # if lat and lon and lat.strip() and lon.strip():
+            #     logger.info(f"GPS Fix acquired: {lat} {self._data.get('lat_dir', '')}, {lon} {self._data.get('lon_dir', '')}")
             
             # Extract speed and course
             if hasattr(msg, 'spd_over_grnd') and hasattr(msg, 'true_course'):
