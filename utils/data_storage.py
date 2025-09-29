@@ -41,9 +41,11 @@ class DataStorage:
             # Create SQLite DB (will create file if not exists)
             self.db_connection = sqlite3.connect(self.db_file)
             self.db_cursor = self.db_connection.cursor()
-            # Improve reliability/perf similar to desktop POC usage
+            # Use DELETE journaling to avoid creating -wal/-shm files
             try:
-                self.db_cursor.execute("PRAGMA journal_mode=WAL;")
+                # If any previous connection used WAL, checkpoint and truncate it
+                self.db_cursor.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+                self.db_cursor.execute("PRAGMA journal_mode=DELETE;")
                 self.db_cursor.execute("PRAGMA synchronous=NORMAL;")
             except Exception:
                 pass
@@ -318,6 +320,16 @@ class DataStorage:
             if self.db_connection:
                 self.db_connection.close()
                 logger.info("Database connection closed")
+            # Ensure no -wal/-shm leftovers remain
+            wal_path = f"{self.db_file}-wal"
+            shm_path = f"{self.db_file}-shm"
+            try:
+                if os.path.exists(wal_path):
+                    os.remove(wal_path)
+                if os.path.exists(shm_path):
+                    os.remove(shm_path)
+            except Exception as e:
+                logger.debug(f"Could not remove WAL/SHM files: {e}")
         except Exception as e:
             logger.error(f"Error closing database: {e}")
 
