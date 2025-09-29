@@ -16,20 +16,25 @@ import time
 from typing import Dict, Any, Optional, Tuple
 
 
-# Ensure local utils can be imported when running directly
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Ensure project root and utils can be imported when running directly
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_ROOT_DIR = os.path.abspath(os.path.join(_THIS_DIR, os.pardir))
+if _ROOT_DIR not in sys.path:
+    sys.path.insert(0, _ROOT_DIR)
+if _THIS_DIR not in sys.path:
+    sys.path.insert(0, _THIS_DIR)
 
 try:
     from settings import RFID_CONFIG
     from utils.logger import logger
-except Exception:
-    # Fallback if running from within utils directory without package context
-    from settings import RFID_CONFIG  # type: ignore
-    from logger import logger  # type: ignore
+except Exception as e:
+    print(f"Import Error loading settings/logger: {e}")
+    print("Ensure you run from the project root directory (where settings.py resides).")
+    sys.exit(1)
 
 try:
     # Local RFID thread wrapper built on sllurp LLRP client
-    from rfid import RFID
+    from utils.rfid import RFID
 except ImportError as e:
     print(f"Import Error: {e}")
     print("Ensure you run from the project root or add the path to PYTHONPATH.")
