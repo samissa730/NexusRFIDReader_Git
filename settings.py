@@ -57,7 +57,7 @@ API_CONFIG = {
 
 # Data Storage Configuration - edit these values directly
 DATABASE_CONFIG = {
-    "use_db": False,
+    "use_db": True,
 }
 
 # Filter Configuration - edit these values directly
