@@ -177,6 +177,16 @@ class OverviewScreen(BaseScreen):
             lat, lon = self.current_lat, self.current_lon
             speed, bearing = self.current_speed, self.current_bearing
             
+            # Log concise tag summary and full payload for debugging
+            epc_text = str(tag_data.get('EPC-96', ''))
+            ant_val = tag_data.get('AntennaID', 0)
+            rssi_val = tag_data.get('PeakRSSI', 0)
+            logger.info(f"RFID TAG READ: {epc_text} ant={ant_val} rssi={rssi_val}")
+            logger.debug(f"RFID TAG RAW: {tag_data}")
+
+            # Update the UI immediately, even if storage fails
+            self._update_rfid_display(tag_data, lat, lon, speed, bearing)
+
             # Check if we should store this record
             if self._should_store_record(tag_data, lat, lon, speed):
                 # Store the record
@@ -199,9 +209,6 @@ class OverviewScreen(BaseScreen):
                     
                     # Play sound notification
                     sound_manager.play_notification("tag_detected")
-                    
-                    # Update UI
-                    self._update_rfid_display(tag_data, lat, lon, speed, bearing)
                 else:
                     logger.error("Failed to store RFID record")
             
