@@ -121,7 +121,7 @@ class DataStorage:
                         (rfidTag, antenna, RSSI, latitude, longitude, speed, heading, 
                          locationCode, username, tag1, value1, tag2, value2, 
                          tag3, value3, tag4, value4, timestamp)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     '''
                     
                     self.db_cursor.execute(insert_sql, (
