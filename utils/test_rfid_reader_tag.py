@@ -1,9 +1,9 @@
 """
-Real-time RFID reader demo (no unittest).
-Run: python test_rfid_reader_tag.py [--host 169.254.x.x] [--port 5084]
+Standalone real-time RFID reader demo (no unittest, no project imports).
+Run: python3 utils/test_rfid_reader_tag.py --host 169.254.x.x --port 5084
 
-This script establishes a connection to the RFID reader and prints tags
-in real-time, similar to test_network_status.py.
+This script directly uses sllurp LLRP to connect and print tags in real-time.
+It does NOT require importing project-specific modules like settings.py.
 """
 
 import argparse
@@ -13,39 +13,29 @@ import signal
 import sys
 import threading
 import time
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List
+
+from sllurp.llrp import LLRPReaderConfig, LLRPReaderClient
 
 
-# Ensure project root and utils can be imported when running directly
-_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-_ROOT_DIR = os.path.abspath(os.path.join(_THIS_DIR, os.pardir))
-if _ROOT_DIR not in sys.path:
-    sys.path.insert(0, _ROOT_DIR)
-if _THIS_DIR not in sys.path:
-    sys.path.insert(0, _THIS_DIR)
-
-try:
-    from settings import RFID_CONFIG
-    from utils.logger import logger
-except Exception as e:
-    print(f"Import Error loading settings/logger: {e}")
-    print("Ensure you run from the project root directory (where settings.py resides).")
-    sys.exit(1)
-
-try:
-    # Local RFID thread wrapper built on sllurp LLRP client
-    from utils.rfid import RFID
-except ImportError as e:
-    print(f"Import Error: {e}")
-    print("Ensure you run from the project root or add the path to PYTHONPATH.")
-    sys.exit(1)
+# Minimal stdout logger
+def _log(msg: str) -> None:
+    ts = time.strftime('%Y-%m-%d %H:%M:%S')
+    print(f"{ts} - {msg}")
 
 
 def parse_cli_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="RFID Reader Real-time Tag Demo")
-    parser.add_argument("--host", default=RFID_CONFIG.get("reader_ip", ""), help="RFID reader IP address")
-    parser.add_argument("--port", default=RFID_CONFIG.get("port", 5084), type=int, help="RFID reader LLRP port")
-    parser.add_argument("--print-json", action="store_true", help="Print full tag JSON objects")
+    parser = argparse.ArgumentParser(description="RFID Reader Real-time Tag Demo (Standalone)")
+    parser.add_argument("--host", required=True, help="RFID reader IP address (LLRP)")
+    parser.add_argument("--port", default=5084, type=int, help="RFID reader LLRP port")
+    parser.add_argument("--antennas", default="1", help="Comma-separated list of antennas to enable (e.g., 1,2)")
+    parser.add_argument("--tx-power", default=0, type=int, help="Transmit power (0=max)")
+    parser.add_argument("--tari", default=0, type=int, help="Tari value (0=auto)")
+    parser.add_argument("--session", default=1, type=int, help="Gen2 session")
+    parser.add_argument("--tag-population", default=4, type=int, help="Tag population")
+    parser.add_argument("--report-every-n-tags", default=1, type=int, dest="every_n", help="Issue TagReport every N tags")
+    parser.add_argument("--impinj-search-mode", choices=["1", "2"], default="1", help="Impinj search mode (1=single,2=dual)")
+    parser.add_argument("--print-json", action="store_true", help="Print full tag JSON objects instead of summary")
     return parser.parse_args()
 
 
@@ -120,25 +110,76 @@ def print_header(host: str, port: int) -> None:
 def main() -> None:
     args = parse_cli_args()
 
-    host = args.host or RFID_CONFIG.get("reader_ip", "")
+    host = args.host
     port = int(args.port)
     print_header(host, port)
 
-    rfid = RFID()
+    # Build LLRP configuration
+    try:
+        enabled_antennas: List[int] = [int(x.strip()) for x in str(args.antennas).split(',') if x.strip()]
+    except Exception:
+        enabled_antennas = [1]
 
-    # If CLI host differs from config, reconfigure reader
-    if host and host != rfid.host:
-        rfid.set_reader(host, False)
+    factory_args = dict(
+        report_every_n_tags=args.every_n,
+        antennas=enabled_antennas,
+        tx_power=args.tx_power,
+        tari=args.tari,
+        session=args.session,
+        mode_identifier=None,
+        tag_population=args.tag_population,
+        start_inventory=True,
+        tag_content_selector={
+            "EnableROSpecID": True,
+            "EnableSpecIndex": True,
+            "EnableInventoryParameterSpecID": True,
+            "EnableAntennaID": True,
+            "EnableChannelIndex": True,
+            "EnablePeakRSSI": True,
+            "EnableFirstSeenTimestamp": True,
+            "EnableLastSeenTimestamp": True,
+            "EnableTagSeenCount": True,
+            "EnableAccessSpecID": True,
+            "C1G2EPCMemorySelector": {"EnableCRC": True, "EnablePCBits": True},
+        },
+        impinj_search_mode=args.impinj_search_mode,
+        impinj_tag_content_selector=None,
+    )
 
-    # Start the background thread which manages connection and pings
-    rfid.start()
+    config = LLRPReaderConfig(factory_args)
+    client = LLRPReaderClient(host, port, config)
 
-    # Track state for concise status output
-    last_connectivity: Optional[bool] = None
+    # Shared state
+    stop_event = threading.Event()
     last_print_time = 0.0
     printed_intro = False
 
-    stop_event = threading.Event()
+    def on_tags(reader, tags):
+        nonlocal last_print_time, printed_intro
+        try:
+            if not tags:
+                return
+            for tag in tags:
+                if args.print_json:
+                    try:
+                        print("[TAG] " + json.dumps(tag, ensure_ascii=False))
+                    except Exception:
+                        print(f"[TAG] {tag}")
+                else:
+                    epc, antenna_id, rssi = extract_tag_summary(tag)
+                    details = []
+                    if antenna_id is not None:
+                        details.append(f"ant={antenna_id}")
+                    if rssi is not None:
+                        details.append(f"rssi={rssi}")
+                    suffix = (" (" + ", ".join(details) + ")") if details else ""
+                    print(f"[TAG] {epc}{suffix}")
+            last_print_time = time.time()
+            printed_intro = True
+        except Exception as e:
+            _log(f"Tag callback error: {e}")
+
+    client.add_tag_report_callback(on_tags)
 
     def handle_sigint(signum, frame):
         stop_event.set()
@@ -151,68 +192,26 @@ def main() -> None:
             pass
 
     try:
-        # Wait a short period for initial connection attempt
-        start_wait = time.time()
-        while time.time() - start_wait < 5 and not stop_event.is_set():
-            conn = rfid.get_connectivity_status()
-            if conn:
-                break
-            time.sleep(0.1)
+        _log("Connecting to reader...")
+        client.connect()
+        print("[STATUS] Connected to RFID reader.")
 
-        # Main loop: watch connectivity and stream tags
         while not stop_event.is_set():
-            connected = rfid.get_connectivity_status()
-            if connected != last_connectivity:
-                last_connectivity = connected
-                if connected:
-                    print("[STATUS] Connected to RFID reader.")
-                else:
-                    print("[STATUS] Disconnected from RFID reader.")
-
-            tag_list = rfid.get_last_tag_data()
-            if tag_list:
-                # When a new report arrives, print each tag
-                for tag in tag_list:
-                    if args.__dict__.get("print_json"):
-                        try:
-                            print("[TAG] " + json.dumps(tag, ensure_ascii=False))
-                        except Exception:
-                            print(f"[TAG] {tag}")
-                    else:
-                        epc, antenna_id, rssi = extract_tag_summary(tag)
-                        details = []
-                        if antenna_id is not None:
-                            details.append(f"ant={antenna_id}")
-                        if rssi is not None:
-                            details.append(f"rssi={rssi}")
-                        suffix = (" (" + ", ".join(details) + ")") if details else ""
-                        print(f"[TAG] {epc}{suffix}")
-
-                # Rate-limit non-tag heartbeat prints
-                last_print_time = time.time()
+            now = time.time()
+            if not printed_intro or (now - last_print_time) > 5:
+                print("[WAIT] Listening for tags...")
                 printed_intro = True
-
-            else:
-                # Periodic heartbeat so user knows it's running when idle
-                now = time.time()
-                if not printed_intro or (now - last_print_time) > 5:
-                    if connected:
-                        print("[WAIT] Listening for tags...")
-                    else:
-                        print("[WAIT] Attempting to connect...")
-                    printed_intro = True
-                    last_print_time = now
-
+                last_print_time = now
             time.sleep(0.1)
 
     except KeyboardInterrupt:
         pass
     except Exception as e:
-        logger.error(f"Error in RFID demo: {e}")
+        _log(f"Reader error: {e}")
     finally:
         print("\nStopping reader...")
         try:
-            rfid.stop()
+            LLRPReaderClient.disconnect_all_readers()
         except Exception:
             pass
         print("Done.")
