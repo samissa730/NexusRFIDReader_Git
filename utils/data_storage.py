@@ -1,10 +1,11 @@
 import sqlite3
+import os
 import threading
 import time
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 
-from settings import DATABASE_CONFIG, FILTER_CONFIG
+from settings import DATABASE_CONFIG, FILTER_CONFIG, APP_DIR
 from utils.logger import logger
 
 
@@ -12,7 +13,11 @@ class DataStorage:
     """Handles data storage operations for RFID scan records."""
     
     def __init__(self):
-        self.db_file = DATABASE_CONFIG["db_file"]
+        # Resolve DB path (match POC behavior: file in app directory by default)
+        cfg_db_file = DATABASE_CONFIG["db_file"]
+        self.db_file = (
+            cfg_db_file if os.path.isabs(cfg_db_file) else os.path.join(APP_DIR, cfg_db_file)
+        )
         self.table_name = DATABASE_CONFIG["table_name"]
         self.use_database = DATABASE_CONFIG["use_database"]
         self._lock = threading.Lock()
@@ -31,18 +36,34 @@ class DataStorage:
     def _initialize_database(self):
         """Initialize SQLite database and create table if needed."""
         try:
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(self.db_file), exist_ok=True)
+            # Create SQLite DB (will create file if not exists)
             self.db_connection = sqlite3.connect(self.db_file)
             self.db_cursor = self.db_connection.cursor()
+            # Improve reliability/perf similar to desktop POC usage
+            try:
+                self.db_cursor.execute("PRAGMA journal_mode=WAL;")
+                self.db_cursor.execute("PRAGMA synchronous=NORMAL;")
+            except Exception:
+                pass
             
             # Create table based on schema
             schema = DATABASE_CONFIG["schema"]
-            columns = ", ".join([f"{col} {schema[col]}" for col in schema.keys()])
+            # Preserve column order compatible with POC
+            ordered_cols = [
+                "id","rfidTag","antenna","RSSI","latitude","longitude",
+                "speed","heading","locationCode","username",
+                "tag1","value1","tag2","value2","tag3","value3","tag4","value4",
+                "timestamp"
+            ]
+            columns = ", ".join([f"{col} {schema[col]}" for col in ordered_cols])
             
-            create_table_sql = f'''
+            create_table_sql = f"""
                 CREATE TABLE IF NOT EXISTS {self.table_name} (
                     {columns}
                 )
-            '''
+            """
             
             self.db_cursor.execute(create_table_sql)
             self.db_connection.commit()
@@ -96,15 +117,16 @@ class DataStorage:
                     insert_sql = f'''
                         INSERT INTO {self.table_name}
                         (rfidTag, antenna, RSSI, latitude, longitude, speed, heading, 
-                         locationCode, username, timestamp, tag1, value1, tag2, value2, 
-                         tag3, value3, tag4, value4)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         locationCode, username, tag1, value1, tag2, value2, 
+                         tag3, value3, tag4, value4, timestamp)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     '''
                     
                     self.db_cursor.execute(insert_sql, (
                         rfid_tag, antenna, rssi, latitude, longitude,
-                        speed, heading, location_code, username, timestamp,
-                        tag1, value1, tag2, value2, tag3, value3, tag4, value4
+                        speed, heading, location_code, username,
+                        tag1, value1, tag2, value2, tag3, value3, tag4, value4,
+                        timestamp
                     ))
                     self.db_connection.commit()
                     
