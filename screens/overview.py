@@ -176,6 +176,18 @@ class OverviewScreen(BaseScreen):
             # Get current GPS coordinates
             lat, lon = self.current_lat, self.current_lon
             speed, bearing = self.current_speed, self.current_bearing
+            # If we don't yet have a valid position, try to fetch from GPS immediately
+            if (lat == 0.0 and lon == 0.0) and hasattr(self, 'gps') and self.gps:
+                try:
+                    lat2, lon2 = self.gps.get_coordinates()
+                    if validate_gps_coordinates(lat2, lon2):
+                        lat, lon = lat2, lon2
+                        self.current_lat, self.current_lon = lat2, lon2
+                        spd, brg = self.gps.get_speed_bearing()
+                        speed, bearing = spd, brg
+                        self.current_speed, self.current_bearing = spd, brg
+                except Exception:
+                    pass
             
             # Log concise tag summary and full payload for debugging
             epc_text = str(tag_data.get('EPC-96', ''))
@@ -186,6 +198,15 @@ class OverviewScreen(BaseScreen):
 
             # Update the UI immediately, even if storage fails
             self._update_rfid_display(tag_data, lat, lon, speed, bearing)
+            # Keep GPS display time in sync with tag time (like POC)
+            try:
+                ts_utc = int(tag_data.get('LastSeenTimestampUTC', int(time.time() * 1_000_000)))
+                if hasattr(self.ui, 'last_gps_time'):
+                    self.ui.last_gps_time.setText(get_date_from_utc(ts_utc))
+                if hasattr(self.ui, 'last_gps_read'):
+                    self.ui.last_gps_read.setText(f"{lat}, {lon}")
+            except Exception:
+                pass
 
             # Check if we should store this record
             if self._should_store_record(tag_data, lat, lon, speed):
@@ -212,6 +233,31 @@ class OverviewScreen(BaseScreen):
                 else:
                     logger.error("Failed to store RFID record")
             
+            # Update the on-screen table similar to POC: shift rows and insert latest at top
+            try:
+                if hasattr(self.ui, 'tableWidget'):
+                    time_text = get_date_from_utc(int(tag_data.get('LastSeenTimestampUTC', int(time.time() * 1_000_000))))
+                    coord_text = f"{lat:.4f}".rstrip('0').rstrip('.') + ", " + f"{lon:.4f}".rstrip('0').rstrip('.')
+                    speed_text = f"{speed:.4f}".rstrip('0').rstrip('.')
+                    row_values = [
+                        time_text,
+                        tag_data.get('EPC-96', 'N/A'),
+                        str(tag_data.get('AntennaID', '')),
+                        coord_text,
+                        speed_text,
+                        format_bearing(bearing),
+                    ]
+                    rows = self.ui.tableWidget.rowCount()
+                    cols = min(self.ui.tableWidget.columnCount(), len(row_values))
+                    for r in range(rows - 2, -1, -1):
+                        for c in range(cols):
+                            prev_text = self.ui.tableWidget.item(r, c).text() if self.ui.tableWidget.item(r, c) else ""
+                            self.ui.tableWidget.setItem(r + 1, c, QTableWidgetItem(prev_text))
+                    for c in range(cols):
+                        self.ui.tableWidget.setItem(0, c, QTableWidgetItem(row_values[c]))
+            except Exception as e_tbl:
+                logger.error(f"Error updating RFID table: {e_tbl}")
+
         except Exception as e:
             logger.error(f"Error handling RFID tag detection: {e}")
 
