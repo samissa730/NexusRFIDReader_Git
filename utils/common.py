@@ -212,7 +212,7 @@ def convert_to_decimal(coord: str, direction: str, is_latitude: bool = True) -> 
             minutes = float(coord[3:])
             
         decimal_coord = sign * (degrees + minutes / 60)
-        logger.debug(f"Converted {coord} {direction} to {decimal_coord}")
+        # logger.debug(f"Converted {coord} {direction} to {decimal_coord}")
         return decimal_coord
         
     except ValueError as e:
