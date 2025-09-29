@@ -28,6 +28,90 @@ def convert_to_unicode(obj):
         return obj
 
 
+def _bytes_to_hex_string(value: Any) -> str:
+    """
+    Safely convert bytes-like EPC values to a hex string; otherwise str().
+    """
+    try:
+        if isinstance(value, (bytes, bytearray)):
+            return value.hex()
+        return str(value)
+    except Exception:
+        return str(value)
+
+
+def normalize_tag_fields(raw_tag: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Normalize tag dictionary keys/values to the app's expected schema.
+    Standard keys produced:
+      - 'EPC-96': hex string EPC
+      - 'AntennaID': int
+      - 'PeakRSSI': int
+      - 'LastSeenTimestampUTC': int (microseconds)
+    Other original fields are preserved.
+    """
+    normalized: Dict[str, Any] = dict(raw_tag)
+
+    # Normalize EPC
+    epc_keys = ["EPC-96", "EPC", "epc", "TagID", "id"]
+    epc_val = None
+    for k in epc_keys:
+        if k in raw_tag and raw_tag.get(k) not in (None, ""):
+            epc_val = raw_tag.get(k)
+            break
+    if epc_val is not None:
+        normalized["EPC-96"] = _bytes_to_hex_string(epc_val)
+
+    # Normalize AntennaID
+    ant_keys = ["AntennaID", "antenna", "antenna_id"]
+    ant_val = None
+    for k in ant_keys:
+        if k in raw_tag:
+            ant_val = raw_tag.get(k)
+            break
+    try:
+        if ant_val is not None:
+            normalized["AntennaID"] = int(ant_val)
+    except Exception:
+        pass
+
+    # Normalize RSSI
+    rssi_keys = ["PeakRSSI", "RSSI", "rssi", "peak_rssi"]
+    rssi_val = None
+    for k in rssi_keys:
+        if k in raw_tag:
+            rssi_val = raw_tag.get(k)
+            break
+    try:
+        if rssi_val is not None:
+            normalized["PeakRSSI"] = int(float(rssi_val))
+    except Exception:
+        pass
+
+    # Normalize timestamp
+    ts_keys = [
+        "LastSeenTimestampUTC",
+        "LastSeenTimestamp",
+        "lastSeenTimestamp",
+        "Timestamp",
+        "timestamp",
+    ]
+    ts_val = None
+    for k in ts_keys:
+        if k in raw_tag:
+            ts_val = raw_tag.get(k)
+            break
+    try:
+        if ts_val is None:
+            normalized["LastSeenTimestampUTC"] = int(time.time() * 1_000_000)
+        else:
+            normalized["LastSeenTimestampUTC"] = int(ts_val)
+    except Exception:
+        normalized["LastSeenTimestampUTC"] = int(time.time() * 1_000_000)
+
+    return normalized
+
+
 def parse_args(rfid_host: str) -> ArgumentParser:
     """Parse RFID reader arguments."""
     parser = ArgumentParser(description='Simple RFID Reader Inventory')
@@ -125,7 +209,9 @@ class RFID(QThread):
     def tag_seen_callback(self, reader, tags):
         """Callback function for when tags are detected."""
         if tags:
-            self.tag_data = convert_to_unicode(tags)
+            # Convert and normalize each tag for UI/storage compatibility
+            converted = convert_to_unicode(tags)
+            self.tag_data = [normalize_tag_fields(tag) for tag in converted]
             logger.debug(f"Tags detected: {len(tags)} tags")
             
             # Emit signal for each tag
