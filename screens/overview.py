@@ -148,13 +148,13 @@ class OverviewScreen(BaseScreen):
                         rec = [
                             calculate_next_id(used_ids), tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
                             lat, lon, speed, bearing, "-", self.api.user_name, tag['LastSeenTimestampUTC'],
-                            None, None, None, None, None, None, None, None
+                            "", "", "", "", "", "", "", ""
                         ]
                         self.storage.add_record(rec)
                 else:
                     new_data = [True, tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
                                 lat, lon, speed, bearing, "-", self.api.user_name, tag['LastSeenTimestampUTC'],
-                                None, None, None, None, None, None, None, None]
+                                "", "", "", "", "", "", "", ""]
                     self.storage.add_record(new_data)
 
             # UI updates

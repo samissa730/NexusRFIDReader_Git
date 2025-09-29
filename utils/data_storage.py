@@ -51,11 +51,8 @@ class DataStorage:
     def add_record(self, record_list):
         if self.use_db:
             assert self.db_cursor and self.db_connection
-            self.db_cursor.execute('''
-                SELECT id FROM records
-                ORDER BY id ASC
-            ''')
-            used_ids = self.db_cursor.fetchall()
+            # Ensure NOT NULL columns never receive None
+            record_list = ["" if v is None else v for v in record_list]
             self.db_cursor.execute('''
                 INSERT INTO records
                 (id, rfidTag, antenna, RSSI, latitude, longitude, speed, heading, locationCode, username,
