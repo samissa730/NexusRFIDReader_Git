@@ -34,7 +34,9 @@ def parse_cli_args() -> argparse.Namespace:
     parser.add_argument("--session", default=1, type=int, help="Gen2 session")
     parser.add_argument("--tag-population", default=4, type=int, help="Tag population")
     parser.add_argument("--report-every-n-tags", default=1, type=int, dest="every_n", help="Issue TagReport every N tags")
-    parser.add_argument("--impinj-search-mode", choices=["1", "2"], default="1", help="Impinj search mode (1=single,2=dual)")
+    # Impinj options are disabled by default; enable explicitly if your reader supports them
+    parser.add_argument("--enable-impinj", action="store_true", help="Enable Impinj vendor extensions")
+    parser.add_argument("--impinj-search-mode", choices=["1", "2"], default=None, help="Impinj search mode (1=single,2=dual)")
     parser.add_argument("--print-json", action="store_true", help="Print full tag JSON objects instead of summary")
     return parser.parse_args()
 
@@ -142,9 +144,13 @@ def main() -> None:
             "EnableAccessSpecID": True,
             "C1G2EPCMemorySelector": {"EnableCRC": True, "EnablePCBits": True},
         },
-        impinj_search_mode=args.impinj_search_mode,
-        impinj_tag_content_selector=None,
     )
+
+    # Only include Impinj fields if explicitly enabled
+    if getattr(args, "enable_impinj", False):
+        if getattr(args, "impinj_search_mode", None) is not None:
+            factory_args["impinj_search_mode"] = args.impinj_search_mode
+        factory_args["impinj_tag_content_selector"] = None
 
     config = LLRPReaderConfig(factory_args)
     client = LLRPReaderClient(host, port, config)
