@@ -1,523 +1,236 @@
-import threading
-import time
-from functools import partial
-from typing import Dict, Any
+from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtWidgets import QWidget, QTableWidgetItem
 
-from PySide6.QtCore import Signal, QTimer
-from PySide6.QtWidgets import QWidget, QLineEdit, QTableWidgetItem
-from utils.common import (get_serial, format_coordinates, format_speed, 
-                         format_bearing, get_date_from_utc, validate_gps_coordinates)
 from screens.base import BaseScreen
 from ui.screens.ui_overview import Ui_OverviewScreen
-from utils.gps import GPS
-from utils.rfid import RFID
-from utils.data_storage import DataStorage
-from utils.api_client import APIClient, UploadManager
-from utils.sound_manager import sound_manager
 from utils.logger import logger
-from settings import GPS_CONFIG, RFID_CONFIG, FILTER_CONFIG, API_CREDENTIALS
+from utils.rfid import RFID
+from utils.gps import GPS
+from utils.common import extract_from_gps, get_date_from_utc, pre_config_gps, find_gps_port
+from utils.data_storage import DataStorage
+from utils.api_client import ApiClient
+from settings import GPS_CONFIG, API_CONFIG, RFID_CONFIG, FILTER_CONFIG, DATABASE_CONFIG
+import time
 
 
 class OverviewScreen(BaseScreen):
-    sig_data = Signal(list)
 
     def __init__(self, app, **kwargs):
         super().__init__(app, **kwargs)
         self.ui = Ui_OverviewScreen()
         self.ui.setupUi(self)
-        self.ui.device_id.setText(get_serial())
-        
-        # GPS initialization
+
+        # Prepare table cells (non-editable)
+        for row in range(self.ui.tableWidget.rowCount()):
+            for column in range(self.ui.tableWidget.columnCount()):
+                item = QTableWidgetItem("")
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsSelectable & ~Qt.ItemFlag.ItemIsEditable & ~Qt.ItemFlag.ItemIsEnabled)
+                self.ui.tableWidget.setItem(row, column, item)
+
+        # Init helpers and modules
+        self.api = ApiClient()
+        self.storage = DataStorage(DATABASE_CONFIG.get('use_db', False))
+
+        # GPS init
+        self.last_lat = None
+        self.last_lon = None
+        self.last_utctime = None
+        self.cur_lat = 0
+        self.cur_lon = 0
+        self.bearing = 0
+        self.speed = 0
+
+        baud = pre_config_gps()
+        port = find_gps_port(baud)
         self.gps = None
-        self.gps_data = {}
-        self.last_gps_update = 0
-        self.gps_timer = None
-        
-        # RFID initialization
-        self.rfid = None
-        self.rfid_data = {}
-        self.last_rfid_update = 0
-        
-        # Data storage and API
-        self.data_storage = DataStorage()
-        self.api_client = APIClient()
-        self.upload_manager = None
-        
-        # Current position data
-        self.current_lat = 0.0
-        self.current_lon = 0.0
-        self.current_speed = 0.0
-        self.current_bearing = 0.0
-        
-        # Latest combined values for table
-        self._last_rfid_tag = "N/A"
-        self._last_rfid_antenna = "N/A"
-        
-        # Initialize components
-        self._initialize_gps()
-        self._initialize_rfid()
-        # Start API initialization in background so UI shows immediately
-        threading.Thread(target=self._initialize_api, daemon=True).start()
-        
-        # Setup UI update timer
-        self._setup_update_timer()
-        
-        logger.info("Overview initialized successfully")
-
-    def _initialize_gps(self):
-        """Initialize GPS system based on configuration."""
-        try:
-            gps_type = GPS_CONFIG["type"]
-            self.gps = GPS(gps_type=gps_type)
-            
-            # Connect GPS signals
-            self.gps.sig_status_changed.connect(self._on_gps_status_changed)
-            self.gps.sig_data_updated.connect(self._on_gps_data_updated)
-            self.gps.sig_error_occurred.connect(self._on_gps_error)
-            
-            # Set initial status based on GPS type
-            initial_status = self.gps.get_status()
-            logger.info(f"Setting initial GPS status: {initial_status}")
-            self._update_gps_status(initial_status)
-            
-            # Start GPS thread
+        if GPS_CONFIG.get('use_external', False) and port is not None:
+            self.gps = GPS(port=port, baud_rate=baud)
+            self.gps.sig_msg.connect(self._on_gps_status)
             self.gps.start()
-            
-            logger.info(f"GPS initialized with type: {gps_type}")
-            
-        except Exception as e:
-            logger.error(f"Failed to initialize GPS: {e}")
-            self._update_gps_status("Disconnected")
+        self.internet_gps_timer = QTimer(self)
+        self.internet_gps_timer.timeout.connect(self._poll_internet_gps)
+        if not GPS_CONFIG.get('use_external', False):
+            self.internet_gps_timer.start(4000)
 
-    def _initialize_rfid(self):
-        """Initialize RFID reader system."""
-        try:
-            self.rfid = RFID()
-            
-            # Connect RFID signals
-            self.rfid.sig_msg.connect(self._on_rfid_status_changed)
-            self.rfid.sig_tag_detected.connect(self._on_rfid_tag_detected)
-            
-            # Start RFID thread
-            self.rfid.start()
-            
-            logger.info("RFID reader initialized successfully")
-            
-        except Exception as e:
-            logger.error(f"Failed to initialize RFID: {e}")
-            self.rfid = None
+        # RFID init
+        self.rfid = RFID()
+        self.rfid.sig_msg.connect(self._on_rfid_status)
+        self.rfid.start()
 
-    def _initialize_api(self):
-        """Initialize API client and upload manager."""
-        try:
-            # Prefer token if provided, otherwise fall back to username/password
-            token = (API_CREDENTIALS.get("token") or "").strip()
-            username = (API_CREDENTIALS.get("username") or "").strip()
-            password = (API_CREDENTIALS.get("password") or "").strip()
+        # Schedulers
+        self.health_timer = QTimer(self)
+        self.health_timer.timeout.connect(self._upload_health)
+        self.health_timer.start(int(API_CONFIG.get('health_interval_ms', 15000)))
 
-            if token:
-                self.api_client.token = token
-                logger.info("Using pre-configured API token from settings")
-                self.upload_manager = UploadManager(self.api_client, self.data_storage)
-                self.upload_manager.start()
-            elif username and password:
-                if self.api_client.authenticate(username, password):
-                    self.upload_manager = UploadManager(self.api_client, self.data_storage)
-                    self.upload_manager.start()
-                    logger.info("API client authenticated using username/password")
-                else:
-                    logger.warning("API authentication failed - running in offline mode")
-            else:
-                logger.info("No API credentials provided - running in offline mode")
-                
-        except Exception as e:
-            logger.error(f"Failed to initialize API client: {e}")
-
-    def _setup_update_timer(self):
-        """Setup timer for periodic UI updates."""
-        update_rate = GPS_CONFIG["dashboard"]["update_rate"]
-        self.gps_timer = QTimer()
-        self.gps_timer.timeout.connect(self._update_dashboard)
-        self.gps_timer.start(update_rate * 1000)  # Convert to milliseconds
-
-    def _on_gps_status_changed(self, status: str):
-        """Handle GPS connection status changes."""
-        self._update_gps_status(status)
-        logger.info(f"GPS status changed: {status}")
-
-    def _on_gps_data_updated(self, data: Dict[str, Any]):
-        """Handle new GPS data updates."""
-        self.gps_data = data
-        self.last_gps_update = time.time()
-        self._update_gps_display()
-
-    def _on_gps_error(self, error_message: str):
-        """Handle GPS errors."""
-        logger.error(f"GPS error: {error_message}")
-        self._update_gps_status("Disconnected")
-
-    def _on_rfid_status_changed(self, status: int):
-        """Handle RFID status changes."""
-        if status == 1:  # Connected
-            logger.info("RFID reader connected")
-            self._update_rfid_status("Connected")
-        elif status == 2:  # Disconnected
-            logger.warning("RFID reader disconnected")
-            self._update_rfid_status("Disconnected")
-        elif status == 3:  # Tag detected
-            logger.debug("RFID tag detected")
-
-    def _on_rfid_tag_detected(self, tag_data: Dict[str, Any]):
-        """Handle RFID tag detection."""
-        try:
-            self.rfid_data = tag_data
-            self.last_rfid_update = time.time()
-            
-            # Get current GPS coordinates
-            lat, lon = self.current_lat, self.current_lon
-            speed, bearing = self.current_speed, self.current_bearing
-            # If we don't yet have a valid position, try to fetch from GPS immediately
-            if (lat == 0.0 and lon == 0.0) and hasattr(self, 'gps') and self.gps:
-                try:
-                    lat2, lon2 = self.gps.get_coordinates()
-                    if validate_gps_coordinates(lat2, lon2):
-                        lat, lon = lat2, lon2
-                        self.current_lat, self.current_lon = lat2, lon2
-                        spd, brg = self.gps.get_speed_bearing()
-                        speed, bearing = spd, brg
-                        self.current_speed, self.current_bearing = spd, brg
-                except Exception:
-                    pass
-            
-            # Log concise tag summary and full payload for debugging
-            epc_text = str(tag_data.get('EPC-96', ''))
-            ant_val = tag_data.get('AntennaID', 0)
-            rssi_val = tag_data.get('PeakRSSI', 0)
-            logger.info(f"RFID TAG READ: {epc_text} ant={ant_val} rssi={rssi_val}")
-            logger.debug(f"RFID TAG RAW: {tag_data}")
-
-            # Update the UI immediately, even if storage fails
-            self._update_rfid_display(tag_data, lat, lon, speed, bearing)
-            # Keep GPS display time in sync with tag time (like POC)
-            try:
-                ts_utc = int(tag_data.get('LastSeenTimestampUTC', int(time.time() * 1_000_000)))
-                if hasattr(self.ui, 'last_gps_time'):
-                    self.ui.last_gps_time.setText(get_date_from_utc(ts_utc))
-                if hasattr(self.ui, 'last_gps_read'):
-                    self.ui.last_gps_read.setText(f"{lat}, {lon}")
-            except Exception:
-                pass
-
-            # Check if we should store this record
-            if self._should_store_record(tag_data, lat, lon, speed):
-                # Store the record
-                timestamp = int(time.time() * 1_000_000)
-                success = self.data_storage.store_record(
-                    rfid_tag=tag_data.get('EPC-96', ''),
-                    antenna=tag_data.get('AntennaID', 0),
-                    rssi=tag_data.get('PeakRSSI', 0),
-                    latitude=lat,
-                    longitude=lon,
-                    speed=speed,
-                    heading=bearing,
-                    location_code="-",  # Default location code
-                    username=self.api_client.get_user_id() or "unknown",
-                    timestamp=timestamp
-                )
-                
-                if success:
-                    logger.info(f"Stored RFID record: {tag_data.get('EPC-96', '')}")
-                    
-                    # Play sound notification
-                    sound_manager.play_notification("tag_detected")
-                else:
-                    logger.error("Failed to store RFID record")
-            
-            # Update the on-screen table similar to POC: shift rows and insert latest at top
-            try:
-                if hasattr(self.ui, 'tableWidget'):
-                    time_text = get_date_from_utc(int(tag_data.get('LastSeenTimestampUTC', int(time.time() * 1_000_000))))
-                    coord_text = f"{lat:.4f}".rstrip('0').rstrip('.') + ", " + f"{lon:.4f}".rstrip('0').rstrip('.')
-                    speed_text = f"{speed:.4f}".rstrip('0').rstrip('.')
-                    row_values = [
-                        time_text,
-                        tag_data.get('EPC-96', 'N/A'),
-                        str(tag_data.get('AntennaID', '')),
-                        coord_text,
-                        speed_text,
-                        format_bearing(bearing),
-                    ]
-                    rows = self.ui.tableWidget.rowCount()
-                    cols = min(self.ui.tableWidget.columnCount(), len(row_values))
-                    for r in range(rows - 2, -1, -1):
-                        for c in range(cols):
-                            prev_text = self.ui.tableWidget.item(r, c).text() if self.ui.tableWidget.item(r, c) else ""
-                            self.ui.tableWidget.setItem(r + 1, c, QTableWidgetItem(prev_text))
-                    for c in range(cols):
-                        self.ui.tableWidget.setItem(0, c, QTableWidgetItem(row_values[c]))
-            except Exception as e_tbl:
-                logger.error(f"Error updating RFID table: {e_tbl}")
-
-        except Exception as e:
-            logger.error(f"Error handling RFID tag detection: {e}")
-
-    def _should_store_record(self, tag_data: Dict[str, Any], lat: float, lon: float, speed: float) -> bool:
-        """Check if record should be stored based on filters."""
-        try:
-            # Check speed filter
-            if FILTER_CONFIG["speed"]["enabled"]:
-                min_speed = FILTER_CONFIG["speed"]["min"]
-                max_speed = FILTER_CONFIG["speed"]["max"]
-                if speed < min_speed or speed > max_speed:
-                    return False
-            
-            # Check RSSI filter
-            if FILTER_CONFIG["rssi"]["enabled"]:
-                rssi = tag_data.get('PeakRSSI', 0)
-                min_rssi = FILTER_CONFIG["rssi"]["min"]
-                max_rssi = FILTER_CONFIG["rssi"]["max"]
-                if rssi < min_rssi or rssi > max_rssi:
-                    return False
-            
-            # Check tag range filter
-            if FILTER_CONFIG["tag_range"]["enabled"]:
-                tag_id = int(tag_data.get('EPC-96', '0'))
-                min_tag = FILTER_CONFIG["tag_range"]["min"]
-                max_tag = FILTER_CONFIG["tag_range"]["max"]
-                if tag_id < min_tag or tag_id > max_tag:
-                    return False
-            
-            # Check for duplicates
-            rfid_tag = tag_data.get('EPC-96', '')
-            timestamp = int(time.time() * 1_000_000)
-            if self.data_storage.check_duplicate(rfid_tag, timestamp):
-                logger.debug(f"Duplicate RFID tag detected: {rfid_tag}")
-                return False
-            
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error checking record filters: {e}")
-            return True  # Default to storing if filter check fails
-
-    def _update_gps_status(self, status: str):
-        """Update GPS connection status in UI."""
-        logger.info(f"Updating GPS status to: {status}")
-        # Check if the UI has the GPS status label
-        if hasattr(self.ui, 'gps_connection_status'):
-            self.ui.gps_connection_status.setText(status)
-            logger.info(f"GPS status label updated to: {status}")
-            
-            # Update status color based on connection state
-            if status == "External(Connected)":
-                self.ui.gps_connection_status.setStyleSheet("color: #00ff00;")  # Green
-            elif status == "Internal(Connected)":
-                self.ui.gps_connection_status.setStyleSheet("color: #00bfff;")  # Blue
-            elif status == "Disconnected":
-                self.ui.gps_connection_status.setStyleSheet("color: #ff0000;")  # Red
-            else:
-                # Handle other statuses like "Internal(Connected), External(Disconnected)"
-                if "Internal(Connected)" in status:
-                    self.ui.gps_connection_status.setStyleSheet("color: #00bfff;")  # Blue
-                elif "External(Connected)" in status:
-                    self.ui.gps_connection_status.setStyleSheet("color: #00ff00;")  # Green
-                else:
-                    # All other statuses should show as Disconnected
-                    self.ui.gps_connection_status.setText("Disconnected")
-                    self.ui.gps_connection_status.setStyleSheet("color: #ff0000;")  # Red
-        else:
-            logger.warning("GPS connection status label not found in UI")
-
-    def _update_rfid_status(self, status: str):
-        """Update RFID connection status in UI."""
-        logger.info(f"Updating RFID status to: {status}")
-        # Check if the UI has the RFID status label
-        if hasattr(self.ui, 'rfid_connection_status'):
-            self.ui.rfid_connection_status.setText(status)
-            logger.info(f"RFID status label updated to: {status}")
-            
-            # Update status color based on connection state
-            if status == "Connected":
-                self.ui.rfid_connection_status.setStyleSheet("color: #00ff00;")  # Green
-            elif status == "Disconnected":
-                self.ui.rfid_connection_status.setStyleSheet("color: #ff0000;")  # Red
-        else:
-            logger.warning("RFID connection status label not found in UI")
-
-    def _update_rfid_display(self, tag_data: Dict[str, Any], lat: float, lon: float, speed: float, bearing: float):
-        """Update RFID data display in UI."""
-        try:
-            rfid_tag = tag_data.get('EPC-96', 'N/A')
-            antenna = tag_data.get('AntennaID', 0)
-            rssi = tag_data.get('PeakRSSI', 0)
-            ts_utc = int(tag_data.get('LastSeenTimestampUTC', int(time.time() * 1_000_000)))
-            
-            # Update RFID fields if they exist in UI
-            if hasattr(self.ui, 'last_rfid_read'):
-                self.ui.last_rfid_read.setText(rfid_tag)
-            
-            if hasattr(self.ui, 'last_rfid_time'):
-                time_text = get_date_from_utc(ts_utc)
-                self.ui.last_rfid_time.setText(time_text)
-            
-            # Cache latest RFID fields for table; table is rendered on timer
-            self._last_rfid_tag = rfid_tag
-            self._last_rfid_antenna = str(antenna)
-            
-        except Exception as e:
-            logger.error(f"Error updating RFID display: {e}")
-
-    # (Old per-source table row updaters removed; table is rendered centrally on timer)
-
-    def _update_gps_display(self):
-        """Update GPS data display in UI."""
-        if not self.gps_data:
-            if hasattr(self.ui, 'last_gps_read'):
-                self.ui.last_gps_read.setText("N/A")
-            if hasattr(self.ui, 'last_gps_time'):
-                self.ui.last_gps_time.setText("N/A")
-            return
-
-        try:
-            # Get coordinates
-            lat, lon = self.gps.get_coordinates()
-            
-            if validate_gps_coordinates(lat, lon):
-                # Update current position data
-                self.current_lat = lat
-                self.current_lon = lon
-                
-                # Get speed and bearing
-                speed, bearing = self.gps.get_speed_bearing()
-                self.current_speed = speed
-                self.current_bearing = bearing
-                
-                # Format coordinates for display with full precision
-                coord_text = format_coordinates(lat, lon, precision=6)
-                if hasattr(self.ui, 'last_gps_read'):
-                    self.ui.last_gps_read.setText(coord_text)
-                
-                # Update timestamp
-                current_time = int(time.time() * 1_000_000)
-                time_text = get_date_from_utc(current_time)
-                if hasattr(self.ui, 'last_gps_time'):
-                    self.ui.last_gps_time.setText(time_text)
-                
-                # Cache GPS fields; table is rendered on timer
-                # (No direct table update here to keep one render point)
-                
-            else:
-                if hasattr(self.ui, 'last_gps_read'):
-                    self.ui.last_gps_read.setText("Invalid Coordinates")
-                if hasattr(self.ui, 'last_gps_time'):
-                    self.ui.last_gps_time.setText("N/A")
-                
-        except Exception as e:
-            logger.error(f"Error updating GPS display: {e}")
-            if hasattr(self.ui, 'last_gps_read'):
-                self.ui.last_gps_read.setText("Error")
-            if hasattr(self.ui, 'last_gps_time'):
-                self.ui.last_gps_time.setText("N/A")
-
-    # (Old per-source table row updater removed; use central render)
-
-    def _set_table_row(self, *, time_text: str, tag_text: str, antenna_text: str,
-                        coord_text: str, speed_text: str, bearing_text: str):
-        """Unified helper to set the first row of the table."""
-        try:
-            if hasattr(self.ui, 'tableWidget'):
-                self.ui.tableWidget.setItem(0, 0, QTableWidgetItem(time_text))
-                self.ui.tableWidget.setItem(0, 1, QTableWidgetItem(tag_text))
-                self.ui.tableWidget.setItem(0, 2, QTableWidgetItem(antenna_text))
-                self.ui.tableWidget.setItem(0, 3, QTableWidgetItem(coord_text))
-                self.ui.tableWidget.setItem(0, 4, QTableWidgetItem(speed_text))
-                self.ui.tableWidget.setItem(0, 5, QTableWidgetItem(bearing_text))
-        except Exception as e:
-            logger.error(f"Error setting table row: {e}")
-
-    def _update_dashboard(self):
-        """Periodic dashboard update."""
-        try:
-            # Check if GPS data is stale - but don't override if GPS is actively working
-            if self.gps and self.gps.is_data_stale():
-                # Only set to Disconnected if GPS is truly not working
-                current_status = self.gps.get_status()
-                if current_status not in ["External(Connected)", "Internal(Connected)"]:
-                    self._update_gps_status("Disconnected")
-            
-            # Update signal quality if enabled
-            if GPS_CONFIG["dashboard"]["show_signal_quality"]:
-                self._update_signal_quality()
-            
-            # Render single combined table row with a unified timestamp
-            coord_text = format_coordinates(self.current_lat, self.current_lon, precision=6)
-            speed_text = format_speed(self.current_speed, GPS_CONFIG["processing"]["speed_unit"])
-            bearing_text = format_bearing(self.current_bearing)
-            now_text = get_date_from_utc(int(time.time() * 1_000_000))
-            self._set_table_row(
-                time_text=now_text,
-                tag_text=self._last_rfid_tag,
-                antenna_text=self._last_rfid_antenna,
-                coord_text=coord_text,
-                speed_text=speed_text,
-                bearing_text=bearing_text,
-            )
-                
-        except Exception as e:
-            logger.error(f"Error in dashboard update: {e}")
-
-    def _update_signal_quality(self):
-        """Update GPS signal quality information."""
-        try:
-            if self.gps:
-                quality = self.gps.get_signal_quality()
-                
-                # Add signal quality info to GPS display
-                if quality["status"] != "No Fix" and hasattr(self.ui, 'last_gps_read'):
-                    satellites = quality.get("satellites", 0)
-                    accuracy = quality.get("accuracy", 0)
-                    
-                    # Append signal info to coordinates
-                    current_text = self.ui.last_gps_read.text()
-                    if current_text != "N/A" and current_text != "Error":
-                        signal_info = f" ({satellites} sats, {accuracy:.0f}m)"
-                        if signal_info not in current_text:
-                            self.ui.last_gps_read.setText(current_text + signal_info)
-                            
-        except Exception as e:
-            logger.error(f"Error updating signal quality: {e}")
+        self.upload_timer = QTimer(self)
+        self.upload_timer.timeout.connect(self._upload_records)
+        self.upload_timer.start(int(API_CONFIG.get('record_interval_ms', 7000)))
 
     def on_leave(self):
-        """Cleanup when leaving the screen."""
-        try:
-            # Stop timers
-            if self.gps_timer:
-                self.gps_timer.stop()
-            
-            # Stop GPS
-            if self.gps:
-                self.gps.stop()
-            
-            # Stop RFID
-            if self.rfid:
-                self.rfid.stop()
-            
-            # Stop upload manager
-            if self.upload_manager:
-                self.upload_manager.stop()
-            
-            # Close data storage
-            if self.data_storage:
-                self.data_storage.close()
-            
-            # Close API client
-            if self.api_client:
-                self.api_client.close()
-            
-            # Cleanup sound manager
-            sound_manager.cleanup()
-                
-        except Exception as e:
-            logger.error(f"Error during cleanup: {e}")
-        
-        super().on_leave()
+        if self.gps and self.gps.isRunning():
+            self.gps.stop()
+        if self.rfid and self.rfid.isRunning():
+            self.rfid.stop()
+        self.storage.close()
+
+    def _on_gps_status(self, status):
+        if status:
+            self.ui.gps_connection_status.setStyleSheet("""
+                padding: 5px;
+                border: 1px solid black;
+                color: green;
+                """)
+            self.ui.gps_connection_status.setText("Connected")
+        else:
+            self.ui.gps_connection_status.setStyleSheet("""
+                padding: 5px;
+                border: 1px solid black;
+                color: red;
+                """)
+            self.ui.gps_connection_status.setText("Disconnected")
+
+    def _on_rfid_status(self, status):
+        if status == 1:
+            self.ui.rfid_connection_status.setStyleSheet("""
+                padding: 5px;
+                border: 1px solid black;
+                color: green;
+                """)
+            self.ui.rfid_connection_status.setText("Connected")
+        elif status == 2:
+            self.ui.rfid_connection_status.setStyleSheet("""
+                padding: 5px;
+                border: 1px solid black;
+                color: red;
+                """)
+            self.ui.rfid_connection_status.setText("Disconnected")
+        elif status == 3:
+            tag = self.rfid.tag_data[0]
+            lat, lon, speed, bearing = 0, 0, 0, 0
+            if GPS_CONFIG.get('use_external', False) and self.gps:
+                lat, lon = extract_from_gps(self.gps.get_data())
+                if lat != 0 and lon != 0:
+                    self.last_lat = lat
+                    self.last_lon = lon
+                    self.last_utctime = int(time.time() * 1_000_000)
+                speed, bearing = self.gps.get_sdata()
+            else:
+                lat, lon, speed, bearing = self.cur_lat, self.cur_lon, self.speed, self.bearing
+
+            upload_flag = True
+            # Apply filters from settings
+            sp = FILTER_CONFIG.get('speed', {})
+            if sp.get('enabled'):
+                min_s = sp.get('min')
+                max_s = sp.get('max')
+                if min_s is not None and max_s is not None and (speed < min_s or speed > max_s):
+                    upload_flag = False
+
+            if upload_flag:
+                rs = FILTER_CONFIG.get('rssi', {})
+                if rs.get('enabled'):
+                    min_r = rs.get('min')
+                    max_r = rs.get('max')
+                    if min_r is not None and max_r is not None and (tag['PeakRSSI'] < min_r or tag['PeakRSSI'] > max_r):
+                        upload_flag = False
+
+            if upload_flag:
+                tr = FILTER_CONFIG.get('tag_range', {})
+                if tr.get('enabled'):
+                    min_t = tr.get('min')
+                    max_t = tr.get('max')
+                    try:
+                        epc = int(tag['EPC-96'])
+                        if min_t is not None and max_t is not None and (epc < min_t or epc > max_t):
+                            upload_flag = False
+                    except Exception:
+                        upload_flag = False
+
+            if upload_flag:
+                if self.storage.use_db:
+                    # Prevent duplicates within 10 seconds
+                    assert self.storage.db_cursor
+                    self.storage.db_cursor.execute('''
+                        SELECT * FROM records
+                        WHERE rfidTag = ?
+                        AND ABS(timestamp - ?) < 10000000
+                    ''', (tag['EPC-96'], tag['LastSeenTimestampUTC']))
+                    rows = self.storage.db_cursor.fetchall()
+                    if not rows:
+                        # Prepare record list with explicit id
+                        assert self.storage.db_cursor
+                        self.storage.db_cursor.execute('SELECT id FROM records ORDER BY id ASC')
+                        used_ids = self.storage.db_cursor.fetchall()
+                        rec = [
+                            calculate_next_id(used_ids), tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
+                            lat, lon, speed, bearing, "-", self.api.user_name, tag['LastSeenTimestampUTC'],
+                            None, None, None, None, None, None, None, None
+                        ]
+                        self.storage.add_record(rec)
+                else:
+                    new_data = [True, tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
+                                lat, lon, speed, bearing, "-", self.api.user_name, tag['LastSeenTimestampUTC'],
+                                None, None, None, None, None, None, None, None]
+                    self.storage.add_record(new_data)
+
+            # UI updates
+            self._refresh_table([get_date_from_utc(tag['LastSeenTimestampUTC']), tag['EPC-96'], f"{tag['AntennaID']}",
+                                 f"{lat:.4f}".rstrip('0').rstrip('.') + ", " + f"{lon:.4f}".rstrip('0').rstrip('.'),
+                                 f"{speed:.4f}".rstrip('0').rstrip('.'), f"{bearing}"])
+            self.ui.last_rfid_read.setText(tag['EPC-96'])
+            self.ui.last_rfid_time.setText(get_date_from_utc(tag['LastSeenTimestampUTC']))
+            self.ui.last_gps_read.setText(f"{lat}, {lon}")
+            self.ui.last_gps_time.setText(get_date_from_utc(tag['LastSeenTimestampUTC']))
+
+    def _refresh_table(self, new_data):
+        for row in range(self.ui.tableWidget.rowCount() - 2, -1, -1):
+            for column in range(self.ui.tableWidget.columnCount()):
+                item = self.ui.tableWidget.item(row, column).text()
+                self.ui.tableWidget.setItem(row + 1, column, QTableWidgetItem(item))
+        for column in range(self.ui.tableWidget.columnCount()):
+            self.ui.tableWidget.setItem(0, column, QTableWidgetItem(new_data[column]))
+
+    def _poll_internet_gps(self):
+        # Optional: implement an IP-based location provider if configured
+        # noop placeholder; user can add later if needed
+        pass
+
+    def _upload_health(self):
+        lat, lon = (0, 0)
+        if self.gps:
+            lat, lon = extract_from_gps(self.gps.get_data())
+        gps_text = self.ui.gps_connection_status.text()
+        self.api.upload_health(bool(self.rfid.connectivity), gps_text, lat, lon)
+
+    def _upload_records(self):
+        data = self.storage.fetch_all_records()
+        if not data:
+            return
+        payload = {"spotterId": API_CONFIG.get('spotter_id', '0'), "data": []}
+        for row in data:
+            # adapt to default payload (minimal)
+            payload["data"].append({
+                "tag": row[1],
+                "ant": row[2],
+                "lat": row[4],
+                "lng": row[5],
+                "speed": row[6],
+                "heading": row[7],
+                "locationCode": row[8]
+            })
+        if self.api.upload_records(payload):
+            # best-effort pruning, rely on DB cleanup intervals otherwise
+            self.storage.prune_old()
+
+
+def calculate_next_id(used_ids):
+    smallest_available_id = 1
+    for record in used_ids:
+        current_id = record[0]
+        if current_id == smallest_available_id:
+            smallest_available_id += 1
+        else:
+            break
+    return smallest_available_id
+
+
