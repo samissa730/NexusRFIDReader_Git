@@ -6,7 +6,7 @@ from ui.screens.ui_overview import Ui_OverviewScreen
 from utils.logger import logger
 from utils.rfid import RFID
 from utils.gps import GPS
-from utils.common import extract_from_gps, get_date_from_utc, pre_config_gps, find_gps_port, calculate_speed_bearing
+from utils.common import extract_from_gps, get_date_from_utc, pre_config_gps, find_gps_port, calculate_speed_bearing, get_processor_id
 from utils.data_storage import DataStorage
 from utils.api_client import ApiClient
 from settings import GPS_CONFIG, API_CONFIG, RFID_CONFIG, FILTER_CONFIG, DATABASE_CONFIG
@@ -31,6 +31,10 @@ class OverviewScreen(BaseScreen):
         # Init helpers and modules
         self.api = ApiClient()
         self.storage = DataStorage(DATABASE_CONFIG.get('use_db', False))
+        
+        # Set device ID using processor ID
+        device_id = get_processor_id()
+        self.ui.device_id.setText(device_id)
 
         # GPS init
         self.last_lat = None
@@ -65,11 +69,18 @@ class OverviewScreen(BaseScreen):
         self.upload_timer.timeout.connect(self._upload_records)
         self.upload_timer.start(int(API_CONFIG.get('record_interval_ms', 7000)))
 
+        # GPS display update timer
+        self.gps_display_timer = QTimer(self)
+        self.gps_display_timer.timeout.connect(self._update_gps_display)
+        self.gps_display_timer.start(2000)  # Update every 2 seconds
+
     def on_leave(self):
         if self.gps and self.gps.isRunning():
             self.gps.stop()
         if self.rfid and self.rfid.isRunning():
             self.rfid.stop()
+        if hasattr(self, 'gps_display_timer'):
+            self.gps_display_timer.stop()
         self.storage.close()
 
     def _set_gps_status(self, text, ok):
@@ -205,6 +216,11 @@ class OverviewScreen(BaseScreen):
                 self.last_lon = cur_lon
                 self.last_utctime = milliseconds_time
                 self.cur_lat, self.cur_lon = cur_lat, cur_lon
+                
+                # Update GPS display fields with internal GPS data
+                self.ui.last_gps_read.setText(f"{cur_lat:.7f}, {cur_lon:.7f}")
+                self.ui.last_gps_time.setText(get_date_from_utc(milliseconds_time))
+                
                 if self.ui.gps_connection_status.text() != "External GPS Connected":
                     self._set_gps_status("Internal GPS Connected", True)
         except Exception:
@@ -251,6 +267,22 @@ class OverviewScreen(BaseScreen):
             lat, lon = extract_from_gps(self.gps.get_data())
         gps_text = self.ui.gps_connection_status.text()
         self.api.upload_health(bool(self.rfid.connectivity), gps_text, lat, lon)
+
+    def _update_gps_display(self):
+        """Update GPS display fields with current GPS data"""
+        if self.gps and self.gps.isRunning():
+            # External GPS
+            lat, lon = extract_from_gps(self.gps.get_data())
+            if lat != 0 and lon != 0:
+                speed, bearing = self.gps.get_sdata()
+                current_time = int(time.time() * 1_000_000)
+                self.ui.last_gps_read.setText(f"{lat:.7f}, {lon:.7f}")
+                self.ui.last_gps_time.setText(get_date_from_utc(current_time))
+        elif self.cur_lat != 0 and self.cur_lon != 0:
+            # Internal GPS (internet-based)
+            self.ui.last_gps_read.setText(f"{self.cur_lat:.7f}, {self.cur_lon:.7f}")
+            if self.last_utctime:
+                self.ui.last_gps_time.setText(get_date_from_utc(self.last_utctime))
 
     def _upload_records(self):
         data = self.storage.fetch_all_records()

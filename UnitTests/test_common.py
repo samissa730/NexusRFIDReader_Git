@@ -1,6 +1,10 @@
 import unittest
 from unittest import mock
+import sys
+import os
 
+# Add the project root to the path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 class TestCommon(unittest.TestCase):
     def setUp(self):
@@ -81,6 +85,81 @@ class TestCommon(unittest.TestCase):
             mser.tools.list_ports.comports.return_value = fake_ports
             port = self.c.find_gps_port(4800)
             self.assertIsNone(port)
+
+    def test_get_processor_id_windows(self):
+        """Test get_processor_id on Windows"""
+        with mock.patch('platform.system', return_value='Windows'), \
+             mock.patch('subprocess.run') as mock_run:
+            # Mock successful wmic command
+            mock_result = mock.MagicMock()
+            mock_result.returncode = 0
+            mock_result.stdout = "ProcessorId\r\nBFEBFBFF00090672\r\n\r\n"
+            mock_run.return_value = mock_result
+            
+            processor_id = self.c.get_processor_id()
+            self.assertEqual(processor_id, "BFEBFBFF00090672")
+            mock_run.assert_called_once_with(['wmic', 'cpu', 'get', 'ProcessorId'], 
+                                           capture_output=True, text=True, timeout=10)
+
+    def test_get_processor_id_windows_fallback(self):
+        """Test get_processor_id fallback to MAC address on Windows when wmic fails"""
+        with mock.patch('platform.system', return_value='Windows'), \
+             mock.patch('subprocess.run') as mock_run, \
+             mock.patch.object(self.c, 'get_mac_address', return_value='AA:BB:CC:DD:EE:FF') as mock_mac:
+            # Mock failed wmic command
+            mock_result = mock.MagicMock()
+            mock_result.returncode = 1
+            mock_run.return_value = mock_result
+            
+            processor_id = self.c.get_processor_id()
+            self.assertEqual(processor_id, 'AA:BB:CC:DD:EE:FF')
+            mock_mac.assert_called_once()
+
+    def test_get_processor_id_linux_raspberry_pi(self):
+        """Test get_processor_id on Linux (Raspberry Pi)"""
+        with mock.patch('platform.system', return_value='Linux'), \
+             mock.patch('os.path.exists', return_value=True), \
+             mock.patch('builtins.open', mock.mock_open(read_data="Serial\t\t: 1234567890abcdef\n")):
+            
+            processor_id = self.c.get_processor_id()
+            self.assertEqual(processor_id, "1234567890abcdef")
+
+    def test_get_processor_id_linux_fallback(self):
+        """Test get_processor_id fallback to MAC address on Linux when /proc/cpuinfo fails"""
+        with mock.patch('platform.system', return_value='Linux'), \
+             mock.patch('os.path.exists', return_value=False), \
+             mock.patch.object(self.c, 'get_mac_address', return_value='AA:BB:CC:DD:EE:FF') as mock_mac:
+            
+            processor_id = self.c.get_processor_id()
+            self.assertEqual(processor_id, 'AA:BB:CC:DD:EE:FF')
+            mock_mac.assert_called_once()
+
+    def test_get_processor_id_exception_handling(self):
+        """Test get_processor_id handles exceptions gracefully"""
+        with mock.patch('platform.system', return_value='Windows'), \
+             mock.patch('subprocess.run', side_effect=Exception("Test exception")), \
+             mock.patch.object(self.c, 'get_mac_address', return_value='AA:BB:CC:DD:EE:FF') as mock_mac:
+            
+            processor_id = self.c.get_processor_id()
+            self.assertEqual(processor_id, 'AA:BB:CC:DD:EE:FF')
+            mock_mac.assert_called_once()
+
+    def test_find_smallest_available_id(self):
+        """Test find_smallest_available_id function"""
+        # Test with consecutive IDs starting from 1
+        used_ids = [(1,), (2,), (3,), (4,)]
+        result = self.c.find_smallest_available_id(used_ids)
+        self.assertEqual(result, 5)
+        
+        # Test with gap in IDs
+        used_ids = [(1,), (2,), (4,), (5,)]
+        result = self.c.find_smallest_available_id(used_ids)
+        self.assertEqual(result, 3)
+        
+        # Test with empty list
+        used_ids = []
+        result = self.c.find_smallest_available_id(used_ids)
+        self.assertEqual(result, 1)
 
 
 if __name__ == '__main__':

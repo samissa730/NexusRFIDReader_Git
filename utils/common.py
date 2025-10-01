@@ -2,6 +2,8 @@ import re
 import time
 import uuid
 import platform
+import subprocess
+import os
 from datetime import datetime
 
 from geopy.distance import geodesic
@@ -133,5 +135,45 @@ def find_smallest_available_id(used_ids):
         else:
             break
     return smallest_available_id
+
+
+def get_processor_id():
+    """
+    Get the processor ID for both Windows and Raspberry Pi systems.
+    Returns the full processor ID as a string.
+    """
+    try:
+        if platform.system() == 'Windows':
+            # For Windows, use wmic to get processor ID
+            result = subprocess.run(['wmic', 'cpu', 'get', 'ProcessorId'], 
+                                 capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                # Clean up the output - remove extra whitespace and carriage returns
+                output = result.stdout.replace('\r', '').strip()
+                lines = [line.strip() for line in output.split('\n') if line.strip()]
+                
+                # Find the line with the actual processor ID (not the header)
+                for line in lines:
+                    if line and line != 'ProcessorId' and len(line) > 8:  # Processor ID should be longer than 8 chars
+                        logger.info(f"Found processor ID: {line}")
+                        return line
+                        
+        elif platform.system() == 'Linux':
+            # For Raspberry Pi, read the serial number from /proc/cpuinfo
+            if os.path.exists('/proc/cpuinfo'):
+                with open('/proc/cpuinfo', 'r') as f:
+                    content = f.read()
+                    for line in content.split('\n'):
+                        if line.startswith('Serial'):
+                            serial = line.split(':')[1].strip()
+                            if serial and serial != '0000000000000000':  # Avoid default/empty serial
+                                logger.info(f"Found Raspberry Pi serial: {serial}")
+                                return serial
+    except Exception as e:
+        logger.warning(f"Failed to get processor ID: {e}")
+    
+    # Fallback to MAC address if processor ID cannot be obtained
+    logger.info("Using MAC address as fallback for device ID")
+    return get_mac_address()
 
 
