@@ -27,7 +27,7 @@ GPS_CONFIG = {
 
 # RFID Configuration - edit these values directly
 RFID_CONFIG = {
-    "host": "169.254.238.174",
+    "host": "169.254.10.1",
     "port": 5084,
     "report_every_n_tags": 1,
     "antennas": "1",
