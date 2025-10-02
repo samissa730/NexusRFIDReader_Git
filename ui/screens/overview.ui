@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1080</width>
+    <width>800</width>
     <height>480</height>
    </rect>
   </property>
@@ -613,10 +613,10 @@ border-bottom: 2px solid #404040;</string>
         <bool>true</bool>
        </attribute>
        <attribute name="horizontalHeaderMinimumSectionSize">
-        <number>175</number>
+        <number>70</number>
        </attribute>
        <attribute name="horizontalHeaderDefaultSectionSize">
-        <number>175</number>
+        <number>70</number>
        </attribute>
        <attribute name="horizontalHeaderHighlightSections">
         <bool>true</bool>

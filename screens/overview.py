@@ -29,6 +29,15 @@ class OverviewScreen(BaseScreen):
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsSelectable & ~Qt.ItemFlag.ItemIsEditable & ~Qt.ItemFlag.ItemIsEnabled)
                 self.ui.tableWidget.setItem(row, column, item)
 
+        # Set custom column widths
+        # Columns: Time, Tag, Antenna, Position, Speed, Heading
+        self.ui.tableWidget.setColumnWidth(0, 140)  # Time
+        self.ui.tableWidget.setColumnWidth(1, 200)  # Tag
+        self.ui.tableWidget.setColumnWidth(2, 70)   # Antenna
+        self.ui.tableWidget.setColumnWidth(3, 200)  # Position
+        self.ui.tableWidget.setColumnWidth(4, 80)   # Speed
+        self.ui.tableWidget.setColumnWidth(5, 80)   # Heading
+
         # Init helpers and modules
         self.api = ApiClient()
         self.storage = DataStorage(DATABASE_CONFIG.get('use_db', False))
