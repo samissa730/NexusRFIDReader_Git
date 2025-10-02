@@ -9,9 +9,10 @@ from utils.gps import GPS
 from utils.common import extract_from_gps, get_date_from_utc, pre_config_gps, find_gps_port, calculate_speed_bearing, get_processor_id
 from utils.data_storage import DataStorage
 from utils.api_client import ApiClient
-from settings import GPS_CONFIG, API_CONFIG, RFID_CONFIG, FILTER_CONFIG, DATABASE_CONFIG
+from settings import API_CONFIG, FILTER_CONFIG, DATABASE_CONFIG
 import time
 import requests
+from ping3 import ping
 
 
 class OverviewScreen(BaseScreen):
@@ -74,6 +75,12 @@ class OverviewScreen(BaseScreen):
         self.gps_display_timer.timeout.connect(self._update_gps_display)
         self.gps_display_timer.start(2000)  # Update every 2 seconds
 
+        # Internet status check timer
+        self.internet_timer = QTimer(self)
+        self.internet_timer.timeout.connect(self._check_internet_status)
+        self.internet_timer.start(5000)  # Check every 5 seconds
+        self._check_internet_status()  # Initial check
+
     def on_leave(self):
         if self.gps and self.gps.isRunning():
             self.gps.stop()
@@ -81,11 +88,17 @@ class OverviewScreen(BaseScreen):
             self.rfid.stop()
         if hasattr(self, 'gps_display_timer'):
             self.gps_display_timer.stop()
+        if hasattr(self, 'internet_timer'):
+            self.internet_timer.stop()
         self.storage.close()
 
     def _set_gps_status(self, text, ok):
         self.ui.gps_connection_status.setStyleSheet("""color: #00ff00;""" if ok else """color: #ff0000;""")
         self.ui.gps_connection_status.setText(text)
+
+    def _set_internet_status(self, text, ok):
+        self.ui.internet_status.setStyleSheet("""color: #00ff00;""" if ok else """color: #ff0000;""")
+        self.ui.internet_status.setText(text)
 
     def _on_gps_status(self, status):
         # Called by external GPS worker
@@ -283,6 +296,20 @@ class OverviewScreen(BaseScreen):
             self.ui.last_gps_read.setText(f"{self.cur_lat:.7f}, {self.cur_lon:.7f}")
             if self.last_utctime:
                 self.ui.last_gps_time.setText(get_date_from_utc(self.last_utctime))
+
+    def _check_internet_status(self):
+        """Check internet connectivity by pinging Google DNS"""
+        try:
+            response_time = ping("8.8.8.8", timeout=3)
+            if response_time is not None:
+                self._set_internet_status("Connected", True)
+                logger.debug(f"Internet ping successful: {response_time:.2f}ms")
+            else:
+                self._set_internet_status("Disconnected", False)
+                logger.debug("Internet ping failed: no response")
+        except Exception as e:
+            self._set_internet_status("Disconnected", False)
+            logger.debug(f"Internet ping error: {e}")
 
     def _upload_records(self):
         data = self.storage.fetch_all_records()
