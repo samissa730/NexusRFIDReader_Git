@@ -324,18 +324,25 @@ class OverviewScreen(BaseScreen):
         data = self.storage.fetch_all_records()
         if not data:
             return
-        payload = {"spotterId": API_CONFIG.get('spotter_id', '0'), "data": []}
+        payload = []
+        device_id = get_processor_id()
+        site_id = API_CONFIG.get('site_id', '')
+        
         for row in data:
-            # adapt to default payload (minimal)
-            payload["data"].append({
-                "tag": row[1],
-                "ant": row[2],
-                "lat": row[4],
-                "lng": row[5],
-                "speed": row[6],
-                "heading": row[7],
-                "locationCode": row[8]
-            })
+            # adapt to new API format
+            record = {
+                "rfidTag": row[1],  # rfidTag
+                "latitude": row[4],  # latitude
+                "longitude": row[5],  # longitude
+                "speed": row[6],  # speed
+                "deviceId": device_id,  # deviceId from get_processor_id()
+                "barrier": "50",  # default barrier value
+                "siteId": site_id,  # siteId from settings
+                "isProcessed": False,  # default to False
+                "antenna": int(row[2]) if row[2] else 1  # antenna number
+            }
+            payload.append(record)
+        
         if self.api.upload_records(payload):
             # best-effort pruning, rely on DB cleanup intervals otherwise
             self.storage.prune_old()

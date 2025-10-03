@@ -50,6 +50,7 @@ API_CONFIG = {
     "token": "",      # set bearer token here if using token auth
     "user_name": "NexusUser",
     "spotter_id": "120",
+    "site_id": "NexusLocate",  # siteId for new API format
     # intervals
     "record_interval_ms": 7000,
     "health_interval_ms": 15000,

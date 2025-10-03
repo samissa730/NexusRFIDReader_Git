@@ -36,6 +36,8 @@ class TestApiClient(unittest.TestCase):
         client.token = None
         h = client._headers()
         self.assertEqual(h['Content-Type'], 'application/json')
+        self.assertEqual(h['accept'], 'application/json')
+        self.assertEqual(h['idempotency-Key'], '1')
         self.assertNotIn('Authorization', h)
         client.token = 'abc'
         h2 = client._headers()
@@ -100,7 +102,20 @@ class TestApiClient(unittest.TestCase):
     def test_upload_records_success_failure_exception(self):
         client = self.api.ApiClient()
         client.record_url = 'https://example/rec'
-        payload = {'data': []}
+        # New API format - array of records instead of wrapped object
+        payload = [
+            {
+                "rfidTag": "019817e3-daa8-76e0-a844-c639ed12ac32",
+                "latitude": 33.00652,
+                "longitude": -96.6927,
+                "speed": 15,
+                "deviceId": "1234-er45-65d5-86gh",
+                "barrier": "50",
+                "siteId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                "isProcessed": False,
+                "antenna": 1
+            }
+        ]
         with mock.patch.object(client, '_session') as ms, \
              mock.patch.object(client, '_headers', return_value={'Authorization': 'x'}):
             sess = mock.MagicMock()

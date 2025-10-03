@@ -51,7 +51,11 @@ class ApiClient:
         return False
 
     def _headers(self):
-        headers = {"Content-Type": "application/json"}
+        headers = {
+            "Content-Type": "application/json",
+            "accept": "application/json",
+            "idempotency-Key": "1"
+        }
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
         return headers
