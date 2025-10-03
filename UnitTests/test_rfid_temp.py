@@ -108,6 +108,48 @@ class TestRFIDConfig(unittest.TestCase):
         args = self.r._parse_args_from_settings({'antennas': '1, 2, 3'})
         self.assertEqual(args['antennas'], '1, 2, 3')
 
+    def test_check_rfid_health_connected(self):
+        """Health check returns status True when TCP connect succeeds"""
+        with mock.patch('utils.rfid_temp.socket.create_connection') as mock_conn:
+            mock_conn.return_value.__enter__.return_value = object()
+            result = self.r.check_rfid_health()
+            self.assertTrue(result['status'])
+            self.assertIn('last_time_us', result)
+            self.assertIsInstance(result['last_time_us'], int)
+
+    def test_check_rfid_health_disconnected(self):
+        """Health check returns status False when TCP connect fails"""
+        with mock.patch('utils.rfid_temp.socket.create_connection', side_effect=Exception('no connect')):
+            result = self.r.check_rfid_health()
+            self.assertFalse(result['status'])
+            self.assertIn('last_time_us', result)
+            self.assertIsInstance(result['last_time_us'], int)
+
+    def test_rfidtemp_initializes_reader_and_callback(self):
+        """RFIDTemp wires reader and tag callback using create_rfid_config"""
+        fake_cfg = object()
+        with mock.patch('utils.rfid_temp.create_rfid_config', return_value=(fake_cfg, '1.2.3.4', 1234)) as m_cfg, \
+             mock.patch('utils.rfid_temp.LLRPReaderClient') as m_client:
+            instance = m_client.return_value
+            instance.add_tag_report_callback = mock.Mock()
+
+            reader = self.r.RFIDTemp()
+
+            m_cfg.assert_called_once()
+            m_client.assert_called_once_with('1.2.3.4', 1234, fake_cfg)
+            instance.add_tag_report_callback.assert_called_once()
+
+    def test_rfidtemp_on_tag_report_sets_tag_data(self):
+        """_on_tag_report stores last tag data (unicode-converted)"""
+        fake_cfg = object()
+        with mock.patch('utils.rfid_temp.create_rfid_config', return_value=(fake_cfg, '1.2.3.4', 1234)), \
+             mock.patch('utils.rfid_temp.LLRPReaderClient'):
+            reader = self.r.RFIDTemp()
+            tags = [{'EPC-96': b'ABC123', 'LastSeenTimestampUTC': 100}]
+            reader._on_tag_report(None, tags)
+            self.assertIsNotNone(reader.tag_data)
+            self.assertEqual(reader.tag_data[0]['EPC-96'], 'ABC123')
+
 
 if __name__ == '__main__':
     unittest.main()
