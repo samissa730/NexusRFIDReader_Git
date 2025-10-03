@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>800</width>
+    <width>1080</width>
     <height>480</height>
    </rect>
   </property>
@@ -613,10 +613,10 @@ border-bottom: 2px solid #404040;</string>
         <bool>true</bool>
        </attribute>
        <attribute name="horizontalHeaderMinimumSectionSize">
-        <number>70</number>
+        <number>175</number>
        </attribute>
        <attribute name="horizontalHeaderDefaultSectionSize">
-        <number>70</number>
+        <number>175</number>
        </attribute>
        <attribute name="horizontalHeaderHighlightSections">
         <bool>true</bool>
@@ -725,10 +725,11 @@ border-bottom: 2px solid #404040;</string>
              </font>
             </property>
             <property name="styleSheet">
-             <string notr="true">color: #ffffff;</string>
+             <string notr="true">color: #ffffff;
+border-bottom: 2px solid #404040;</string>
             </property>
             <property name="text">
-             <string>Site Details</string>
+             <string>Site Details:</string>
             </property>
             <property name="alignment">
              <set>Qt::AlignmentFlag::AlignCenter</set>
@@ -883,7 +884,7 @@ border-bottom: 2px solid #404040;</string>
     border-left: 0px;
 }</string>
          </property>
-         <layout class="QVBoxLayout" name="verticalLayout_5" stretch="0,0">
+         <layout class="QVBoxLayout" name="verticalLayout_5" stretch="0,0,0">
           <property name="spacing">
            <number>2</number>
           </property>
@@ -909,7 +910,8 @@ border-bottom: 2px solid #404040;</string>
              </font>
             </property>
             <property name="styleSheet">
-             <string notr="true">color: #ffffff;</string>
+             <string notr="true">color: #ffffff;
+border-bottom: 2px solid #404040;</string>
             </property>
             <property name="text">
              <string>Network Health</string>
@@ -942,7 +944,7 @@ border-bottom: 2px solid #404040;</string>
                <property name="font">
                 <font>
                  <family>Gilroy</family>
-                 <pointsize>13</pointsize>
+                 <pointsize>11</pointsize>
                  <bold>true</bold>
                 </font>
                </property>
@@ -950,7 +952,7 @@ border-bottom: 2px solid #404040;</string>
                 <string notr="true">color: #ffffff;</string>
                </property>
                <property name="text">
-                <string>Internet Status: </string>
+                <string>WiFi Status: </string>
                </property>
                <property name="alignment">
                 <set>Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter</set>
@@ -958,11 +960,68 @@ border-bottom: 2px solid #404040;</string>
               </widget>
              </item>
              <item>
-              <widget class="QLabel" name="internet_status">
+              <widget class="QLabel" name="wifi_status">
                <property name="font">
                 <font>
                  <family>Gilroy</family>
-                 <pointsize>13</pointsize>
+                 <pointsize>10</pointsize>
+                </font>
+               </property>
+               <property name="styleSheet">
+                <string notr="true">color: #ffffff;</string>
+               </property>
+               <property name="text">
+                <string>N/A</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <widget class="QWidget" name="widget_13" native="true">
+            <layout class="QHBoxLayout" name="horizontalLayout_11">
+             <property name="spacing">
+              <number>4</number>
+             </property>
+             <property name="leftMargin">
+              <number>0</number>
+             </property>
+             <property name="topMargin">
+              <number>0</number>
+             </property>
+             <property name="rightMargin">
+              <number>0</number>
+             </property>
+             <property name="bottomMargin">
+              <number>0</number>
+             </property>
+             <item>
+              <widget class="QLabel" name="label_23">
+               <property name="font">
+                <font>
+                 <family>Gilroy</family>
+                 <pointsize>11</pointsize>
+                 <bold>true</bold>
+                </font>
+               </property>
+               <property name="styleSheet">
+                <string notr="true">color: #ffffff;</string>
+               </property>
+               <property name="text">
+                <string>Cellular Status: </string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter</set>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="cellular_status">
+               <property name="font">
+                <font>
+                 <family>Gilroy</family>
+                 <pointsize>10</pointsize>
                 </font>
                </property>
                <property name="styleSheet">

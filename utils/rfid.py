@@ -1,11 +1,9 @@
-import threading
-import time
-
-from PySide6.QtCore import QThread, Signal
 from sllurp.llrp import LLRP_DEFAULT_PORT, LLRPReaderConfig, LLRPReaderClient
-from ping3 import ping
-
 from settings import RFID_CONFIG
+import socket
+import time
+from PySide6.QtCore import QThread, Signal
+from ping3 import ping
 from utils.logger import logger
 
 
@@ -26,81 +24,99 @@ def _parse_args_from_settings(rfid_cfg):
     return cfg
 
 
-def _convert_to_unicode(obj):
-    if isinstance(obj, dict):
-        return { _convert_to_unicode(k): _convert_to_unicode(v) for k, v in obj.items() }
-    elif isinstance(obj, list):
-        return [_convert_to_unicode(e) for e in obj]
-    elif isinstance(obj, bytes):
-        return obj.decode('utf-8')
-    else:
-        return obj
+def create_rfid_config():
+    """Create RFID configuration from settings"""
+    args = _parse_args_from_settings(RFID_CONFIG if isinstance(RFID_CONFIG, dict) else {})
+    enabled_antennas = [int(x.strip()) for x in str(args['antennas']).split(',')]
+    
+    factory_args = dict(
+        report_every_n_tags=args['every_n'],
+        antennas=enabled_antennas,
+        tx_power=args['tx_power'],
+        tari=args['tari'],
+        session=args['session'],
+        mode_identifier=args['mode_identifier'],
+        tag_population=args['tag_population'],
+        start_inventory=True,
+        tag_content_selector={
+            'EnableROSpecID': True,
+            'EnableSpecIndex': True,
+            'EnableInventoryParameterSpecID': True,
+            'EnableAntennaID': True,
+            'EnableChannelIndex': True,
+            'EnablePeakRSSI': True,
+            'EnableFirstSeenTimestamp': True,
+            'EnableLastSeenTimestamp': True,
+            'EnableTagSeenCount': True,
+            'EnableAccessSpecID': True,
+            'C1G2EPCMemorySelector': {
+                'EnableCRC': True,
+                'EnablePCBits': True,
+            }
+        },
+        impinj_search_mode=args['impinj_search_mode'],
+        impinj_tag_content_selector=None,
+    )
+    
+    port = args['port']
+    config = LLRPReaderConfig(factory_args)
+    return config, args['host'], port
+
+
+def check_rfid_health(timeout_seconds: float = 1.5):
+    """Return simple RFID health info without starting full inventory.
+
+    Output shape:
+      { 'status': bool, 'last_tag': str | None, 'last_time_us': int | None }
+
+    Currently performs a TCP reachability check to the configured reader host:port.
+    """
+    try:
+        _config, host, port = create_rfid_config()
+        with socket.create_connection((host, int(port)), timeout_seconds):
+            return {
+                'status': True,
+                'last_tag': None,  # Full tag reading loop not started in health check
+                'last_time_us': int(time.time() * 1_000_000),
+            }
+    except Exception:
+        return {
+            'status': False,
+            'last_tag': None,
+            'last_time_us': int(time.time() * 1_000_000),
+        }
 
 
 class RFID(QThread):
 
-    sig_msg = Signal(int)
+    sig_msg = Signal(int)  # 1: connected, 2: disconnected, 3: tag seen
 
     def __init__(self):
         super().__init__()
-        self._b_stop = threading.Event()
+        self._b_stop = False
         self.tag_data = None
         self.connectivity = None
         self.reader = None
-        self._cfg = _parse_args_from_settings(RFID_CONFIG if isinstance(RFID_CONFIG, dict) else {})
-        self.host = self._cfg['host']
-        self._set_reader(self.host, False)
+        self.host = None
+        self.port = None
+        self._setup_reader(initial_status=False)
 
-    def set_reader(self, host, status):
-        self._set_reader(host, status)
-
-    def _set_reader(self, host, status):
-        self.connectivity = status
+    def _setup_reader(self, initial_status: bool):
+        cfg, host, port = create_rfid_config()
         self.host = host
-        args = _parse_args_from_settings(RFID_CONFIG if isinstance(RFID_CONFIG, dict) else {})
-        enabled_antennas = [int(x.strip()) for x in str(args['antennas']).split(',')]
-        factory_args = dict(
-            report_every_n_tags=args['every_n'],
-            antennas=enabled_antennas,
-            tx_power=args['tx_power'],
-            tari=args['tari'],
-            session=args['session'],
-            mode_identifier=args['mode_identifier'],
-            tag_population=args['tag_population'],
-            start_inventory=True,
-            tag_content_selector={
-                'EnableROSpecID': True,
-                'EnableSpecIndex': True,
-                'EnableInventoryParameterSpecID': True,
-                'EnableAntennaID': True,
-                'EnableChannelIndex': True,
-                'EnablePeakRSSI': True,
-                'EnableFirstSeenTimestamp': True,
-                'EnableLastSeenTimestamp': True,
-                'EnableTagSeenCount': True,
-                'EnableAccessSpecID': True,
-                'C1G2EPCMemorySelector': {
-                    'EnableCRC': True,
-                    'EnablePCBits': True,
-                }
-            },
-            impinj_search_mode=args['impinj_search_mode'],
-            impinj_tag_content_selector=None,
-        )
+        self.port = port
+        self.connectivity = initial_status
+        self.reader = LLRPReaderClient(host, port, cfg)
+        self.reader.add_tag_report_callback(self._on_tag_report)
+        logger.debug("RFIDTemp initialized.")
 
-        port = args['port']
-        config = LLRPReaderConfig(factory_args)
-        self.reader = LLRPReaderClient(host, port, config)
-        self.reader.add_tag_report_callback(self.tag_seen_callback)
-        logger.debug("RFID initialized.")
-
-    def tag_seen_callback(self, reader, tags):
+    def _on_tag_report(self, reader, tags):
         if tags:
-            self.tag_data = _convert_to_unicode(tags)
+            self.tag_data = self._convert_to_unicode(tags)
             self.sig_msg.emit(3)
 
     def run(self):
-        while not self._b_stop.is_set():
+        while not self._b_stop:
             try:
                 self.reader.connect()
                 break
@@ -108,20 +124,19 @@ class RFID(QThread):
                 if self.connectivity is True:
                     self.connectivity = False
                     self.sig_msg.emit(2)
-            time.sleep(.1)
+            time.sleep(0.1)
 
         if self.connectivity is False:
             self.connectivity = True
             self.sig_msg.emit(1)
 
-        while not self._b_stop.is_set():
+        while not self._b_stop:
             try:
                 response_time = ping(self.host, timeout=3)
                 if response_time is not None:
                     if self.connectivity is False:
                         LLRPReaderClient.disconnect_all_readers()
-                        self.reader = None
-                        self._set_reader(self.host, True)
+                        self._setup_reader(initial_status=True)
                         self.reader.connect()
                         self.sig_msg.emit(1)
                 else:
@@ -132,11 +147,23 @@ class RFID(QThread):
                 if self.connectivity is True:
                     self.connectivity = False
                     self.sig_msg.emit(2)
-            time.sleep(.1)
+            time.sleep(0.1)
 
     def stop(self):
-        self._b_stop.set()
+        self._b_stop = True
         self.wait()
-        LLRPReaderClient.disconnect_all_readers()
+        try:
+            LLRPReaderClient.disconnect_all_readers()
+        except Exception:
+            pass
 
-
+    @staticmethod
+    def _convert_to_unicode(obj):
+        if isinstance(obj, dict):
+            return {RFIDTemp._convert_to_unicode(k): RFIDTemp._convert_to_unicode(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [RFIDTemp._convert_to_unicode(e) for e in obj]
+        elif isinstance(obj, bytes):
+            return obj.decode('utf-8')
+        else:
+            return obj

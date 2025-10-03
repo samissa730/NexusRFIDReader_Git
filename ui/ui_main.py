@@ -23,7 +23,7 @@ class Ui_Main(object):
     def setupUi(self, Main):
         if not Main.objectName():
             Main.setObjectName(u"Main")
-        Main.resize(800, 480)
+        Main.resize(1080, 480)
         Main.setStyleSheet(u"background-color: #e6e6e6;")
         self.centralwidget = QWidget(Main)
         self.centralwidget.setObjectName(u"centralwidget")

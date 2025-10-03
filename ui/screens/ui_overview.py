@@ -24,7 +24,7 @@ class Ui_OverviewScreen(object):
     def setupUi(self, OverviewScreen):
         if not OverviewScreen.objectName():
             OverviewScreen.setObjectName(u"OverviewScreen")
-        OverviewScreen.resize(800, 480)
+        OverviewScreen.resize(1080, 480)
         OverviewScreen.setMinimumSize(QSize(790, 420))
         OverviewScreen.setStyleSheet(u"")
         self.verticalLayout_20 = QVBoxLayout(OverviewScreen)
@@ -320,8 +320,8 @@ class Ui_OverviewScreen(object):
         self.tableWidget.setColumnCount(6)
         self.tableWidget.horizontalHeader().setVisible(True)
         self.tableWidget.horizontalHeader().setCascadingSectionResizes(True)
-        self.tableWidget.horizontalHeader().setMinimumSectionSize(70)
-        self.tableWidget.horizontalHeader().setDefaultSectionSize(70)
+        self.tableWidget.horizontalHeader().setMinimumSectionSize(175)
+        self.tableWidget.horizontalHeader().setDefaultSectionSize(175)
         self.tableWidget.horizontalHeader().setHighlightSections(True)
         self.tableWidget.horizontalHeader().setProperty(u"showSortIndicator", False)
         self.tableWidget.horizontalHeader().setStretchLastSection(False)
@@ -348,7 +348,8 @@ class Ui_OverviewScreen(object):
         self.label_15 = QLabel(self.widget_9)
         self.label_15.setObjectName(u"label_15")
         self.label_15.setFont(font)
-        self.label_15.setStyleSheet(u"color: #ffffff;")
+        self.label_15.setStyleSheet(u"color: #ffffff;\n"
+"border-bottom: 2px solid #404040;")
         self.label_15.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.verticalLayout_4.addWidget(self.label_15)
@@ -427,7 +428,8 @@ class Ui_OverviewScreen(object):
         self.label_20 = QLabel(self.widget_12)
         self.label_20.setObjectName(u"label_20")
         self.label_20.setFont(font)
-        self.label_20.setStyleSheet(u"color: #ffffff;")
+        self.label_20.setStyleSheet(u"color: #ffffff;\n"
+"border-bottom: 2px solid #404040;")
         self.label_20.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.verticalLayout_5.addWidget(self.label_20)
@@ -440,28 +442,45 @@ class Ui_OverviewScreen(object):
         self.horizontalLayout_12.setContentsMargins(0, 0, 0, 0)
         self.label_21 = QLabel(self.widget_14)
         self.label_21.setObjectName(u"label_21")
-        font4 = QFont()
-        font4.setFamilies([u"Gilroy"])
-        font4.setPointSize(13)
-        font4.setBold(True)
-        self.label_21.setFont(font4)
+        self.label_21.setFont(font2)
         self.label_21.setStyleSheet(u"color: #ffffff;")
         self.label_21.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
 
         self.horizontalLayout_12.addWidget(self.label_21)
 
-        self.internet_status = QLabel(self.widget_14)
-        self.internet_status.setObjectName(u"internet_status")
-        font5 = QFont()
-        font5.setFamilies([u"Gilroy"])
-        font5.setPointSize(13)
-        self.internet_status.setFont(font5)
-        self.internet_status.setStyleSheet(u"color: #ffffff;")
+        self.wifi_status = QLabel(self.widget_14)
+        self.wifi_status.setObjectName(u"wifi_status")
+        self.wifi_status.setFont(font3)
+        self.wifi_status.setStyleSheet(u"color: #ffffff;")
 
-        self.horizontalLayout_12.addWidget(self.internet_status)
+        self.horizontalLayout_12.addWidget(self.wifi_status)
 
 
         self.verticalLayout_5.addWidget(self.widget_14)
+
+        self.widget_13 = QWidget(self.widget_12)
+        self.widget_13.setObjectName(u"widget_13")
+        self.horizontalLayout_11 = QHBoxLayout(self.widget_13)
+        self.horizontalLayout_11.setSpacing(4)
+        self.horizontalLayout_11.setObjectName(u"horizontalLayout_11")
+        self.horizontalLayout_11.setContentsMargins(0, 0, 0, 0)
+        self.label_23 = QLabel(self.widget_13)
+        self.label_23.setObjectName(u"label_23")
+        self.label_23.setFont(font2)
+        self.label_23.setStyleSheet(u"color: #ffffff;")
+        self.label_23.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
+
+        self.horizontalLayout_11.addWidget(self.label_23)
+
+        self.cellular_status = QLabel(self.widget_13)
+        self.cellular_status.setObjectName(u"cellular_status")
+        self.cellular_status.setFont(font3)
+        self.cellular_status.setStyleSheet(u"color: #ffffff;")
+
+        self.horizontalLayout_11.addWidget(self.cellular_status)
+
+
+        self.verticalLayout_5.addWidget(self.widget_13)
 
 
         self.horizontalLayout_2.addWidget(self.widget_12)
@@ -508,13 +527,15 @@ class Ui_OverviewScreen(object):
         ___qtablewidgetitem4.setText(QCoreApplication.translate("OverviewScreen", u"Speed", None));
         ___qtablewidgetitem5 = self.tableWidget.horizontalHeaderItem(5)
         ___qtablewidgetitem5.setText(QCoreApplication.translate("OverviewScreen", u"Heading", None));
-        self.label_15.setText(QCoreApplication.translate("OverviewScreen", u"Site Details", None))
+        self.label_15.setText(QCoreApplication.translate("OverviewScreen", u"Site Details:", None))
         self.label_16.setText(QCoreApplication.translate("OverviewScreen", u"Truck Number: ", None))
         self.truck_number.setText(QCoreApplication.translate("OverviewScreen", u"N/A", None))
         self.label_18.setText(QCoreApplication.translate("OverviewScreen", u"Site Name: ", None))
         self.site_name.setText(QCoreApplication.translate("OverviewScreen", u"N/A", None))
         self.label_20.setText(QCoreApplication.translate("OverviewScreen", u"Network Health", None))
-        self.label_21.setText(QCoreApplication.translate("OverviewScreen", u"Internet Status: ", None))
-        self.internet_status.setText(QCoreApplication.translate("OverviewScreen", u"N/A", None))
+        self.label_21.setText(QCoreApplication.translate("OverviewScreen", u"WiFi Status: ", None))
+        self.wifi_status.setText(QCoreApplication.translate("OverviewScreen", u"N/A", None))
+        self.label_23.setText(QCoreApplication.translate("OverviewScreen", u"Cellular Status: ", None))
+        self.cellular_status.setText(QCoreApplication.translate("OverviewScreen", u"N/A", None))
     # retranslateUi
 
