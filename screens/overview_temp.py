@@ -80,9 +80,6 @@ class OverviewScreenTemp(BaseScreen):
         self.ui.truck_number.setText("N/A")
         self.ui.site_name.setText("N/A")
         
-        # Network status
-        self.ui.wifi_status.setText("N/A")
-        self.ui.cellular_status.setText("N/A")
 
     def on_leave(self):
         if self.gps and self.gps.isRunning():
