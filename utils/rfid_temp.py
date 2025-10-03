@@ -1,5 +1,7 @@
 from sllurp.llrp import LLRP_DEFAULT_PORT, LLRPReaderConfig, LLRPReaderClient
 from settings import RFID_CONFIG
+import socket
+import time
 
 
 def _parse_args_from_settings(rfid_cfg):
@@ -56,3 +58,27 @@ def create_rfid_config():
     port = args['port']
     config = LLRPReaderConfig(factory_args)
     return config, args['host'], port
+
+
+def check_rfid_health(timeout_seconds: float = 1.5):
+    """Return simple RFID health info without starting full inventory.
+
+    Output shape:
+      { 'status': bool, 'last_tag': str | None, 'last_time_us': int | None }
+
+    Currently performs a TCP reachability check to the configured reader host:port.
+    """
+    try:
+        _config, host, port = create_rfid_config()
+        with socket.create_connection((host, int(port)), timeout_seconds):
+            return {
+                'status': True,
+                'last_tag': None,  # Full tag reading loop not started in health check
+                'last_time_us': int(time.time() * 1_000_000),
+            }
+    except Exception:
+        return {
+            'status': False,
+            'last_tag': None,
+            'last_time_us': int(time.time() * 1_000_000),
+        }
