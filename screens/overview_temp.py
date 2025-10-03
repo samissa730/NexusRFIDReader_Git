@@ -9,7 +9,7 @@ from utils.common import extract_from_gps, get_date_from_utc, pre_config_gps, fi
 from settings import GPS_CONFIG
 import time
 import requests
-from utils.rfid_temp import check_rfid_health
+from utils.rfid_temp import RFIDTemp
 
 
 class OverviewScreenTemp(BaseScreen):
@@ -25,7 +25,15 @@ class OverviewScreenTemp(BaseScreen):
                 item = QTableWidgetItem("")
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsSelectable & ~Qt.ItemFlag.ItemIsEditable & ~Qt.ItemFlag.ItemIsEnabled)
                 self.ui.tableWidget.setItem(row, column, item)
-
+        # Set custom column widths
+        # Columns: Time, Tag, Antenna, Position, Speed, Heading
+        self.ui.tableWidget.setColumnWidth(0, 150)  # Time
+        self.ui.tableWidget.setColumnWidth(1, 200)  # Tag
+        self.ui.tableWidget.setColumnWidth(2, 80)   # Antenna
+        self.ui.tableWidget.setColumnWidth(3, 190)  # Position
+        self.ui.tableWidget.setColumnWidth(4, 70)   # Speed
+        self.ui.tableWidget.setColumnWidth(5, 80)   # Heading
+        
         # Set device ID using processor ID
         device_id = get_processor_id()
         self.ui.device_id.setText(device_id)
@@ -57,10 +65,10 @@ class OverviewScreenTemp(BaseScreen):
         # Initialize UI status displays
         self._initialize_status_displays()
 
-        # RFID health polling timer
-        self.rfid_timer = QTimer(self)
-        self.rfid_timer.timeout.connect(self._update_rfid_health)
-        self.rfid_timer.start(3000)
+        # RFID temp reader (for health and last tag display)
+        self.rfid = RFIDTemp()
+        self.rfid.sig_msg.connect(self._on_rfid_status)
+        self.rfid.start()
 
     def _initialize_status_displays(self):
         """Initialize status displays with default values"""
@@ -86,8 +94,9 @@ class OverviewScreenTemp(BaseScreen):
             self.gps.stop()
         if hasattr(self, 'gps_display_timer'):
             self.gps_display_timer.stop()
-        if hasattr(self, 'rfid_timer'):
-            self.rfid_timer.stop()
+        if hasattr(self, 'rfid') and self.rfid:
+            if self.rfid.isRunning():
+                self.rfid.stop()
 
     def _set_gps_status(self, text, ok):
         self.ui.gps_connection_status.setStyleSheet("""color: #00ff00;""" if ok else """color: #ff0000;""")
@@ -104,6 +113,20 @@ class OverviewScreenTemp(BaseScreen):
             self._start_internal_gps()
             if not self.external_retry_timer.isActive():
                 self.external_retry_timer.start()
+
+    def _on_rfid_status(self, status):
+        # 1: connected, 2: disconnected, 3: tag seen
+        if status == 1:
+            self.ui.rfid_connection_status.setStyleSheet("""color: #00ff00;""")
+            self.ui.rfid_connection_status.setText("Connected")
+        elif status == 2:
+            self.ui.rfid_connection_status.setStyleSheet("""color: #ff0000;""")
+            self.ui.rfid_connection_status.setText("Disconnected")
+        elif status == 3 and self.rfid and self.rfid.tag_data:
+            tag = self.rfid.tag_data[0]
+            ts_us = tag.get('LastSeenTimestampUTC') or int(time.time() * 1_000_000)
+            self.ui.last_rfid_read.setText(tag.get('EPC-96', 'N/A'))
+            self.ui.last_rfid_time.setText(get_date_from_utc(ts_us))
 
     def _refresh_table(self, new_data):
         for row in range(self.ui.tableWidget.rowCount() - 2, -1, -1):
@@ -204,19 +227,3 @@ class OverviewScreenTemp(BaseScreen):
         """Set network status for development purposes"""
         self.ui.wifi_status.setText(wifi_status)
         self.ui.cellular_status.setText(cellular_status)
-
-    def _set_rfid_status(self, ok):
-        self.ui.rfid_connection_status.setStyleSheet("""color: #00ff00;""" if ok else """color: #ff0000;""")
-        self.ui.rfid_connection_status.setText("Connected" if ok else "Disconnected")
-
-    def _update_rfid_health(self):
-        try:
-            info = check_rfid_health()
-            self._set_rfid_status(info.get('status', False))
-            last_tag = info.get('last_tag') or "N/A"
-            last_time_us = info.get('last_time_us')
-            self.ui.last_rfid_read.setText(last_tag)
-            if last_time_us:
-                self.ui.last_rfid_time.setText(get_date_from_utc(int(last_time_us)))
-        except Exception:
-            self._set_rfid_status(False)

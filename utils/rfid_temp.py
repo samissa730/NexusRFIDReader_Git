@@ -2,6 +2,9 @@ from sllurp.llrp import LLRP_DEFAULT_PORT, LLRPReaderConfig, LLRPReaderClient
 from settings import RFID_CONFIG
 import socket
 import time
+from PySide6.QtCore import QThread, Signal
+from ping3 import ping
+from utils.logger import logger
 
 
 def _parse_args_from_settings(rfid_cfg):
@@ -82,3 +85,85 @@ def check_rfid_health(timeout_seconds: float = 1.5):
             'last_tag': None,
             'last_time_us': int(time.time() * 1_000_000),
         }
+
+
+class RFIDTemp(QThread):
+
+    sig_msg = Signal(int)  # 1: connected, 2: disconnected, 3: tag seen
+
+    def __init__(self):
+        super().__init__()
+        self._b_stop = False
+        self.tag_data = None
+        self.connectivity = None
+        self.reader = None
+        self.host = None
+        self.port = None
+        self._setup_reader(initial_status=False)
+
+    def _setup_reader(self, initial_status: bool):
+        cfg, host, port = create_rfid_config()
+        self.host = host
+        self.port = port
+        self.connectivity = initial_status
+        self.reader = LLRPReaderClient(host, port, cfg)
+        self.reader.add_tag_report_callback(self._on_tag_report)
+        logger.debug("RFIDTemp initialized.")
+
+    def _on_tag_report(self, reader, tags):
+        if tags:
+            self.tag_data = self._convert_to_unicode(tags)
+            self.sig_msg.emit(3)
+
+    def run(self):
+        while not self._b_stop:
+            try:
+                self.reader.connect()
+                break
+            except Exception:
+                if self.connectivity is True:
+                    self.connectivity = False
+                    self.sig_msg.emit(2)
+            time.sleep(0.1)
+
+        if self.connectivity is False:
+            self.connectivity = True
+            self.sig_msg.emit(1)
+
+        while not self._b_stop:
+            try:
+                response_time = ping(self.host, timeout=3)
+                if response_time is not None:
+                    if self.connectivity is False:
+                        LLRPReaderClient.disconnect_all_readers()
+                        self._setup_reader(initial_status=True)
+                        self.reader.connect()
+                        self.sig_msg.emit(1)
+                else:
+                    if self.connectivity is True:
+                        self.connectivity = False
+                        self.sig_msg.emit(2)
+            except Exception:
+                if self.connectivity is True:
+                    self.connectivity = False
+                    self.sig_msg.emit(2)
+            time.sleep(0.1)
+
+    def stop(self):
+        self._b_stop = True
+        self.wait()
+        try:
+            LLRPReaderClient.disconnect_all_readers()
+        except Exception:
+            pass
+
+    @staticmethod
+    def _convert_to_unicode(obj):
+        if isinstance(obj, dict):
+            return {RFIDTemp._convert_to_unicode(k): RFIDTemp._convert_to_unicode(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [RFIDTemp._convert_to_unicode(e) for e in obj]
+        elif isinstance(obj, bytes):
+            return obj.decode('utf-8')
+        else:
+            return obj
