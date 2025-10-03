@@ -44,7 +44,7 @@ RFID_CONFIG = {
 API_CONFIG = {
     "login_url": "",  # optional, if you will use token refresh
     "health_url": "",
-    "record_url": "",
+    "record_url": "http://dev-api-locate.nexusyms.com/api/scans",
     "email": "",      # optional, only if login_url used
     "password": "",   # optional, only if login_url used
     "token": "",      # set bearer token here if using token auth
