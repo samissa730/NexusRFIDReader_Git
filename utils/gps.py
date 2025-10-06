@@ -22,6 +22,7 @@ class GPS(QThread):
         self._b_stop = threading.Event()
         self._data = {}
         self._sdata = [0, 0]
+        self._last_data_timestamp = None  # Track when GPS data was last received
         self.connectivity = current_status
 
     def _connect(self):
@@ -52,6 +53,8 @@ class GPS(QThread):
                 speed_knots = msg.spd_over_grnd if msg.spd_over_grnd is not None else 0
                 course_degrees = msg.true_course if msg.true_course is not None else 0
                 self._sdata = [speed_knots * 1.15078, course_degrees]
+                # Update timestamp when GPS data is successfully parsed
+                self._last_data_timestamp = int(time.time() * 1_000_000)
             except pynmea2.ParseError:
                 self._data = {}
                 self._sdata = [0, 0]
@@ -97,5 +100,9 @@ class GPS(QThread):
 
     def get_sdata(self):
         return self._sdata
+
+    def get_data_timestamp(self):
+        """Get the timestamp when GPS data was last received"""
+        return self._last_data_timestamp
 
 

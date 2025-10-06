@@ -211,7 +211,16 @@ class OverviewScreen(BaseScreen):
             self.ui.last_rfid_read.setText(tag['EPC-96'])
             self.ui.last_rfid_time.setText(get_date_from_utc(tag['LastSeenTimestampUTC']))
             self.ui.last_gps_read.setText(f"{lat:.7f}, {lon:.7f}")
-            self.ui.last_gps_time.setText(get_date_from_utc(tag['LastSeenTimestampUTC']))
+            # Use actual GPS timestamp instead of RFID timestamp
+            if self.gps and self.gps.isRunning():
+                gps_timestamp = self.gps.get_data_timestamp()
+                if gps_timestamp:
+                    self.ui.last_gps_time.setText(get_date_from_utc(gps_timestamp))
+                else:
+                    self.ui.last_gps_time.setText(get_date_from_utc(tag['LastSeenTimestampUTC']))
+            else:
+                # For internal GPS, use the timestamp when GPS data was captured
+                self.ui.last_gps_time.setText(get_date_from_utc(self.last_utctime if self.last_utctime else tag['LastSeenTimestampUTC']))
 
     def _refresh_table(self, new_data):
         for row in range(self.ui.tableWidget.rowCount() - 2, -1, -1):
@@ -297,9 +306,11 @@ class OverviewScreen(BaseScreen):
             lat, lon = extract_from_gps(self.gps.get_data())
             if lat != 0 and lon != 0:
                 speed, bearing = self.gps.get_sdata()
-                current_time = int(time.time() * 1_000_000)
-                self.ui.last_gps_read.setText(f"{lat:.7f}, {lon:.7f}")
-                self.ui.last_gps_time.setText(get_date_from_utc(current_time))
+                # Use actual GPS data timestamp instead of current time
+                gps_timestamp = self.gps.get_data_timestamp()
+                if gps_timestamp:
+                    self.ui.last_gps_read.setText(f"{lat:.7f}, {lon:.7f}")
+                    self.ui.last_gps_time.setText(get_date_from_utc(gps_timestamp))
         elif self.cur_lat != 0 and self.cur_lon != 0:
             # Internal GPS (internet-based)
             self.ui.last_gps_read.setText(f"{self.cur_lat:.7f}, {self.cur_lon:.7f}")
