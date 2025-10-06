@@ -124,9 +124,10 @@ class OverviewScreenTemp(BaseScreen):
             self.ui.rfid_connection_status.setText("Disconnected")
         elif status == 3 and self.rfid and self.rfid.tag_data:
             tag = self.rfid.tag_data[0]
-            ts_us = tag.get('LastSeenTimestampUTC') or int(time.time() * 1_000_000)
+            # Use current time for RFID timestamp to match GPS display timing
+            current_time_us = int(time.time() * 1_000_000)
             self.ui.last_rfid_read.setText(tag.get('EPC-96', 'N/A'))
-            self.ui.last_rfid_time.setText(get_date_from_utc(ts_us))
+            self.ui.last_rfid_time.setText(get_date_from_utc(current_time_us))
 
     def _refresh_table(self, new_data):
         for row in range(self.ui.tableWidget.rowCount() - 2, -1, -1):
@@ -205,16 +206,15 @@ class OverviewScreenTemp(BaseScreen):
             lat, lon = extract_from_gps(self.gps.get_data())
             if lat != 0 and lon != 0:
                 speed, bearing = self.gps.get_sdata()
-                # Use actual GPS data timestamp instead of current time
-                gps_timestamp = self.gps.get_data_timestamp()
-                if gps_timestamp:
-                    self.ui.last_gps_read.setText(f"{lat:.7f}, {lon:.7f}")
-                    self.ui.last_gps_time.setText(get_date_from_utc(gps_timestamp))
+                # Use current time to synchronize with RFID timestamp
+                current_time_us = int(time.time() * 1_000_000)
+                self.ui.last_gps_read.setText(f"{lat:.7f}, {lon:.7f}")
+                self.ui.last_gps_time.setText(get_date_from_utc(current_time_us))
         elif self.cur_lat != 0 and self.cur_lon != 0:
             # Internal GPS (internet-based)
+            current_time_us = int(time.time() * 1_000_000)
             self.ui.last_gps_read.setText(f"{self.cur_lat:.7f}, {self.cur_lon:.7f}")
-            if self.last_utctime:
-                self.ui.last_gps_time.setText(get_date_from_utc(self.last_utctime))
+            self.ui.last_gps_time.setText(get_date_from_utc(current_time_us))
 
     def add_test_data_to_table(self, test_data):
         """Add test data to the table for development purposes"""
