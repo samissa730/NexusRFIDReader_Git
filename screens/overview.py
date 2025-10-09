@@ -1,17 +1,16 @@
-from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtWidgets import QWidget, QTableWidgetItem
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtWidgets import QTableWidgetItem
 
 from screens.base import BaseScreen
 from ui.screens.ui_overview import Ui_OverviewScreen
 from utils.logger import logger
 from utils.rfid import RFID
 from utils.gps import GPS
-from utils.common import extract_from_gps, get_date_from_utc, pre_config_gps, find_gps_port, calculate_speed_bearing, get_processor_id
+from utils.common import extract_from_gps, get_date_from_utc, pre_config_gps, find_gps_port, get_processor_id
 from utils.data_storage import DataStorage
 from utils.api_client import ApiClient
 from settings import API_CONFIG, FILTER_CONFIG, DATABASE_CONFIG
 import time
-import requests
 from ping3 import ping
 
 
@@ -50,20 +49,14 @@ class OverviewScreen(BaseScreen):
         self.last_lat = None
         self.last_lon = None
         self.last_utctime = None
-        self.cur_lat = 0
-        self.cur_lon = 0
-        self.bearing = 0
-        self.speed = 0
 
         self.gps = None
-        self.internet_gps_timer = QTimer(self)
-        self.internet_gps_timer.timeout.connect(self._poll_internet_gps)
         self.external_retry_timer = QTimer(self)
         self.external_retry_timer.timeout.connect(self._try_external_gps)
         self.external_retry_timer.setInterval(30000)
 
-        # Always attempt external first; fall back to internal and retry external every 30s
-        self._try_external_gps(initial=True)
+        # Always attempt external; retry every 30s if not connected
+        self._try_external_gps()
 
         # RFID init
         self.rfid = RFID()
@@ -113,11 +106,9 @@ class OverviewScreen(BaseScreen):
         # Called by external GPS worker
         if status:
             self._set_gps_status("External GPS Connected", True)
-            if self.internet_gps_timer.isActive():
-                self.internet_gps_timer.stop()
         else:
-            # External disconnected: enable internal and start external retry timer
-            self._start_internal_gps()
+            # External disconnected: update status and start external retry timer
+            self._set_gps_status("Disconnected", False)
             if not self.external_retry_timer.isActive():
                 self.external_retry_timer.start()
 
@@ -139,7 +130,7 @@ class OverviewScreen(BaseScreen):
                     self.last_utctime = int(time.time() * 1_000_000)
                 speed, bearing = self.gps.get_sdata()
             else:
-                lat, lon, speed, bearing = self.cur_lat, self.cur_lon, self.speed, self.bearing
+                lat, lon, speed, bearing = 0, 0, 0, 0
 
             # round to 7 decimals for storage and display
             lat = round(lat, 7)
@@ -211,7 +202,7 @@ class OverviewScreen(BaseScreen):
             self.ui.last_rfid_read.setText(tag['EPC-96'])
             self.ui.last_rfid_time.setText(get_date_from_utc(tag['LastSeenTimestampUTC']))
             self.ui.last_gps_read.setText(f"{lat:.7f}, {lon:.7f}")
-            # Use actual GPS timestamp instead of RFID timestamp
+            # Use actual GPS timestamp when available; otherwise use RFID timestamp
             if self.gps and self.gps.isRunning():
                 gps_timestamp = self.gps.get_data_timestamp()
                 if gps_timestamp:
@@ -219,8 +210,7 @@ class OverviewScreen(BaseScreen):
                 else:
                     self.ui.last_gps_time.setText(get_date_from_utc(tag['LastSeenTimestampUTC']))
             else:
-                # For internal GPS, use the timestamp when GPS data was captured
-                self.ui.last_gps_time.setText(get_date_from_utc(self.last_utctime if self.last_utctime else tag['LastSeenTimestampUTC']))
+                self.ui.last_gps_time.setText(get_date_from_utc(tag['LastSeenTimestampUTC']))
 
     def _refresh_table(self, new_data):
         for row in range(self.ui.tableWidget.rowCount() - 2, -1, -1):
@@ -230,67 +220,24 @@ class OverviewScreen(BaseScreen):
         for column in range(self.ui.tableWidget.columnCount()):
             self.ui.tableWidget.setItem(0, column, QTableWidgetItem(new_data[column]))
 
-    def _poll_internet_gps(self):
-        try:
-            r = requests.get('http://ip-api.com/json/', timeout=3)
-            r.raise_for_status()
-            data = r.json()
-            if data.get('status') == 'success':
-                cur_lat = float(data.get('lat', 0) or 0)
-                cur_lon = float(data.get('lon', 0) or 0)
-                milliseconds_time = int(time.time() * 1_000_000)
-                if self.last_lat is not None:
-                    self.speed, self.bearing = calculate_speed_bearing(
-                        self.last_lat, self.last_lon, self.last_utctime, cur_lat, cur_lon, milliseconds_time
-                    )
-                self.last_lat = cur_lat
-                self.last_lon = cur_lon
-                self.last_utctime = milliseconds_time
-                self.cur_lat, self.cur_lon = cur_lat, cur_lon
-                
-                # Update GPS display fields with internal GPS data
-                self.ui.last_gps_read.setText(f"{cur_lat:.7f}, {cur_lon:.7f}")
-                self.ui.last_gps_time.setText(get_date_from_utc(milliseconds_time))
-                
-                if self.ui.gps_connection_status.text() != "External GPS Connected":
-                    self._set_gps_status("Internal GPS Connected", True)
-        except Exception:
-            if self.ui.gps_connection_status.text() != "External GPS Connected":
-                self._set_gps_status("Disconnected", False)
-
-    def _try_external_gps(self, initial=False):
+    def _try_external_gps(self):
         baud = pre_config_gps()
         port = find_gps_port(baud)
         if port is not None:
             self._start_external_gps(port, baud)
             self.external_retry_timer.stop()
         else:
-            if initial or self.ui.gps_connection_status.text() != "External GPS Connected":
-                self._start_internal_gps()
+            self._set_gps_status("Disconnected", False)
             if not self.external_retry_timer.isActive():
                 self.external_retry_timer.start()
 
     def _start_external_gps(self, port, baud):
-        if self.internet_gps_timer.isActive():
-            self.internet_gps_timer.stop()
         if self.gps and self.gps.isRunning():
             self.gps.stop()
         self.gps = GPS(port=port, baud_rate=baud)
         self.gps.sig_msg.connect(self._on_gps_status)
         self.gps.start()
         self._set_gps_status("External GPS Connected", True)
-
-    def _start_internal_gps(self):
-        if self.gps and self.gps.isRunning():
-            try:
-                self.gps.stop()
-            except Exception:
-                pass
-            self.gps = None
-        if not self.internet_gps_timer.isActive():
-            self.internet_gps_timer.start(4000)
-        if self.ui.gps_connection_status.text() != "External GPS Connected":
-            self._set_gps_status("Disconnected", False)
 
     def _upload_health(self):
         lat, lon = (0, 0)
@@ -311,11 +258,6 @@ class OverviewScreen(BaseScreen):
                 if gps_timestamp:
                     self.ui.last_gps_read.setText(f"{lat:.7f}, {lon:.7f}")
                     self.ui.last_gps_time.setText(get_date_from_utc(gps_timestamp))
-        elif self.cur_lat != 0 and self.cur_lon != 0:
-            # Internal GPS (internet-based)
-            self.ui.last_gps_read.setText(f"{self.cur_lat:.7f}, {self.cur_lon:.7f}")
-            if self.last_utctime:
-                self.ui.last_gps_time.setText(get_date_from_utc(self.last_utctime))
 
     def _check_internet_status(self):
         """Check internet connectivity by pinging Google DNS"""
