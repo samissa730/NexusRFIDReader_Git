@@ -44,6 +44,7 @@ class OverviewScreen(BaseScreen):
         # Set device ID using processor ID
         device_id = get_processor_id()
         self.ui.device_id.setText(device_id)
+        self.ui.truck_number.setText(device_id)
 
         # GPS init
         self.last_lat = None

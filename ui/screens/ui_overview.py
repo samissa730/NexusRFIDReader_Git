@@ -361,7 +361,11 @@ class Ui_OverviewScreen(object):
         self.horizontalLayout_10.setContentsMargins(0, 0, 0, 0)
         self.label_16 = QLabel(self.widget_10)
         self.label_16.setObjectName(u"label_16")
-        self.label_16.setFont(font2)
+        font4 = QFont()
+        font4.setFamilies([u"Gilroy"])
+        font4.setPointSize(13)
+        font4.setBold(True)
+        self.label_16.setFont(font4)
         self.label_16.setStyleSheet(u"color: #ffffff;")
         self.label_16.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
 
@@ -369,37 +373,16 @@ class Ui_OverviewScreen(object):
 
         self.truck_number = QLabel(self.widget_10)
         self.truck_number.setObjectName(u"truck_number")
-        self.truck_number.setFont(font3)
+        font5 = QFont()
+        font5.setFamilies([u"Gilroy"])
+        font5.setPointSize(13)
+        self.truck_number.setFont(font5)
         self.truck_number.setStyleSheet(u"color: #ffffff;")
 
         self.horizontalLayout_10.addWidget(self.truck_number)
 
 
         self.verticalLayout_4.addWidget(self.widget_10)
-
-        self.widget_11 = QWidget(self.widget_9)
-        self.widget_11.setObjectName(u"widget_11")
-        self.horizontalLayout_9 = QHBoxLayout(self.widget_11)
-        self.horizontalLayout_9.setSpacing(4)
-        self.horizontalLayout_9.setObjectName(u"horizontalLayout_9")
-        self.horizontalLayout_9.setContentsMargins(0, 0, 0, 0)
-        self.label_18 = QLabel(self.widget_11)
-        self.label_18.setObjectName(u"label_18")
-        self.label_18.setFont(font2)
-        self.label_18.setStyleSheet(u"color: #ffffff;")
-        self.label_18.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
-
-        self.horizontalLayout_9.addWidget(self.label_18)
-
-        self.site_name = QLabel(self.widget_11)
-        self.site_name.setObjectName(u"site_name")
-        self.site_name.setFont(font3)
-        self.site_name.setStyleSheet(u"color: #ffffff;")
-
-        self.horizontalLayout_9.addWidget(self.site_name)
-
-
-        self.verticalLayout_4.addWidget(self.widget_11)
 
 
         self.horizontalLayout_2.addWidget(self.widget_9)
@@ -440,10 +423,6 @@ class Ui_OverviewScreen(object):
         self.horizontalLayout_12.setContentsMargins(0, 0, 0, 0)
         self.label_21 = QLabel(self.widget_14)
         self.label_21.setObjectName(u"label_21")
-        font4 = QFont()
-        font4.setFamilies([u"Gilroy"])
-        font4.setPointSize(13)
-        font4.setBold(True)
         self.label_21.setFont(font4)
         self.label_21.setStyleSheet(u"color: #ffffff;")
         self.label_21.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
@@ -452,9 +431,6 @@ class Ui_OverviewScreen(object):
 
         self.internet_status = QLabel(self.widget_14)
         self.internet_status.setObjectName(u"internet_status")
-        font5 = QFont()
-        font5.setFamilies([u"Gilroy"])
-        font5.setPointSize(13)
         self.internet_status.setFont(font5)
         self.internet_status.setStyleSheet(u"color: #ffffff;")
 
@@ -511,8 +487,6 @@ class Ui_OverviewScreen(object):
         self.label_15.setText(QCoreApplication.translate("OverviewScreen", u"Site Details", None))
         self.label_16.setText(QCoreApplication.translate("OverviewScreen", u"Truck Number: ", None))
         self.truck_number.setText(QCoreApplication.translate("OverviewScreen", u"N/A", None))
-        self.label_18.setText(QCoreApplication.translate("OverviewScreen", u"Site Name: ", None))
-        self.site_name.setText(QCoreApplication.translate("OverviewScreen", u"N/A", None))
         self.label_20.setText(QCoreApplication.translate("OverviewScreen", u"Network Health", None))
         self.label_21.setText(QCoreApplication.translate("OverviewScreen", u"Internet Status: ", None))
         self.internet_status.setText(QCoreApplication.translate("OverviewScreen", u"N/A", None))

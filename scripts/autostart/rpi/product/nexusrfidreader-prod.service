@@ -1,0 +1,34 @@
+[Unit]
+Description=NexusRFIDReader (Product) - run packaged executable
+After=network-online.target graphical.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/%i/.Xauthority
+ExecStartPre=/bin/bash -lc 'sudo dhclient usb0 || true'
+ExecStart=%h/.local/bin/NexusRFIDReader
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+[Unit]
+Description=NexusRFIDReader (Product) - run packaged executable
+After=network-online.target graphical.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/%i/.Xauthority
+ExecStart=%h/.local/bin/NexusRFIDReader
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+

@@ -699,7 +699,7 @@ border-bottom: 2px solid #404040;</string>
     border-left: 0px;
 }</string>
          </property>
-         <layout class="QVBoxLayout" name="verticalLayout_4" stretch="0,0,0">
+         <layout class="QVBoxLayout" name="verticalLayout_4" stretch="0,0">
           <property name="spacing">
            <number>2</number>
           </property>
@@ -758,7 +758,7 @@ border-bottom: 2px solid #404040;</string>
                <property name="font">
                 <font>
                  <family>Gilroy</family>
-                 <pointsize>11</pointsize>
+                 <pointsize>13</pointsize>
                  <bold>true</bold>
                 </font>
                </property>
@@ -778,64 +778,7 @@ border-bottom: 2px solid #404040;</string>
                <property name="font">
                 <font>
                  <family>Gilroy</family>
-                 <pointsize>10</pointsize>
-                </font>
-               </property>
-               <property name="styleSheet">
-                <string notr="true">color: #ffffff;</string>
-               </property>
-               <property name="text">
-                <string>N/A</string>
-               </property>
-              </widget>
-             </item>
-            </layout>
-           </widget>
-          </item>
-          <item>
-           <widget class="QWidget" name="widget_11" native="true">
-            <layout class="QHBoxLayout" name="horizontalLayout_9">
-             <property name="spacing">
-              <number>4</number>
-             </property>
-             <property name="leftMargin">
-              <number>0</number>
-             </property>
-             <property name="topMargin">
-              <number>0</number>
-             </property>
-             <property name="rightMargin">
-              <number>0</number>
-             </property>
-             <property name="bottomMargin">
-              <number>0</number>
-             </property>
-             <item>
-              <widget class="QLabel" name="label_18">
-               <property name="font">
-                <font>
-                 <family>Gilroy</family>
-                 <pointsize>11</pointsize>
-                 <bold>true</bold>
-                </font>
-               </property>
-               <property name="styleSheet">
-                <string notr="true">color: #ffffff;</string>
-               </property>
-               <property name="text">
-                <string>Site Name: </string>
-               </property>
-               <property name="alignment">
-                <set>Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter</set>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QLabel" name="site_name">
-               <property name="font">
-                <font>
-                 <family>Gilroy</family>
-                 <pointsize>10</pointsize>
+                 <pointsize>13</pointsize>
                 </font>
                </property>
                <property name="styleSheet">

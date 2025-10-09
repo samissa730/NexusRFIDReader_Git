@@ -1,0 +1,37 @@
+[Unit]
+Description=NexusRFIDReader (Develop) - run from source in venv
+After=network-online.target graphical.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/%i/.Xauthority
+ExecStartPre=/bin/bash -lc 'sudo dhclient usb0 || true'
+WorkingDirectory=%h/NexusRFIDReader
+ExecStart=/bin/bash -lc 'if [ -x "%h/NexusRFIDReader/venv/bin/python" ]; then exec "%h/NexusRFIDReader/venv/bin/python" main.py; else exec python3 main.py; fi'
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+[Unit]
+Description=NexusRFIDReader (Develop) - run from source in venv
+After=network-online.target graphical.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/%i/.Xauthority
+WorkingDirectory=%h/NexusRFIDReader
+# Prefer venv python if available
+ExecStart=/bin/bash -lc 'if [ -x "%h/NexusRFIDReader/venv/bin/python" ]; then exec "%h/NexusRFIDReader/venv/bin/python" main.py; else exec python3 main.py; fi'
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+
