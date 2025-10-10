@@ -6,7 +6,10 @@ from ui.screens.ui_overview import Ui_OverviewScreen
 from utils.logger import logger
 from utils.rfid import RFID
 from utils.gps import GPS
-from utils.common import extract_from_gps, get_date_from_utc, pre_config_gps, find_gps_port, get_processor_id
+from utils.common import extract_from_gps, get_date_from_utc, get_processor_id
+from settings import GPS_CONFIG, BAUD_RATE_DON
+import serial
+import serial.tools.list_ports
 from utils.data_storage import DataStorage
 from utils.api_client import ApiClient
 from settings import API_CONFIG, FILTER_CONFIG, DATABASE_CONFIG
@@ -21,22 +24,45 @@ class GPSScanner(QThread):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._b_stop = False
+        self._ports = []
+        self._port_idx = 0
+        self._last_refresh_ms = 0
+        # derive baud to try first
+        self._baud = GPS_CONFIG.get('probe_baud_rate', GPS_CONFIG.get('baud_rate', BAUD_RATE_DON)) if isinstance(GPS_CONFIG, dict) else BAUD_RATE_DON
 
     def run(self):
         while not self._b_stop:
             try:
-                baud = pre_config_gps()
-                port = find_gps_port(baud)
-                if port is not None:
-                    self.sig_found.emit(port, baud)
-                    return
+                # refresh port list every 10 seconds or when empty
+                now = self.msecsSinceStartOfDay()
+                if not self._ports or now - self._last_refresh_ms > 10000:
+                    self._ports = [p.device for p in serial.tools.list_ports.comports()]
+                    self._port_idx = 0
+                    self._last_refresh_ms = now
+
+                if not self._ports:
+                    self.msleep(500)
+                    continue
+
+                # try one port per tick with very short timeouts
+                port = self._ports[self._port_idx]
+                self._port_idx = (self._port_idx + 1) % len(self._ports)
+                try:
+                    with serial.Serial(port, baudrate=self._baud, timeout=0.2, rtscts=True, dsrdtr=True) as ser:
+                        # read a short line and check for NMEA prefix
+                        line = ser.readline().decode('utf-8', errors='ignore').strip()
+                        if line.startswith('$G'):
+                            self.sig_found.emit(port, self._baud)
+                            return
+                except Exception:
+                    # ignore and continue scanning next port
+                    pass
+
+                # small sleep to yield CPU/GIL
+                self.msleep(100)
             except Exception:
-                pass
-            # Sleep in small steps so we can stop quickly if requested
-            for _ in range(30):
-                if self._b_stop:
-                    return
-                self.msleep(1000)
+                # unexpected error, avoid tight loop
+                self.msleep(200)
 
     def stop(self):
         self._b_stop = True
