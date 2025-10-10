@@ -1,5 +1,6 @@
 import time
 import uuid
+import json
 from datetime import datetime
 
 import requests
@@ -13,10 +14,12 @@ from utils.logger import logger
 class ApiClient:
 
     def __init__(self):
-        self.token = API_CONFIG.get('token')
-        self.email = API_CONFIG.get('email')
-        self.password = API_CONFIG.get('password')
-        self.login_url = API_CONFIG.get('login_url')
+        self.token = None
+        self.token_expires_at = 0
+        self.auth0_url = "https://dev-0m8cx6xlg7z8zy6j.us.auth0.com/oauth/token"
+        self.client_id = "dC1zM4ghLvr8eipSOlmRhAelHRXdtvNC"
+        self.client_secret = "M__OTtIL7Pw754RBKIEEOCrXsxTef61vWny57keAXqwNN6mvylhg5Yc4XNtajqk4"
+        self.audience = "https://nexus-locate-api"
         self.health_url = API_CONFIG.get('health_url')
         self.record_url = API_CONFIG.get('record_url')
         self.user_name = API_CONFIG.get('user_name', 'Unknown')
@@ -30,27 +33,43 @@ class ApiClient:
         return http
 
     def refresh_token(self):
-        if not self.login_url or not self.email or not self.password:
-            return False
-        payload = { 'email': self.email, 'password': self.password }
+        """Get Auth0 access token using client credentials flow"""
+        payload = json.dumps({
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+            "audience": self.audience,
+            "grant_type": "client_credentials",
+            "scope": "create:scans"
+        })
+        headers = {
+            'content-type': 'application/json'
+        }
+        
         http = self._session()
         try:
-            response = http.post(self.login_url, json=payload, timeout=4)
+            response = http.post(self.auth0_url, headers=headers, data=payload, timeout=10)
             response.raise_for_status()
             if response.status_code == 200:
                 data = response.json()
-                if data.get('metadata', {}).get('code') == '200':
-                    self.token = data['result'].get('acessToken')
-                    self.user_name = data['result'].get('userNameId', self.user_name)
-                    logger.debug('Received token successfully!')
+                if 'access_token' in data:
+                    self.token = data['access_token']
+                    # Set expiration time (default to 1 hour if not provided)
+                    expires_in = data.get('expires_in', 3600)
+                    self.token_expires_at = time.time() + expires_in - 60  # Refresh 1 minute early
+                    logger.debug('Received Auth0 token successfully!')
                     return True
-        except Exception:
-            logger.error("Token refresh failed")
+        except Exception as e:
+            logger.error(f"Auth0 token refresh failed: {e}")
         finally:
             http.close()
         return False
 
     def _headers(self):
+        # Check if token needs refresh
+        if not self.token or time.time() >= self.token_expires_at:
+            if not self.refresh_token():
+                logger.warning("Failed to refresh token, proceeding without authentication")
+        
         headers = {
             "Content-Type": "application/json",
             "accept": "application/json",
