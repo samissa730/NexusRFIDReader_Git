@@ -121,3 +121,37 @@ pyinstaller --onefile --add-data "ui/main.ui:ui" main.py
 - Test the generated executable on a clean system if possible.
 
 --- 
+
+## Autostart on Raspberry Pi (systemd)
+
+This project includes scripts to run the app automatically on boot and restart it if it exits (within 5 seconds).
+
+### Install and enable service
+
+```bash
+cd /path/to/NexusRFIDReader_Git/scripts
+chmod +x run_app.sh install_service.sh uninstall_service.sh
+./install_service.sh
+```
+
+- Service name: `nexusrfid.service`
+- Behavior: starts on boot; restarts automatically 5 seconds after exit
+- The service runs from the project root and executes `scripts/run_app.sh` which activates the local `venv` if present and runs `main.py`.
+
+### Manage service
+
+```bash
+systemctl status nexusrfid.service
+journalctl -u nexusrfid.service -f
+```
+
+### Uninstall service
+
+```bash
+cd /path/to/NexusRFIDReader_Git/scripts
+./uninstall_service.sh
+```
+
+Notes:
+- If you need to run under a specific user, edit the `User=` line inside `/etc/systemd/system/nexusrfid.service` or adjust `install_service.sh` before installing.
+- After editing the unit file manually, run `sudo systemctl daemon-reload` and `sudo systemctl restart nexusrfid.service`.
