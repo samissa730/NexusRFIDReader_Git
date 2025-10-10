@@ -113,8 +113,7 @@ class ApiClient:
             data = response.json()
             return data.get('metadata', {}).get('code') == '200'
         except Exception:
-            # logger.error("Uploading records failed")
-            pass
+            logger.error("Uploading records failed")
         finally:
             http.close()
         return False
