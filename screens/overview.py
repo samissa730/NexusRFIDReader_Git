@@ -6,10 +6,7 @@ from ui.screens.ui_overview import Ui_OverviewScreen
 from utils.logger import logger
 from utils.rfid import RFID
 from utils.gps import GPS
-from utils.common import extract_from_gps, get_date_from_utc, get_processor_id
-from settings import GPS_CONFIG, BAUD_RATE_DON
-import serial
-import serial.tools.list_ports
+from utils.common import extract_from_gps, get_date_from_utc, pre_config_gps, find_gps_port, get_processor_id
 from utils.data_storage import DataStorage
 from utils.api_client import ApiClient
 from settings import API_CONFIG, FILTER_CONFIG, DATABASE_CONFIG
@@ -17,57 +14,28 @@ import time
 from ping3 import ping
 
 
-class GPSScanner(QThread):
-
-    sig_found = Signal(str, int)
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._b_stop = False
-        self._ports = []
-        self._port_idx = 0
-        self._last_refresh_ms = 0
-        # derive baud to try first
-        self._baud = GPS_CONFIG.get('probe_baud_rate', GPS_CONFIG.get('baud_rate', BAUD_RATE_DON)) if isinstance(GPS_CONFIG, dict) else BAUD_RATE_DON
-
+class GPSScannerThread(QThread):
+    """Background thread for scanning GPS ports without blocking the main UI"""
+    gps_found = Signal(str, int)  # port, baud_rate
+    gps_not_found = Signal()
+    
+    def __init__(self):
+        super().__init__()
+        self._stop_requested = False
+        
     def run(self):
-        while not self._b_stop:
-            try:
-                # refresh port list every 10 seconds or when empty
-                now = self.msecsSinceStartOfDay()
-                if not self._ports or now - self._last_refresh_ms > 10000:
-                    self._ports = [p.device for p in serial.tools.list_ports.comports()]
-                    self._port_idx = 0
-                    self._last_refresh_ms = now
-
-                if not self._ports:
-                    self.msleep(500)
-                    continue
-
-                # try one port per tick with very short timeouts
-                port = self._ports[self._port_idx]
-                self._port_idx = (self._port_idx + 1) % len(self._ports)
-                try:
-                    with serial.Serial(port, baudrate=self._baud, timeout=0.2, rtscts=True, dsrdtr=True) as ser:
-                        # read a short line and check for NMEA prefix
-                        line = ser.readline().decode('utf-8', errors='ignore').strip()
-                        if line.startswith('$G'):
-                            self.sig_found.emit(port, self._baud)
-                            return
-                except Exception:
-                    # ignore and continue scanning next port
-                    pass
-
-                # small sleep to yield CPU/GIL
-                self.msleep(100)
-            except Exception:
-                # unexpected error, avoid tight loop
-                self.msleep(200)
-
+        """Scan for GPS ports in background"""
+        baud = pre_config_gps()
+        port = find_gps_port(baud)
+        if port is not None and not self._stop_requested:
+            self.gps_found.emit(port, baud)
+        elif not self._stop_requested:
+            self.gps_not_found.emit()
+    
     def stop(self):
-        self._b_stop = True
+        """Request thread to stop"""
+        self._stop_requested = True
         self.wait()
-
 
 
 class OverviewScreen(BaseScreen):
@@ -108,9 +76,13 @@ class OverviewScreen(BaseScreen):
         self.last_utctime = None
 
         self.gps = None
-        self.gps_scanner = GPSScanner(self)
-        self.gps_scanner.sig_found.connect(self._on_gps_port_found)
-        self._start_gps_scanner()
+        self.gps_scanner = None
+        self.external_retry_timer = QTimer(self)
+        self.external_retry_timer.timeout.connect(self._start_gps_scan)
+        self.external_retry_timer.setInterval(30000)
+
+        # Always attempt external; retry every 30s if not connected
+        self._start_gps_scan()
 
         # RFID init
         self.rfid = RFID()
@@ -140,10 +112,10 @@ class OverviewScreen(BaseScreen):
     def on_leave(self):
         if self.gps and self.gps.isRunning():
             self.gps.stop()
-        if hasattr(self, 'gps_scanner') and self.gps_scanner.isRunning():
-            self.gps_scanner.stop()
         if self.rfid and self.rfid.isRunning():
             self.rfid.stop()
+        if self.gps_scanner and self.gps_scanner.isRunning():
+            self.gps_scanner.stop()
         if hasattr(self, 'gps_display_timer'):
             self.gps_display_timer.stop()
         if hasattr(self, 'internet_timer'):
@@ -163,9 +135,9 @@ class OverviewScreen(BaseScreen):
         if status:
             self._set_gps_status("External GPS Connected", True)
         else:
-            # External disconnected: update status and start external retry timer
+            # External disconnected: update status and start GPS scan
             self._set_gps_status("Disconnected", False)
-            self._start_gps_scanner()
+            self._start_gps_scan()
 
     def _on_rfid_status(self, status):
         if status == 1:
@@ -275,18 +247,29 @@ class OverviewScreen(BaseScreen):
         for column in range(self.ui.tableWidget.columnCount()):
             self.ui.tableWidget.setItem(0, column, QTableWidgetItem(new_data[column]))
 
-    def _start_gps_scanner(self):
-        if hasattr(self, 'gps_scanner'):
-            if self.gps_scanner.isRunning():
-                return
-            # Show scanning status while looking for external GPS
-            self._set_gps_status("Scanning for External GPS...", False)
-            self.gps_scanner = GPSScanner(self)
-            self.gps_scanner.sig_found.connect(self._on_gps_port_found)
-            self.gps_scanner.start()
+    def _start_gps_scan(self):
+        """Start GPS port scanning in background thread"""
+        if self.gps_scanner and self.gps_scanner.isRunning():
+            return  # Already scanning
+        
+        self.gps_scanner = GPSScannerThread()
+        self.gps_scanner.gps_found.connect(self._on_gps_found)
+        self.gps_scanner.gps_not_found.connect(self._on_gps_not_found)
+        self.gps_scanner.start()
+        logger.debug("Started GPS port scan in background")
 
-    def _on_gps_port_found(self, port, baud):
+    def _on_gps_found(self, port, baud):
+        """Called when GPS port is found in background thread"""
         self._start_external_gps(port, baud)
+        self.external_retry_timer.stop()
+        logger.info(f"GPS found on port {port}, starting connection")
+
+    def _on_gps_not_found(self):
+        """Called when no GPS port is found in background thread"""
+        self._set_gps_status("Disconnected", False)
+        if not self.external_retry_timer.isActive():
+            self.external_retry_timer.start()
+        logger.debug("No GPS port found, will retry in 30 seconds")
 
     def _start_external_gps(self, port, baud):
         if self.gps and self.gps.isRunning():
@@ -367,3 +350,5 @@ def calculate_next_id(used_ids):
         else:
             break
     return smallest_available_id
+
+

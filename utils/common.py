@@ -112,10 +112,10 @@ def find_gps_port(baud_rate):
     logger.debug(f"Available ports:{serial_ports}")
     for port in serial_ports:
         try:
-            with serial.Serial(port, baudrate=baud_rate, timeout=1, rtscts=True, dsrdtr=True) as ser:
+            with serial.Serial(port, baudrate=baud_rate, timeout=0.1, rtscts=True, dsrdtr=True) as ser:
                 buffer = ser.in_waiting
                 if buffer < 80:
-                    time.sleep(.5)
+                    time.sleep(0.1)  # Reduced from 0.5 to 0.1 seconds
                 line = ser.readline().decode('utf-8', errors='ignore').strip()
                 if line.startswith('$G'):
                     logger.info(f"GPS found on port: {port}")
