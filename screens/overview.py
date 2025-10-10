@@ -1,4 +1,4 @@
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QThread, Signal
 from PySide6.QtWidgets import QTableWidgetItem
 
 from screens.base import BaseScreen
@@ -12,6 +12,35 @@ from utils.api_client import ApiClient
 from settings import API_CONFIG, FILTER_CONFIG, DATABASE_CONFIG
 import time
 from ping3 import ping
+
+
+class GPSScanner(QThread):
+
+    sig_found = Signal(str, int)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._b_stop = False
+
+    def run(self):
+        while not self._b_stop:
+            try:
+                baud = pre_config_gps()
+                port = find_gps_port(baud)
+                if port is not None:
+                    self.sig_found.emit(port, baud)
+                    return
+            except Exception:
+                pass
+            # Sleep in small steps so we can stop quickly if requested
+            for _ in range(30):
+                if self._b_stop:
+                    return
+                self.msleep(1000)
+
+    def stop(self):
+        self._b_stop = True
+        self.wait()
 
 
 class OverviewScreen(BaseScreen):
@@ -52,12 +81,9 @@ class OverviewScreen(BaseScreen):
         self.last_utctime = None
 
         self.gps = None
-        self.external_retry_timer = QTimer(self)
-        self.external_retry_timer.timeout.connect(self._try_external_gps)
-        self.external_retry_timer.setInterval(30000)
-
-        # Always attempt external; retry every 30s if not connected
-        self._try_external_gps()
+        self.gps_scanner = GPSScanner(self)
+        self.gps_scanner.sig_found.connect(self._on_gps_port_found)
+        self._start_gps_scanner()
 
         # RFID init
         self.rfid = RFID()
@@ -87,6 +113,8 @@ class OverviewScreen(BaseScreen):
     def on_leave(self):
         if self.gps and self.gps.isRunning():
             self.gps.stop()
+        if hasattr(self, 'gps_scanner') and self.gps_scanner.isRunning():
+            self.gps_scanner.stop()
         if self.rfid and self.rfid.isRunning():
             self.rfid.stop()
         if hasattr(self, 'gps_display_timer'):
@@ -110,8 +138,7 @@ class OverviewScreen(BaseScreen):
         else:
             # External disconnected: update status and start external retry timer
             self._set_gps_status("Disconnected", False)
-            if not self.external_retry_timer.isActive():
-                self.external_retry_timer.start()
+            self._start_gps_scanner()
 
     def _on_rfid_status(self, status):
         if status == 1:
@@ -221,16 +248,17 @@ class OverviewScreen(BaseScreen):
         for column in range(self.ui.tableWidget.columnCount()):
             self.ui.tableWidget.setItem(0, column, QTableWidgetItem(new_data[column]))
 
-    def _try_external_gps(self):
-        baud = pre_config_gps()
-        port = find_gps_port(baud)
-        if port is not None:
-            self._start_external_gps(port, baud)
-            self.external_retry_timer.stop()
-        else:
-            self._set_gps_status("Disconnected", False)
-            if not self.external_retry_timer.isActive():
-                self.external_retry_timer.start()
+    def _start_gps_scanner(self):
+        if hasattr(self, 'gps_scanner'):
+            if self.gps_scanner.isRunning():
+                return
+            self._set_gps_status("Scanning for External GPS...", False)
+            self.gps_scanner = GPSScanner(self)
+            self.gps_scanner.sig_found.connect(self._on_gps_port_found)
+            self.gps_scanner.start()
+
+    def _on_gps_port_found(self, port, baud):
+        self._start_external_gps(port, baud)
 
     def _start_external_gps(self, port, baud):
         if self.gps and self.gps.isRunning():
