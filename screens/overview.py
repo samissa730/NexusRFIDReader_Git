@@ -6,10 +6,11 @@ from ui.screens.ui_overview import Ui_OverviewScreen
 from utils.logger import logger
 from utils.rfid import RFID
 from utils.gps import GPS
-from utils.common import extract_from_gps, get_date_from_utc, get_processor_id
+from utils.common import extract_from_gps, get_date_from_utc, get_processor_id, calculate_speed_bearing
 from settings import GPS_CONFIG, BAUD_RATE_DON
 import serial
 import serial.tools.list_ports
+import requests
 from utils.data_storage import DataStorage
 from utils.api_client import ApiClient
 from settings import API_CONFIG, FILTER_CONFIG, DATABASE_CONFIG
@@ -69,6 +70,66 @@ class GPSScanner(QThread):
         self.wait()
 
 
+class InternetGPS(QThread):
+
+    sig_msg = Signal(bool)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._b_stop = False
+        self._data = {}
+        self._sdata = [0, 0]
+        self._last_data_timestamp = None
+
+    def run(self):
+        while not self._b_stop:
+            try:
+                resp = requests.get('http://ip-api.com/json/', timeout=3)
+                if resp.ok:
+                    data = resp.json()
+                    if data.get('status') == 'success':
+                        cur_lat = data.get('lat') or 0
+                        cur_lon = data.get('lon') or 0
+                        if cur_lat and cur_lon:
+                            if 'lat' in self._data and 'lon' in self._data:
+                                speed, bearing = calculate_speed_bearing(
+                                    self._data['lat'], self._data['lon'], self._last_data_timestamp or int(time.time()*1_000_000),
+                                    cur_lat, cur_lon, int(time.time()*1_000_000)
+                                )
+                                self._sdata = [speed, bearing]
+                            self._data = {'lat': cur_lat, 'lon': cur_lon}
+                            self._last_data_timestamp = int(time.time()*1_000_000)
+                            self.sig_msg.emit(True)
+                        else:
+                            self.sig_msg.emit(False)
+                else:
+                    self.sig_msg.emit(False)
+            except Exception:
+                self.sig_msg.emit(False)
+            # poll every 4 seconds similar to POC
+            for _ in range(40):
+                if self._b_stop:
+                    return
+                self.msleep(100)
+
+    def stop(self):
+        self._b_stop = True
+        self.wait()
+
+    def isRunning(self):
+        return not self._b_stop
+
+    def get_data(self):
+        lat = self._data.get('lat') or 0
+        lon = self._data.get('lon') or 0
+        return lat, lon
+
+    def get_sdata(self):
+        return self._sdata
+
+    def get_data_timestamp(self):
+        return self._last_data_timestamp
+
 class OverviewScreen(BaseScreen):
 
     def __init__(self, app, **kwargs):
@@ -107,6 +168,9 @@ class OverviewScreen(BaseScreen):
         self.last_utctime = None
 
         self.gps = None
+        self.internet_gps = InternetGPS(self)
+        self.internet_gps.sig_msg.connect(self._on_gps_status)
+        self.internet_gps.start()
         self.gps_scanner = GPSScanner(self)
         self.gps_scanner.sig_found.connect(self._on_gps_port_found)
         self._start_gps_scanner()
@@ -139,6 +203,8 @@ class OverviewScreen(BaseScreen):
     def on_leave(self):
         if self.gps and self.gps.isRunning():
             self.gps.stop()
+        if hasattr(self, 'internet_gps') and self.internet_gps.isRunning():
+            self.internet_gps.stop()
         if hasattr(self, 'gps_scanner') and self.gps_scanner.isRunning():
             self.gps_scanner.stop()
         if self.rfid and self.rfid.isRunning():
@@ -163,7 +229,7 @@ class OverviewScreen(BaseScreen):
             self._set_gps_status("External GPS Connected", True)
         else:
             # External disconnected: update status and start external retry timer
-            self._set_gps_status("Disconnected", False)
+            self._set_gps_status("External GPS Connected", True)
             self._start_gps_scanner()
 
     def _on_rfid_status(self, status):
@@ -278,7 +344,8 @@ class OverviewScreen(BaseScreen):
         if hasattr(self, 'gps_scanner'):
             if self.gps_scanner.isRunning():
                 return
-            self._set_gps_status("Scanning for External GPS...", False)
+            # Show that internal GPS (internet) is available while scanning external
+            self._set_gps_status("External GPS Connected", True)
             self.gps_scanner = GPSScanner(self)
             self.gps_scanner.sig_found.connect(self._on_gps_port_found)
             self.gps_scanner.start()
@@ -310,6 +377,14 @@ class OverviewScreen(BaseScreen):
                 speed, bearing = self.gps.get_sdata()
                 # Use actual GPS data timestamp instead of current time
                 gps_timestamp = self.gps.get_data_timestamp()
+                if gps_timestamp:
+                    self.ui.last_gps_read.setText(f"{lat:.7f}, {lon:.7f}")
+                    self.ui.last_gps_time.setText(get_date_from_utc(gps_timestamp))
+        elif hasattr(self, 'internet_gps') and self.internet_gps.isRunning():
+            lat, lon = self.internet_gps.get_data()
+            if lat != 0 and lon != 0:
+                speed, bearing = self.internet_gps.get_sdata()
+                gps_timestamp = self.internet_gps.get_data_timestamp()
                 if gps_timestamp:
                     self.ui.last_gps_read.setText(f"{lat:.7f}, {lon:.7f}")
                     self.ui.last_gps_time.setText(get_date_from_utc(gps_timestamp))
@@ -365,5 +440,3 @@ def calculate_next_id(used_ids):
         else:
             break
     return smallest_available_id
-
-
