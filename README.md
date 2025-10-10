@@ -60,24 +60,6 @@ This is a simple Python project demonstrating a PySide6 GUI application with a U
 - PySide6
 
 ## Setup
-### Build executables
-
-- Windows: run `scripts\\build\\win\\build.bat` (uses `NexusRFIDReader.spec`)
-- Linux/RPi: run `bash scripts/build/linux/build.sh`
-
-### Autostart
-
-- RPi (develop, from source):
-  - `sudo bash scripts/autostart/rpi/dev/install_dev_service.sh /absolute/path/to/NexusRFIDReader [user]`
-  - Uninstall: `sudo bash scripts/autostart/rpi/dev/uninstall_dev_service.sh [user]`
-
-- RPi (product, packaged executable):
-  - `sudo bash scripts/autostart/rpi/product/install_prod_service.sh /path/to/NexusRFIDReader [user]`
-  - Uninstall: `sudo bash scripts/autostart/rpi/product/uninstall_prod_service.sh [user]`
-
-- Windows (product):
-  - `scripts\\autostart\\windows\\install_autostart.bat "C:\\path\\to\\NexusRFIDReader.exe"`
-  - Uninstall: `scripts\\autostart\\windows\\uninstall_autostart.bat`
 
 1. Install dependencies:
    ```bash

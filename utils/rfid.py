@@ -116,51 +116,18 @@ class RFID(QThread):
 
         while not self._b_stop.is_set():
             try:
-                # Try to get data from reader
-                if self.reader and hasattr(self.reader, 'get_tag_report'):
-                    try:
-                        # Attempt to get tag data to check if reader is responding
-                        self.reader.get_tag_report()
-                    except Exception as data_error:
-                        logger.debug(f"RFID data pull failed: {data_error}")
-                        # Data pull failed, check if reader is still reachable via ping
-                        response_time = ping(self.host, timeout=3)
-                        if response_time is not None:
-                            # Ping successful - restart the reader
-                            logger.debug("RFID ping successful, restarting reader")
-                            LLRPReaderClient.disconnect_all_readers()
-                            self.reader = None
-                            self._set_reader(self.host, True)
-                            try:
-                                self.reader.connect()
-                                if self.connectivity is False:
-                                    self.connectivity = True
-                                    self.sig_msg.emit(1)
-                            except Exception as restart_error:
-                                logger.debug(f"RFID restart failed: {restart_error}")
-                                if self.connectivity is True:
-                                    self.connectivity = False
-                                    self.sig_msg.emit(2)
-                        else:
-                            # Ping failed - reader is truly disconnected
-                            logger.debug("RFID ping failed, marking as disconnected")
-                            if self.connectivity is True:
-                                self.connectivity = False
-                                self.sig_msg.emit(2)
+                response_time = ping(self.host, timeout=3)
+                if response_time is not None:
+                    if self.connectivity is False:
+                        LLRPReaderClient.disconnect_all_readers()
+                        self.reader = None
+                        self._set_reader(self.host, True)
+                        self.reader.connect()
+                        self.sig_msg.emit(1)
                 else:
-                    # No reader or no get_tag_report method, check connectivity via ping
-                    response_time = ping(self.host, timeout=3)
-                    if response_time is not None:
-                        if self.connectivity is False:
-                            LLRPReaderClient.disconnect_all_readers()
-                            self.reader = None
-                            self._set_reader(self.host, True)
-                            self.reader.connect()
-                            self.sig_msg.emit(1)
-                    else:
-                        if self.connectivity is True:
-                            self.connectivity = False
-                            self.sig_msg.emit(2)
+                    if self.connectivity is True:
+                        self.connectivity = False
+                        self.sig_msg.emit(2)
             except Exception:
                 if self.connectivity is True:
                     self.connectivity = False
