@@ -38,8 +38,8 @@ SERVICE_NAME="nexusrfid"
 # Create the systemd service file content
 SERVICE_CONTENT="[Unit]
 Description=NexusRFID Reader Application
-After=network.target
-Wants=display-manager.service
+After=network.target graphical-session.target
+Wants=graphical-session.target
 
 [Service]
 Type=simple
@@ -51,12 +51,15 @@ User=$(whoami)
 Environment=PYTHONUNBUFFERED=1
 Environment=QT_DEBUG_PLUGINS=1
 Environment=DISPLAY=:0
+Environment=XDG_RUNTIME_DIR=/run/user/$(id -u)
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=QT_QPA_PLATFORM=xcb
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=nexusrfid
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=graphical.target
 "
 
 # Save service file
