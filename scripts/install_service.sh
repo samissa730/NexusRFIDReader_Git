@@ -1,7 +1,18 @@
 #!/bin/bash
 
 # Determine the directory the script is run from
-PROJECT_DIR=$(dirname "$(realpath "$0")/..")
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+PROJECT_DIR=$(dirname "$SCRIPT_DIR")
+
+echo "Script directory: $SCRIPT_DIR"
+echo "Project directory: $PROJECT_DIR"
+echo "Main.py path: $PROJECT_DIR/main.py"
+
+# Verify main.py exists
+if [ ! -f "$PROJECT_DIR/main.py" ]; then
+    echo "ERROR: main.py not found at $PROJECT_DIR/main.py"
+    exit 1
+fi
 
 # Get the Python interpreter path
 PYTHON_PATH=$(which python3)
