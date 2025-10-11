@@ -9,8 +9,10 @@ from utils.gps import GPS
 from utils.common import extract_from_gps, get_date_from_utc, pre_config_gps, find_gps_port, get_processor_id
 from utils.data_storage import DataStorage
 from utils.api_client import ApiClient
-from settings import API_CONFIG, FILTER_CONFIG, DATABASE_CONFIG
+from settings import API_CONFIG, FILTER_CONFIG, DATABASE_CONFIG, INTERNET_LIMIT_TIME
 import time
+import subprocess
+import platform
 from ping3 import ping
 
 
@@ -108,6 +110,10 @@ class OverviewScreen(BaseScreen):
         self.internet_timer.timeout.connect(self._check_internet_status)
         self.internet_timer.start(5000)  # Check every 5 seconds
         self._check_internet_status()  # Initial check
+        
+        # Internet disconnection tracking
+        self.internet_disconnected_start = None
+        self.internet_limit_seconds = INTERNET_LIMIT_TIME * 60  # Convert minutes to seconds
 
     def on_leave(self):
         if self.gps and self.gps.isRunning():
@@ -306,12 +312,52 @@ class OverviewScreen(BaseScreen):
             if response_time is not None:
                 self._set_internet_status("Connected", True)
                 logger.debug(f"Internet ping successful: {response_time:.2f}ms")
+                # Reset disconnection timer when connected
+                self.internet_disconnected_start = None
             else:
                 self._set_internet_status("Disconnected", False)
                 logger.debug("Internet ping failed: no response")
+                self._handle_internet_disconnection()
         except Exception as e:
             self._set_internet_status("Disconnected", False)
             logger.debug(f"Internet ping error: {e}")
+            self._handle_internet_disconnection()
+
+    def _handle_internet_disconnection(self):
+        """Handle internet disconnection and check if restart is needed"""
+        current_time = time.time()
+        
+        # Start tracking disconnection time if not already started
+        if self.internet_disconnected_start is None:
+            self.internet_disconnected_start = current_time
+            logger.warning("Internet disconnected, starting disconnection timer")
+            return
+        
+        # Check if disconnection time exceeds the limit
+        disconnection_duration = current_time - self.internet_disconnected_start
+        if disconnection_duration >= self.internet_limit_seconds:
+            logger.critical(f"Internet disconnected for {disconnection_duration:.0f} seconds (limit: {self.internet_limit_seconds} seconds). Restarting device...")
+            self._restart_device()
+        else:
+            remaining_time = self.internet_limit_seconds - disconnection_duration
+            logger.warning(f"Internet still disconnected. {remaining_time:.0f} seconds remaining before restart")
+
+    def _restart_device(self):
+        """Restart the device based on the operating system"""
+        logger.critical("Initiating device restart...")
+        try:
+            if platform.system() == "Linux":
+                # For Linux/Raspberry Pi
+                subprocess.run(["sudo", "reboot"], check=True)
+            elif platform.system() == "Windows":
+                # For Windows
+                subprocess.run(["shutdown", "/r", "/t", "10"], check=True)
+            else:
+                logger.error(f"Unsupported operating system for restart: {platform.system()}")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to restart device: {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error during restart: {e}")
 
     def _upload_records(self):
         data = self.storage.fetch_all_records()
