@@ -8,17 +8,28 @@ echo "Script directory: $SCRIPT_DIR"
 echo "Project directory: $PROJECT_DIR"
 echo "Main.py path: $PROJECT_DIR/main.py"
 
-# Verify main.py exists
-if [ ! -f "$PROJECT_DIR/main.py" ]; then
-    echo "ERROR: main.py not found at $PROJECT_DIR/main.py"
+# Verify run_app.sh exists and make it executable
+if [ ! -f "$PROJECT_DIR/scripts/run_app.sh" ]; then
+    echo "ERROR: run_app.sh not found at $PROJECT_DIR/scripts/run_app.sh"
     exit 1
 fi
+chmod +x "$PROJECT_DIR/scripts/run_app.sh"
+echo "Made run_app.sh executable"
 
-# Get the Python interpreter path
-PYTHON_PATH=$(which python3)
-if [ -z "$PYTHON_PATH" ]; then
-    echo "Python3 is not installed. Please install Python3."
-    exit 1
+# Check if virtual environment exists and use it, otherwise use system python
+if [ -f "$PROJECT_DIR/venv/bin/python" ]; then
+    PYTHON_PATH="$PROJECT_DIR/venv/bin/python"
+    echo "Using virtual environment Python: $PYTHON_PATH"
+elif [ -f "$PROJECT_DIR/venv/bin/python3" ]; then
+    PYTHON_PATH="$PROJECT_DIR/venv/bin/python3"
+    echo "Using virtual environment Python3: $PYTHON_PATH"
+else
+    PYTHON_PATH=$(which python3)
+    echo "Using system Python3: $PYTHON_PATH"
+    if [ -z "$PYTHON_PATH" ]; then
+        echo "Python3 is not installed. Please install Python3."
+        exit 1
+    fi
 fi
 
 # Define the systemd service name
@@ -32,7 +43,7 @@ Wants=display-manager.service
 
 [Service]
 Type=simple
-ExecStart=$PYTHON_PATH $PROJECT_DIR/main.py
+ExecStart=$PROJECT_DIR/scripts/run_app.sh
 WorkingDirectory=$PROJECT_DIR
 Restart=always
 RestartSec=5
