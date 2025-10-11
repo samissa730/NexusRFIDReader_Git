@@ -15,6 +15,16 @@ else
     echo "No virtual environment found, using system Python"
     PYTHON_PATH=$(which python3)
     echo "Using system Python: $PYTHON_PATH"
+    
+    # Check if PySide6 is available in system Python
+    echo "Checking if PySide6 is available..."
+    if ! "$PYTHON_PATH" -c "import PySide6" 2>/dev/null; then
+        echo "ERROR: PySide6 is not installed in system Python"
+        echo "Please install PySide6 globally: sudo apt install python3-pyside6"
+        echo "Or create a virtual environment and install dependencies there"
+        exit 1
+    fi
+    echo "PySide6 is available in system Python"
 fi
 
 # Verify main.py exists
