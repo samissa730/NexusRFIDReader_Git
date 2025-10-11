@@ -94,7 +94,7 @@ class ApiEndpointTester:
             if response.status_code == 200:
                 data = response.json()
                 print(f"Authentication successful!")
-                print(f"Token received: {data.get('access_token', 'N/A')[:20]}...")
+                print(f"Token received: {data.get('access_token', 'N/A')}")
                 print(f"Expires in: {data.get('expires_in', 'N/A')} seconds")
                 print(f"Token type: {data.get('token_type', 'N/A')}")
                 print(f"Scope: {data.get('scope', 'N/A')}")
@@ -154,7 +154,7 @@ class ApiEndpointTester:
         try:
             print(f"Sending request to: {self.health_url}")
             print(f"Payload: {json.dumps(payload, indent=2)}")
-            print(f"Using token: {self.token[:20]}...")
+            print(f"Using token: {self.token}")
             
             response = session.post(
                 self.health_url, 
@@ -247,7 +247,7 @@ class ApiEndpointTester:
         try:
             print(f"Sending request to: {self.record_url}")
             print(f"Payload: {json.dumps(payload, indent=2)}")
-            print(f"Using token: {self.token[:20]}...")
+            print(f"Using token: {self.token}")
             
             response = session.post(
                 self.record_url, 
