@@ -1,17 +1,22 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
-set -e
+# Determine the directory the script is run from
+PROJECT_DIR=$(dirname "$(realpath "$0")/..")
 
-# Resolve project root as the parent of this script directory
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
-cd "${PROJECT_ROOT}"
-
-# Prefer project venv if present
-if [ -f "${PROJECT_ROOT}/venv/bin/activate" ]; then
-  . "${PROJECT_ROOT}/venv/bin/activate"
+# Get the Python interpreter path
+PYTHON_PATH=$(which python3)
+if [ -z "$PYTHON_PATH" ]; then
+    echo "Python3 is not installed. Please install Python3."
+    exit 1
 fi
 
-exec python3 "${PROJECT_ROOT}/main.py"
+# Check if virtual environment exists and activate it
+if [ -d "$PROJECT_DIR/venv" ]; then
+    echo "Activating virtual environment..."
+    source "$PROJECT_DIR/venv/bin/activate"
+fi
 
-
+# Run the application
+echo "Starting NexusRFID Reader Application..."
+cd "$PROJECT_DIR"
+exec "$PYTHON_PATH" main.py

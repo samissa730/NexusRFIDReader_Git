@@ -1,157 +1,243 @@
-# Introduction 
-TODO: Give a short introduction of your project. Let this section explain the objectives or the motivation behind this project. 
+# NexusRFID Reader
 
-# Getting Started
-TODO: Guide users through getting your code up and running on their own system. In this section you can talk about:
-1.	Installation process
-2.	Software dependencies
-3.	Latest releases
-4.	API references
+A comprehensive RFID and GPS data reading application built with PySide6, featuring automatic restart capabilities for production environments.
 
-# Build and Test
-TODO: Describe and show how to build your code and run the tests. 
+## Features
 
-## Run Unit Tests
+- **RFID Tag Reading**: Live RFID tag scanning and processing
+- **GPS Integration**: GPS module support for location tracking
+- **Cross-Platform**: Supports Windows, Linux, and Raspberry Pi
+- **Auto-Restart**: Built-in autorestart mechanisms for production deployment
+- **Modern UI**: Qt Designer-based user interface
+- **Crash Recovery**: Automatic restart on application crashes
+
+## Requirements
+
+- Python 3.7+
+- PySide6
+- RFID Reader hardware
+- GPS module (optional)
+
+## Quick Start
+
+### Development Environment
+
+1. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Run the application:**
+   ```bash
+   python main.py
+   ```
+
+### Production Environment
+
+The application includes comprehensive autorestart mechanisms for different platforms:
+
+## Autorestart Mechanisms
+
+### Windows Production Setup
+
+1. **Build the executable:**
+   ```bash
+   # Run the build script
+   scripts\build_executable.bat
+   ```
+
+2. **Setup autorestart:**
+   ```bash
+   # Place the executable in the project root, then run:
+   scripts\setup_windows_autorestart.bat
+   ```
+
+**How it works:**
+- Creates a monitoring script that checks every 10 seconds if the application is running
+- Uses Windows Task Scheduler to run the monitor at user logon
+- Automatically restarts the application if it crashes
+
+**Uninstall:**
+```bash
+scripts\uninstall_windows_autorestart.bat
+```
+
+### Linux/Ubuntu Production Setup
+
+#### Option 1: Systemd Service (Recommended)
+
+1. **Build the executable:**
+   ```bash
+   scripts/build_executable.sh
+   ```
+
+2. **Install as systemd service:**
+   ```bash
+   sudo scripts/install_service.sh
+   ```
+
+**How it works:**
+- Creates a systemd service (`nexusrfid.service`)
+- Automatically restarts every 5 seconds if the application crashes
+- Starts on system boot
+- Logs output to systemd journal
+
+**Manage the service:**
+```bash
+# Check status
+systemctl status nexusrfid.service
+
+# View logs
+journalctl -u nexusrfid.service -f
+
+# Stop/start/restart
+sudo systemctl stop nexusrfid.service
+sudo systemctl start nexusrfid.service
+sudo systemctl restart nexusrfid.service
+```
+
+**Uninstall:**
+```bash
+sudo scripts/uninstall_service.sh
+```
+
+#### Option 2: Package Installation
+
+1. **Create package:**
+   ```bash
+   scripts/create_pkg_ubuntu.sh
+   ```
+
+2. **Install package:**
+   ```bash
+   sudo apt install ./NexusRFIDReader-1.0.deb
+   ```
+
+**Uninstall package:**
+```bash
+sudo scripts/uninstall_pkg_ubuntu.sh
+```
+
+### Raspberry Pi Production Setup
+
+#### Option 1: Monitoring Script (Lightweight)
+
+1. **Build the executable:**
+   ```bash
+   scripts/build_executable.sh
+   ```
+
+2. **Create package:**
+   ```bash
+   scripts/create_pkg_rpi.sh
+   ```
+
+3. **Install package:**
+   ```bash
+   sudo apt install ./NexusRFIDReader-1.0.deb
+   ```
+
+**How it works:**
+- Creates a monitoring script that checks every 5 seconds
+- Uses desktop autostart to run the monitor on user login
+- More lightweight than systemd for Raspberry Pi
+
+**Uninstall:**
+```bash
+sudo scripts/uninstall_pkg_rpi.sh
+```
+
+#### Option 2: Systemd Service
+
+Same as Linux/Ubuntu systemd service setup above.
+
+## Build and Packaging
+
+### Build Executable
+
+**Windows:**
+```bash
+scripts\build_executable.bat
+```
+
+**Linux/Raspberry Pi:**
+```bash
+scripts/build_executable.sh
+```
+
+### Package Creation
+
+**Ubuntu (.deb package):**
+```bash
+scripts/create_pkg_ubuntu.sh
+```
+
+**Raspberry Pi (.deb package):**
+```bash
+scripts/create_pkg_rpi.sh
+```
+
+## Testing
+
+### Run Unit Tests
 
 Unit tests live under the `UnitTests/` directory and use Python's built-in `unittest` framework.
 
-1. Ensure the virtual environment is activated (optional but recommended):
+1. **Activate virtual environment (optional):**
    ```bash
    # Windows PowerShell
    .\venv\Scripts\Activate.ps1
    # or CMD
    .\venv\Scripts\activate.bat
+   
+   # Linux/Raspberry Pi
+   source venv/bin/activate
    ```
 
-2. Run all tests with discovery:
+2. **Run all tests:**
    ```bash
    python -m unittest discover -s UnitTests -p "test_*.py" -v
    ```
 
-3. Run a single test file:
+3. **Run specific tests:**
    ```bash
    python -m unittest UnitTests.test_common -v
    ```
 
-4. Run a single test case or method:
-   ```bash
-   python -m unittest UnitTests.test_common.TestCommon.test_get_serial_windows_powershell -v
-   ```
+## Autorestart Comparison
 
-Notes:
-- Tests mock external system calls (e.g., `subprocess`, `socket`) so they are safe to run on any OS.
-- If you add new tests, place them in `UnitTests/` and name files `test_*.py`.
+| Environment | Mechanism | Check Interval | Boot Integration | Privileges |
+|-------------|-----------|----------------|------------------|------------|
+| **Development** | None (manual) | N/A | No | User |
+| **Windows Prod** | Task Scheduler + Monitor | 10 seconds | User logon | Highest |
+| **Linux Prod** | systemd service | 5 seconds | System boot | Root |
+| **Raspberry Pi** | Desktop autostart + Monitor | 5 seconds | User logon | User |
 
-# Contribute
-TODO: Explain how other users and developers can contribute to make your code better. 
+## Troubleshooting
 
-If you want to learn more about creating good readme files then refer the following [guidelines](https://docs.microsoft.com/en-us/azure/devops/repos/git/create-a-readme?view=azure-devops). You can also seek inspiration from the below readme files:
-- [ASP.NET Core](https://github.com/aspnet/Home)
-- [Visual Studio Code](https://github.com/Microsoft/vscode)
-- [Chakra Core](https://github.com/Microsoft/ChakraCore)
+### Windows
+- Ensure you run setup scripts as Administrator
+- Check Task Scheduler for the `NexusRFIDReaderMonitor` task
+- Monitor script logs are in the application directory
 
+### Linux/Raspberry Pi
+- Check systemd service status: `systemctl status nexusrfid.service`
+- View logs: `journalctl -u nexusrfid.service -f`
+- Ensure executable has proper permissions: `chmod +x NexusRFIDReader`
 
-# NexusRFIDReader - Hello World PySide6 Example
+### Common Issues
+- **Permission denied**: Run with appropriate privileges (sudo for Linux, Administrator for Windows)
+- **Service not starting**: Check logs and ensure all dependencies are installed
+- **Autostart not working**: Verify autostart configuration and user permissions
 
-This is a simple Python project demonstrating a PySide6 GUI application with a UI designed in Qt Designer (`.ui` file).
+## Contributing
 
-## Requirements
-- Python 3.7+
-- PySide6
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
 
-## Setup
+## License
 
-1. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-2. Run the application:
-   ```bash
-   python main.py
-   ```
-
-## UI Design
-- The main window UI is defined in `main.ui` and can be edited with Qt Designer.
-- The application loads the UI dynamically at runtime. 
-
-## Build and Create Installer (Windows & Linux)
-
-You can package this application as a standalone executable for Windows and Linux using [PyInstaller](https://pyinstaller.org/). This will allow you to distribute your app without requiring users to install Python or dependencies.
-
-### 1. Install PyInstaller
-
-PyInstaller is already listed in `requirements.txt`. If not installed, run:
-
-```bash
-pip install pyinstaller
-```
-
-### 2. Build the Executable
-
-#### **Windows**
-
-Open a terminal in your project directory and run:
-
-```bash
-pyinstaller --onefile --add-data "ui/main.ui;ui" main.py
-```
-- `--onefile`: Creates a single executable file.
-- `--add-data`: Ensures the `main.ui` file is included. On Windows, use a semicolon `;` to separate source and destination.
-
-#### **Linux**
-
-On Linux, use a colon `:` instead of a semicolon:
-
-```bash
-pyinstaller --onefile --add-data "ui/main.ui:ui" main.py
-```
-
-#### **Output**
-- The standalone executable will be in the `dist` directory.
-- You can distribute this file directly, or use an installer creator for a more polished installation experience.
-
-### 3. (Optional) Create an Installer
-- **Windows:** Use tools like [Inno Setup](https://jrsoftware.org/isinfo.php) or [NSIS](https://nsis.sourceforge.io/) to create a Windows installer from your `dist` folder.
-- **Linux:** You can create a `.deb` package (for Debian/Ubuntu) using [fpm](https://fpm.readthedocs.io/en/latest/) or distribute as a tarball.
-
-### 4. Notes
-- You must build the executable on the target OS (build on Windows for Windows, on Linux for Linux).
-- The `main.ui` file must be included using the `--add-data` option as shown above.
-- Test the generated executable on a clean system if possible.
-
---- 
-
-## Autostart on Raspberry Pi (systemd)
-
-This project includes scripts to run the app automatically on boot and restart it if it exits (within 5 seconds).
-
-### Install and enable service
-
-```bash
-cd /path/to/NexusRFIDReader_Git/scripts
-chmod +x run_app.sh install_service.sh uninstall_service.sh
-./install_service.sh
-```
-
-- Service name: `nexusrfid.service`
-- Behavior: starts on boot; restarts automatically 5 seconds after exit
-- The service runs from the project root and executes `scripts/run_app.sh` which activates the local `venv` if present and runs `main.py`.
-
-### Manage service
-
-```bash
-systemctl status nexusrfid.service
-journalctl -u nexusrfid.service -f
-```
-
-### Uninstall service
-
-```bash
-cd /path/to/NexusRFIDReader_Git/scripts
-./uninstall_service.sh
-```
-
-Notes:
-- If you need to run under a specific user, edit the `User=` line inside `/etc/systemd/system/nexusrfid.service` or adjust `install_service.sh` before installing.
-- After editing the unit file manually, run `sudo systemctl daemon-reload` and `sudo systemctl restart nexusrfid.service`.
+[Add your license information here]

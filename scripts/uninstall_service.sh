@@ -1,21 +1,30 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
-set -euo pipefail
-
+# Define the systemd service name
 SERVICE_NAME="nexusrfid"
-UNIT_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
 
-if systemctl list-units --type=service --all | grep -q "${SERVICE_NAME}.service"; then
-  sudo systemctl stop "${SERVICE_NAME}.service" || true
-  sudo systemctl disable "${SERVICE_NAME}.service" || true
+# Request sudo permissions upfront
+if [ "$EUID" -ne 0 ]; then
+    echo "This script requires administrative privileges. Please run as root or use sudo."
+    exit 1
 fi
 
-if [ -f "${UNIT_PATH}" ]; then
-  sudo rm -f "${UNIT_PATH}"
+# Stop the service if it's running
+systemctl stop "$SERVICE_NAME" 2>/dev/null
+
+# Disable the service
+systemctl disable "$SERVICE_NAME" 2>/dev/null
+
+# Remove the service file
+SERVICE_FILE="/etc/systemd/system/$SERVICE_NAME.service"
+if [ -f "$SERVICE_FILE" ]; then
+    rm -f "$SERVICE_FILE"
+    echo "Removed systemd service file at $SERVICE_FILE"
+else
+    echo "Service file $SERVICE_FILE was not found"
 fi
 
-sudo systemctl daemon-reload
+# Reload systemd
+systemctl daemon-reload
 
-echo "Uninstalled ${SERVICE_NAME}.service"
-
-
+echo "NexusRFID service has been uninstalled successfully."
