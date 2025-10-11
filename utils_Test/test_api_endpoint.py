@@ -32,7 +32,7 @@ class ApiEndpointTester:
         self.client_id = "dC1zM4ghLvr8eipSOlmRhAelHRXdtvNC"
         self.client_secret = "M__OTtIL7Pw754RBKIEEOCrXsxTef61vWny57keAXqwNN6mvylhg5Yc4XNtajqk4"
         self.audience = "https://nexus-locate-api"
-        self.record_url = API_CONFIG.get('record_url')
+        self.record_url = "http://dev-api-locate.nexusyms.com/api/sites/0198c311-4801-7445-b73a-3a7dce72c6f6/scans"
         self.health_url = API_CONFIG.get('health_url')
         self.user_name = API_CONFIG.get('user_name', 'TestUser')
         self.site_id = API_CONFIG.get('site_id', 'NexusLocate')
@@ -213,30 +213,26 @@ class ApiEndpointTester:
         
         payload = [
             {
-                "rfidTag": str(uuid.uuid4()),
+                "siteId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                "tagName": str(uuid.uuid4()),
                 "latitude": 33.00652,
                 "longitude": -96.6927,
-                "speed": 15.5,
+                "speed": 15,
                 "deviceId": device_id,
-                "barrier": "50",
-                "siteId": self.site_id,
-                "isProcessed": False,
+                "barrier": "90",
                 "antenna": 1,
-                "rssi": -65.2,
-                "timestamp": int(time.time() * 1000000)  # microseconds
+                "isProcess": True
             },
             {
-                "rfidTag": str(uuid.uuid4()),
+                "siteId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                "tagName": str(uuid.uuid4()),
                 "latitude": 33.00655,
                 "longitude": -96.6928,
-                "speed": 12.3,
+                "speed": 12,
                 "deviceId": device_id,
-                "barrier": "50",
-                "siteId": self.site_id,
-                "isProcessed": False,
+                "barrier": "90",
                 "antenna": 2,
-                "rssi": -58.7,
-                "timestamp": int(time.time() * 1000000)
+                "isProcess": True
             }
         ]
         
@@ -319,7 +315,7 @@ class ApiEndpointTester:
         test_urls = [
             "https://httpbin.org/get",
             "https://dev-0m8cx6xlg7z8zy6j.us.auth0.com",
-            "http://dev-api-locate.nexusyms.com"
+            "http://dev-api-locate.nexusyms.com/api/sites/0198c311-4801-7445-b73a-3a7dce72c6f6/scans"
         ]
         
         session = self._create_session()
