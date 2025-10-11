@@ -324,15 +324,15 @@ class OverviewScreen(BaseScreen):
         for row in data:
             # adapt to new API format
             record = {
-                "rfidTag": row[1],  # rfidTag
+                "siteId": site_id,  # siteId from settings
+                "tagName": row[1],  # tagName (was rfidTag)
                 "latitude": row[4],  # latitude
                 "longitude": row[5],  # longitude
-                "speed": row[6],  # speed
+                "speed": int(row[6]) if row[6] else 0,  # speed as integer
                 "deviceId": device_id,  # deviceId from get_processor_id()
-                "barrier": "50",  # default barrier value
-                "siteId": site_id,  # siteId from settings
-                "isProcessed": False,  # default to False
-                "antenna": int(row[2]) if row[2] else 1  # antenna number
+                "barrier": "90",  # updated barrier value
+                "antenna": int(row[2]) if row[2] else 1,  # antenna number
+                "isProcess": True  # isProcess (was isProcessed)
             }
             payload.append(record)
         

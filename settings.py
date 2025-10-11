@@ -44,13 +44,17 @@ RFID_CONFIG = {
 API_CONFIG = {
     "login_url": "",  # optional, if you will use token refresh
     "health_url": "",
-    "record_url": "http://dev-api-locate.nexusyms.com/api/scans",
+    "auth0_url": "https://dev-0m8cx6xlg7z8zy6j.us.auth0.com/oauth/token",
+    "record_url": "http://dev-api-locate.nexusyms.com/api/sites/0198c311-4801-7445-b73a-3a7dce72c6f6/scans",
+    "client_id": "CVtthovZiZbI4X8kLjRYdPnRoqIQ06oFYVZMdD54h-0=",
+    "client_secret": "IEcDs5KZp7Kzx3orfml6Zf30irU30b0xWnxAdSw4-Ng6diXJ8YaLv9zmelIFa0VRz9Gnl03LrF1xSmBxIH-img==",
+    "audience": "https://nexus-locate-api",
     "email": "",      # optional, only if login_url used
     "password": "",   # optional, only if login_url used
     "token": "",      # set bearer token here if using token auth
     "user_name": "NexusUser",
     "spotter_id": "120",
-    "site_id": "NexusLocate",  # siteId for new API format
+    "site_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",  # siteId for new API format
     # intervals
     "record_interval_ms": 7000,
     "health_interval_ms": 15000,

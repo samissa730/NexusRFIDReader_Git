@@ -9,6 +9,7 @@ from urllib3.util.retry import Retry
 
 from settings import API_CONFIG
 from utils.logger import logger
+from utils.crypto import decrypt_text
 
 
 class ApiClient:
@@ -16,10 +17,21 @@ class ApiClient:
     def __init__(self):
         self.token = None
         self.token_expires_at = 0
-        self.auth0_url = "https://dev-0m8cx6xlg7z8zy6j.us.auth0.com/oauth/token"
-        self.client_id = "dC1zM4ghLvr8eipSOlmRhAelHRXdtvNC"
-        self.client_secret = "M__OTtIL7Pw754RBKIEEOCrXsxTef61vWny57keAXqwNN6mvylhg5Yc4XNtajqk4"
-        self.audience = "https://nexus-locate-api"
+        self.auth0_url = API_CONFIG.get('auth0_url')
+        
+        # Decrypt credentials when needed
+        encrypted_client_id = API_CONFIG.get('client_id')
+        encrypted_client_secret = API_CONFIG.get('client_secret')
+        
+        try:
+            self.client_id = decrypt_text(encrypted_client_id) if encrypted_client_id else ""
+            self.client_secret = decrypt_text(encrypted_client_secret) if encrypted_client_secret else ""
+        except Exception as e:
+            logger.error(f"Failed to decrypt credentials: {e}")
+            self.client_id = ""
+            self.client_secret = ""
+        
+        self.audience = API_CONFIG.get('audience')
         self.health_url = API_CONFIG.get('health_url')
         self.record_url = API_CONFIG.get('record_url')
         self.user_name = API_CONFIG.get('user_name', 'Unknown')
@@ -96,6 +108,10 @@ class ApiClient:
             response = http.post(self.health_url, headers=self._headers(), json=payload, timeout=4)
             response.raise_for_status()
             data = response.json()
+            # Check for new API response format
+            if data.get('isSuccess') == True and data.get('status') == 'Ok':
+                return True
+            # Fallback to old format
             return data.get('metadata', {}).get('code') == '200'
         except Exception:
             logger.error("Uploading health data failed")
@@ -111,6 +127,10 @@ class ApiClient:
             response = http.post(self.record_url, headers=self._headers(), json=payload, timeout=4)
             response.raise_for_status()
             data = response.json()
+            # Check for new API response format
+            if data.get('isSuccess') == True and data.get('status') == 'Ok':
+                return True
+            # Fallback to old format
             return data.get('metadata', {}).get('code') == '200'
         except Exception:
             logger.error("Uploading records failed")

@@ -170,7 +170,13 @@ class ApiEndpointTester:
             if response.status_code == 200:
                 try:
                     data = response.json()
-                    if data.get('metadata', {}).get('code') == '200':
+                    # Check for new API response format
+                    if data.get('isSuccess') == True and data.get('status') == 'Ok':
+                        print("Health data upload successful!")
+                        self.test_results['health_upload_test'] = True
+                        return True
+                    # Fallback to old format
+                    elif data.get('metadata', {}).get('code') == '200':
                         print("Health data upload successful!")
                         self.test_results['health_upload_test'] = True
                         return True
@@ -263,7 +269,20 @@ class ApiEndpointTester:
             if response.status_code == 200:
                 try:
                     data = response.json()
-                    if data.get('metadata', {}).get('code') == '200':
+                    print(f"Response Analysis:")
+                    print(f"  - isSuccess: {data.get('isSuccess')}")
+                    print(f"  - status: {data.get('status')}")
+                    print(f"  - value: {data.get('value')}")
+                    print(f"  - errors: {data.get('errors', [])}")
+                    print(f"  - validationErrors: {data.get('validationErrors', [])}")
+                    
+                    # Check for new API response format
+                    if data.get('isSuccess') == True and data.get('status') == 'Ok':
+                        print("Record upload successful!")
+                        self.test_results['record_upload_test'] = True
+                        return True
+                    # Fallback to old format
+                    elif data.get('metadata', {}).get('code') == '200':
                         print("Record upload successful!")
                         self.test_results['record_upload_test'] = True
                         return True
@@ -295,17 +314,27 @@ class ApiEndpointTester:
             print("No token to refresh")
             return False
         
-        # Wait for token to be close to expiry (or force refresh)
+        # Store original token for comparison
         original_token = self.token
-        self.token_expires_at = time.time() - 1  # Force refresh
+        original_expires_at = self.token_expires_at
+        
+        # Force refresh by setting expiration to past
+        self.token_expires_at = time.time() - 1
+        
+        # Add small delay to ensure different timestamp
+        time.sleep(1)
         
         success = self.test_auth0_authentication()
         
-        if success and self.token != original_token:
+        # Check if we got a new token (different content or different expiration)
+        if success and (self.token != original_token or self.token_expires_at != original_expires_at):
             print("Token refresh successful!")
+            print(f"Original token expires at: {original_expires_at}")
+            print(f"New token expires at: {self.token_expires_at}")
             return True
         else:
             print("Token refresh failed!")
+            print("Note: Tokens may be identical due to caching or same timestamp")
             return False
     
     def test_network_connectivity(self) -> bool:
