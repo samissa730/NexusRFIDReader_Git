@@ -46,8 +46,8 @@ API_CONFIG = {
     "health_url": "",
     "auth0_url": "https://dev-0m8cx6xlg7z8zy6j.us.auth0.com/oauth/token",
     "record_url": "http://dev-api-locate.nexusyms.com/api/sites/0198c311-4801-7445-b73a-3a7dce72c6f6/scans",
-    "client_id": "CVtthovZiZbI4X8kLjRYdPnRoqIQ06oFYVZMdD54h-0=",
-    "client_secret": "IEcDs5KZp7Kzx3orfml6Zf30irU30b0xWnxAdSw4-Ng6diXJ8YaLv9zmelIFa0VRz9Gnl03LrF1xSmBxIH-img==",
+    "client_id": "enc:Aox9yhPiUr--4yjKyH27RGaV9Ca-Hm6SfLH5LbZObKw=",
+    "client_secret": "enc:K5gX9RqiaKPVBSW7-DqdM2Ky3BehIGVmd8vtLqSOT9eIAGabLmtbnvrYNauPLsNh7eaVjZuevyBNYpsdAlu97w==",
     "audience": "https://nexus-locate-api",
     "email": "",      # optional, only if login_url used
     "password": "",   # optional, only if login_url used

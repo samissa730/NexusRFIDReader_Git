@@ -1,6 +1,9 @@
 import time
 import uuid
 import json
+import os
+import base64
+import hashlib
 from datetime import datetime
 
 import requests
@@ -9,7 +12,6 @@ from urllib3.util.retry import Retry
 
 from settings import API_CONFIG
 from utils.logger import logger
-from utils.crypto import decrypt_text
 
 
 class ApiClient:
@@ -20,16 +22,8 @@ class ApiClient:
         self.auth0_url = API_CONFIG.get('auth0_url')
         
         # Decrypt credentials when needed
-        encrypted_client_id = API_CONFIG.get('client_id')
-        encrypted_client_secret = API_CONFIG.get('client_secret')
-        
-        try:
-            self.client_id = decrypt_text(encrypted_client_id) if encrypted_client_id else ""
-            self.client_secret = decrypt_text(encrypted_client_secret) if encrypted_client_secret else ""
-        except Exception as e:
-            logger.error(f"Failed to decrypt credentials: {e}")
-            self.client_id = ""
-            self.client_secret = ""
+        self.client_id = self._decrypt_config_value(API_CONFIG.get('client_id'))
+        self.client_secret = self._decrypt_config_value(API_CONFIG.get('client_secret'))
         
         self.audience = API_CONFIG.get('audience')
         self.health_url = API_CONFIG.get('health_url')
@@ -43,6 +37,50 @@ class ApiClient:
         http.mount("https://", adapter)
         http.mount("http://", adapter)
         return http
+
+    def _decrypt_config_value(self, value: str | None) -> str | None:
+        """Decrypt a config value using a static, in-code obfuscation scheme.
+
+        Requirements satisfied:
+        - No external store, no env vars.
+        - Same app bundle works on many devices.
+        - Only values explicitly marked as encrypted are processed.
+
+        Format: "enc:" + base64-url(payload_bytes)
+        Where payload_bytes are produced from plaintext as:
+            c[i] = (p[i] ^ k[i]) + i mod 256
+        k[i] comes from a simple LCG-based byte stream seeded with a constant.
+        """
+        if value is None or value == "":
+            return value
+
+        prefix = "enc:"
+        if not value.startswith(prefix):
+            return value
+
+        try:
+            encoded = value[len(prefix):]
+            data = base64.urlsafe_b64decode(encoded.encode("utf-8"))
+
+            # LCG parameters (Numerical Recipes): state = (a*state + c) mod 2^32
+            a = 1664525
+            c = 1013904223
+            mod = 2 ** 32
+            state = 0xA3C59AC3  # embedded seed
+
+            def next_key_byte() -> int:
+                nonlocal state
+                state = (a * state + c) % mod
+                return (state >> 24) & 0xFF
+
+            out = bytearray(len(data))
+            for i, b in enumerate(data):
+                k = next_key_byte()
+                out[i] = ((b - (i % 256)) & 0xFF) ^ k
+            return out.decode("utf-8")
+        except Exception as exc:
+            logger.warning(f"Failed to decrypt config value (static), using as-is: {exc}")
+            return value
 
     def refresh_token(self):
         """Get Auth0 access token using client credentials flow"""

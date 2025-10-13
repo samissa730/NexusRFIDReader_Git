@@ -1,39 +1,37 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-# Determine the directory the script is run from
-PROJECT_DIR=$(dirname "$(dirname "$(realpath "$0")")")
+set -e
 
-echo "Project directory: $PROJECT_DIR"
+# Resolve project root as the parent of this script directory
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
+cd "${PROJECT_ROOT}"
 
-# Check if virtual environment exists and activate it
-if [ -d "$PROJECT_DIR/venv" ]; then
-    echo "Activating virtual environment..."
-    source "$PROJECT_DIR/venv/bin/activate"
-    PYTHON_PATH=$(which python)
-    echo "Using Python from virtual environment: $PYTHON_PATH"
-else
-    echo "No virtual environment found, using system Python"
-    PYTHON_PATH=$(which python3)
-    echo "Using system Python: $PYTHON_PATH"
-    
-    # Check if PySide6 is available in system Python
-    echo "Checking if PySide6 is available..."
-    if ! "$PYTHON_PATH" -c "import PySide6" 2>/dev/null; then
-        echo "ERROR: PySide6 is not installed in system Python"
-        echo "Please install PySide6 globally: sudo apt install python3-pyside6"
-        echo "Or create a virtual environment and install dependencies there"
-        exit 1
-    fi
-    echo "PySide6 is available in system Python"
+# Prefer project venv if present
+if [ -f "${PROJECT_ROOT}/venv/bin/activate" ]; then
+  . "${PROJECT_ROOT}/venv/bin/activate"
 fi
 
-# Verify main.py exists
-if [ ! -f "$PROJECT_DIR/main.py" ]; then
-    echo "ERROR: main.py not found at $PROJECT_DIR/main.py"
-    exit 1
+exec python3 "${PROJECT_ROOT}/main.py"
+
+
+pi@raspberrypi:~/NexusRFIDReader_Git/scripts $ cat uninstall_service.sh 
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SERVICE_NAME="nexusrfid"
+UNIT_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
+
+if systemctl list-units --type=service --all | grep -q "${SERVICE_NAME}.service"; then
+  sudo systemctl stop "${SERVICE_NAME}.service" || true
+  sudo systemctl disable "${SERVICE_NAME}.service" || true
 fi
 
-# Run the application
-echo "Starting NexusRFID Reader Application..."
-cd "$PROJECT_DIR"
-exec "$PYTHON_PATH" main.py
+if [ -f "${UNIT_PATH}" ]; then
+  sudo rm -f "${UNIT_PATH}"
+fi
+
+sudo systemctl daemon-reload
+
+echo "Uninstalled ${SERVICE_NAME}.service"
