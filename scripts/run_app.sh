@@ -15,12 +15,19 @@ fi
 # Ensure GUI env for systemd-launched session; use systemd-provided HOME and UID-derived runtime
 export DISPLAY=${DISPLAY:-:0}
 export XAUTHORITY=${XAUTHORITY:-${HOME}/.Xauthority}
-if [ -n "${XDG_RUNTIME_DIR:-}" ]; then
-  export XDG_RUNTIME_DIR
-else
-  uid=$(id -u)
+uid=$(id -u)
+if [ -z "${XDG_RUNTIME_DIR:-}" ]; then
   export XDG_RUNTIME_DIR="/run/user/${uid}"
 fi
+export DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUNTIME_DIR}/bus}
+
+# Wait for X server socket and XAUTHORITY to be readable (max ~20s)
+for i in $(seq 1 40); do
+  if [ -S "/tmp/.X11-unix/X${DISPLAY#:}" ] && [ -r "${XAUTHORITY}" ]; then
+    break
+  fi
+  sleep 0.5
+done
 
 exec python3 "${PROJECT_ROOT}/main.py"
 

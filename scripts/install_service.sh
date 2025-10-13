@@ -31,6 +31,7 @@ Environment=XAUTHORITY=%h/.Xauthority
 Environment=HOME=%h
 Environment=XDG_RUNTIME_DIR=/run/user/%U
 Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%U/bus
+Environment=QT_QPA_PLATFORM=xcb
 ExecStartPre=/bin/sleep 5
 
 [Install]
