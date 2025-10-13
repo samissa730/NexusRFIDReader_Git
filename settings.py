@@ -44,10 +44,10 @@ RFID_CONFIG = {
 API_CONFIG = {
     "login_url": "",  # optional, if you will use token refresh
     "health_url": "",
-    "auth0_url": "https://dev-0m8cx6xlg7z8zy6j.us.auth0.com/oauth/token",
-    "record_url": "http://dev-api-locate.nexusyms.com/api/sites/0198c311-4801-7445-b73a-3a7dce72c6f6/scans",
-    "client_id": "enc:Aox9yhPiUr--4yjKyH27RGaV9Ca-Hm6SfLH5LbZObKw=",
-    "client_secret": "enc:K5gX9RqiaKPVBSW7-DqdM2Ky3BehIGVmd8vtLqSOT9eIAGabLmtbnvrYNauPLsNh7eaVjZuevyBNYpsdAlu97w==",
+    "auth0_url": "https://test-auth.nexusyms.com/oauth/token",
+    "record_url": "https://apim-test-spotlight.azure-api.net/nexus-locate/api/sites/0198c311-4801-7445-b73a-3a7dce72c6f6/scans",
+    "client_id": "enc:Fos_8S--ZaKf0ArsuHXISz607BcGkpBejboEKtkmh7k=",
+    "client_secret": "enc:JfsN9TyjX47T7R7Y-Xr6EGjOAIzKQWFkWrsCNtQrbLqRFmlKL2pCaQLPYbySkLegvsGxPFat7sdiRGEp23-uHw==",
     "audience": "https://nexus-locate-api",
     "email": "",      # optional, only if login_url used
     "password": "",   # optional, only if login_url used
