@@ -27,11 +27,10 @@ RestartSec=5
 User=${SUDO_USER:-$(whoami)}
 Environment=PYTHONUNBUFFERED=1
 Environment=DISPLAY=:0
-Environment=XAUTHORITY=%h/.Xauthority
-Environment=HOME=%h
-Environment=XDG_RUNTIME_DIR=/run/user/%U
-Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%U/bus
-Environment=QT_QPA_PLATFORM=xcb
+Environment=XAUTHORITY=/home/pi/.Xauthority
+Environment=HOME=/home/pi
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
 ExecStartPre=/bin/sleep 5
 
 [Install]
@@ -43,4 +42,3 @@ sudo systemctl enable "${SERVICE_NAME}.service"
 sudo systemctl restart "${SERVICE_NAME}.service"
 
 echo "Installed and started ${SERVICE_NAME}.service"
-
