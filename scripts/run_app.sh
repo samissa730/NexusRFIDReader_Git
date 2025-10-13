@@ -12,6 +12,12 @@ if [ -f "${PROJECT_ROOT}/venv/bin/activate" ]; then
   . "${PROJECT_ROOT}/venv/bin/activate"
 fi
 
+# Ensure GUI env for systemd-launched session
+export DISPLAY=${DISPLAY:-:0}
+export XAUTHORITY=${XAUTHORITY:-/home/pi/.Xauthority}
+export HOME=${HOME:-/home/pi}
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/1000}
+
 exec python3 "${PROJECT_ROOT}/main.py"
 
 

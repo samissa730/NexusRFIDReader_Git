@@ -15,8 +15,8 @@ fi
 sudo bash -c "cat > '${UNIT_PATH}'" <<UNIT
 [Unit]
 Description=Nexus RFID Application
-After=network-online.target
-Wants=network-online.target
+After=graphical.target network-online.target
+Wants=graphical.target network-online.target
 
 [Service]
 Type=simple
@@ -26,9 +26,15 @@ Restart=always
 RestartSec=5
 User=${SUDO_USER:-$(whoami)}
 Environment=PYTHONUNBUFFERED=1
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/pi/.Xauthority
+Environment=HOME=/home/pi
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+ExecStartPre=/bin/sleep 5
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=graphical.target
 UNIT
 
 sudo systemctl daemon-reload
