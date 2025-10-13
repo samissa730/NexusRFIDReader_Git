@@ -60,11 +60,6 @@ API_CONFIG = {
     "health_interval_ms": 15000,
 }
 
-# Data Storage Configuration - edit these values directly
-DATABASE_CONFIG = {
-    "use_db": True,
-}
-
 # Filter Configuration - edit these values directly
 FILTER_CONFIG = {
     "speed": {

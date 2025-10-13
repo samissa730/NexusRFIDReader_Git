@@ -7,9 +7,8 @@ from utils.logger import logger
 from utils.rfid import RFID
 from utils.gps import GPS
 from utils.common import extract_from_gps, get_date_from_utc, pre_config_gps, find_gps_port, get_processor_id
-from utils.data_storage import DataStorage
 from utils.api_client import ApiClient
-from settings import API_CONFIG, FILTER_CONFIG, DATABASE_CONFIG, INTERNET_LIMIT_TIME
+from settings import API_CONFIG, FILTER_CONFIG, INTERNET_LIMIT_TIME
 import time
 import subprocess
 import platform
@@ -65,7 +64,6 @@ class OverviewScreen(BaseScreen):
 
         # Init helpers and modules
         self.api = ApiClient()
-        self.storage = DataStorage(DATABASE_CONFIG.get('use_db', False))
         
         # Set device ID using processor ID
         device_id = get_processor_id()
@@ -96,9 +94,6 @@ class OverviewScreen(BaseScreen):
         self.health_timer.timeout.connect(self._upload_health)
         self.health_timer.start(int(API_CONFIG.get('health_interval_ms', 15000)))
 
-        self.upload_timer = QTimer(self)
-        self.upload_timer.timeout.connect(self._upload_records)
-        self.upload_timer.start(int(API_CONFIG.get('record_interval_ms', 7000)))
 
         # GPS display update timer
         self.gps_display_timer = QTimer(self)
@@ -126,7 +121,6 @@ class OverviewScreen(BaseScreen):
             self.gps_display_timer.stop()
         if hasattr(self, 'internet_timer'):
             self.internet_timer.stop()
-        self.storage.close()
 
     def _set_gps_status(self, text, ok):
         self.ui.gps_connection_status.setStyleSheet("""color: #00ff00;""" if ok else """color: #ff0000;""")
@@ -198,32 +192,6 @@ class OverviewScreen(BaseScreen):
                     except Exception:
                         upload_flag = False
 
-            if upload_flag:
-                if self.storage.use_db:
-                    # Prevent duplicates within 10 seconds
-                    assert self.storage.db_cursor
-                    self.storage.db_cursor.execute('''
-                        SELECT * FROM records
-                        WHERE rfidTag = ?
-                        AND ABS(timestamp - ?) < 10000000
-                    ''', (tag['EPC-96'], tag['LastSeenTimestampUTC']))
-                    rows = self.storage.db_cursor.fetchall()
-                    if not rows:
-                        # Prepare record list with explicit id
-                        assert self.storage.db_cursor
-                        self.storage.db_cursor.execute('SELECT id FROM records ORDER BY id ASC')
-                        used_ids = self.storage.db_cursor.fetchall()
-                        rec = [
-                            calculate_next_id(used_ids), tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
-                            lat, lon, speed, bearing, "-", self.api.user_name, tag['LastSeenTimestampUTC'],
-                            "", "", "", "", "", "", "", ""
-                        ]
-                        self.storage.add_record(rec)
-                else:
-                    new_data = [True, tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
-                                lat, lon, speed, bearing, "-", self.api.user_name, tag['LastSeenTimestampUTC'],
-                                "", "", "", "", "", "", "", ""]
-                    self.storage.add_record(new_data)
 
             # one-line debug for real-time processing
             # logger.debug(f"TAG {tag['EPC-96']} ant={tag['AntennaID']} rssi={tag['PeakRSSI']} pos=({lat:.7f},{lon:.7f}) speed={speed} heading={bearing}")
@@ -359,42 +327,7 @@ class OverviewScreen(BaseScreen):
         except Exception as e:
             logger.error(f"Unexpected error during restart: {e}")
 
-    def _upload_records(self):
-        data = self.storage.fetch_all_records()
-        if not data:
-            return
-        payload = []
-        device_id = get_processor_id()
-        site_id = API_CONFIG.get('site_id', '')
-        
-        for row in data:
-            # adapt to new API format
-            record = {
-                "siteId": site_id,  # siteId from settings
-                "tagName": row[1],  # tagName (was rfidTag)
-                "latitude": row[4],  # latitude
-                "longitude": row[5],  # longitude
-                "speed": int(row[6]) if row[6] else 0,  # speed as integer
-                "deviceId": device_id,  # deviceId from get_processor_id()
-                "barrier": "90",  # updated barrier value
-                "antenna": int(row[2]) if row[2] else 1,  # antenna number
-                "isProcess": True  # isProcess (was isProcessed)
-            }
-            payload.append(record)
-        
-        if self.api.upload_records(payload):
-            # best-effort pruning, rely on DB cleanup intervals otherwise
-            self.storage.prune_old()
 
 
-def calculate_next_id(used_ids):
-    smallest_available_id = 1
-    for record in used_ids:
-        current_id = record[0]
-        if current_id == smallest_available_id:
-            smallest_available_id += 1
-        else:
-            break
-    return smallest_available_id
 
 
