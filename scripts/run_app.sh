@@ -12,9 +12,15 @@ if [ -f "${PROJECT_ROOT}/venv/bin/activate" ]; then
   . "${PROJECT_ROOT}/venv/bin/activate"
 fi
 
-# Ensure GUI env for systemd-launched session; don't override HOME/XDG set by systemd
+# Ensure GUI env for systemd-launched session; use systemd-provided HOME and UID-derived runtime
 export DISPLAY=${DISPLAY:-:0}
 export XAUTHORITY=${XAUTHORITY:-${HOME}/.Xauthority}
+if [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+  export XDG_RUNTIME_DIR
+else
+  uid=$(id -u)
+  export XDG_RUNTIME_DIR="/run/user/${uid}"
+fi
 
 exec python3 "${PROJECT_ROOT}/main.py"
 
