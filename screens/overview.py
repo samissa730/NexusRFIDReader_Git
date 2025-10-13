@@ -108,7 +108,7 @@ class OverviewScreen(BaseScreen):
         # Internet status check timer
         self.internet_timer = QTimer(self)
         self.internet_timer.timeout.connect(self._check_internet_status)
-        self.internet_timer.start(5000)  # Check every 5 seconds
+        self.internet_timer.start(1800000)  # Check every 1800 seconds
         self._check_internet_status()  # Initial check
         
         # Internet disconnection tracking
@@ -226,7 +226,7 @@ class OverviewScreen(BaseScreen):
                     self.storage.add_record(new_data)
 
             # one-line debug for real-time processing
-            logger.debug(f"TAG {tag['EPC-96']} ant={tag['AntennaID']} rssi={tag['PeakRSSI']} pos=({lat:.7f},{lon:.7f}) speed={speed} heading={bearing}")
+            # logger.debug(f"TAG {tag['EPC-96']} ant={tag['AntennaID']} rssi={tag['PeakRSSI']} pos=({lat:.7f},{lon:.7f}) speed={speed} heading={bearing}")
 
             # UI updates
             self._refresh_table([get_date_from_utc(tag['LastSeenTimestampUTC']), tag['EPC-96'], f"{tag['AntennaID']}",
