@@ -1,14 +1,30 @@
 import json
 import os
 import platform
+# On Linux, prefer resolving the effective user's home directory via pwd to avoid
+# relying on HOME when launched by systemd where HOME can be /root.
+try:
+    import pwd  # type: ignore
+except Exception:
+    pwd = None  # non-POSIX platforms
 
 is_rpi = platform.system() == "Linux" and os.path.exists("/proc/device-tree/model")
 is_win = platform.system() == "Windows"
 
 if is_rpi:
-    ROOT_DIR = os.path.expanduser("~/.nexusrfid")
+    home_dir = None
+    if pwd is not None:
+        try:
+            home_dir = pwd.getpwuid(os.getuid()).pw_dir
+        except Exception:
+            home_dir = None
+    if not home_dir:
+        home_dir = os.path.expanduser("~")
+    ROOT_DIR = os.path.join(home_dir, ".nexusrfid")
 elif is_win:
     ROOT_DIR = os.path.expanduser("~/Documents")
+else:
+    ROOT_DIR = os.path.expanduser("~/.nexusrfid")
 
 os.makedirs(ROOT_DIR, exist_ok=True)
 
