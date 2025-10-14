@@ -122,9 +122,3 @@ sudo systemctl restart nexusrfid.service
 # Uninstall
 sudo scripts/uninstall_service.sh
 ```
-
-**Windows:**
-```bash
-# Uninstall autorestart
-scripts\uninstall_windows_autorestart.bat
-```
