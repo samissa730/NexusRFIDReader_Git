@@ -148,9 +148,13 @@ class ApiClient:
             data = response.json()
             # Check for new API response format
             if data.get('isSuccess') == True and data.get('status') == 'Ok':
+                logger.debug(f"Health data uploaded successfully: {payload['userName']} - RFID: {payload['rfidStatus']}, GPS: {payload['gpsStatus']}")
                 return True
             # Fallback to old format
-            return data.get('metadata', {}).get('code') == '200'
+            success = data.get('metadata', {}).get('code') == '200'
+            if success:
+                logger.debug(f"Health data uploaded successfully (legacy format): {payload['userName']} - RFID: {payload['rfidStatus']}, GPS: {payload['gpsStatus']}")
+            return success
         except Exception:
             logger.error("Uploading health data failed")
         finally:
@@ -167,9 +171,15 @@ class ApiClient:
             data = response.json()
             # Check for new API response format
             if data.get('isSuccess') == True and data.get('status') == 'Ok':
+                record_count = len(payload.get('records', [])) if isinstance(payload, dict) else 1
+                logger.debug(f"Records uploaded successfully: {record_count} record(s) for user {self.user_name}")
                 return True
             # Fallback to old format
-            return data.get('metadata', {}).get('code') == '200'
+            success = data.get('metadata', {}).get('code') == '200'
+            if success:
+                record_count = len(payload.get('records', [])) if isinstance(payload, dict) else 1
+                logger.debug(f"Records uploaded successfully (legacy format): {record_count} record(s) for user {self.user_name}")
+            return success
         except Exception:
             logger.error("Uploading records failed")
         finally:

@@ -155,7 +155,7 @@ def get_processor_id():
                 # Find the line with the actual processor ID (not the header)
                 for line in lines:
                     if line and line != 'ProcessorId' and len(line) > 8:  # Processor ID should be longer than 8 chars
-                        logger.info(f"Found processor ID: {line}")
+                        # logger.info(f"Found processor ID: {line}")
                         return line
                         
         elif platform.system() == 'Linux':
@@ -167,7 +167,7 @@ def get_processor_id():
                         if line.startswith('Serial'):
                             serial = line.split(':')[1].strip()
                             if serial and serial != '0000000000000000':  # Avoid default/empty serial
-                                logger.info(f"Found Raspberry Pi serial: {serial}")
+                                # logger.info(f"Found Raspberry Pi serial: {serial}")
                                 return serial
     except Exception as e:
         logger.warning(f"Failed to get processor ID: {e}")
