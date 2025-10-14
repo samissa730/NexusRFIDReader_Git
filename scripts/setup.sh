@@ -20,16 +20,16 @@ echo "Installing Qt and GUI dependencies..."
 sudo apt install -y \
     libxcb-cursor0 \
     libxcb-cursor-dev \
-    qt6-base-dev \
-    qt6-tools-dev \
-    qt6-tools-dev-tools \
-    python3-pyqt6 \
-    python3-pyqt6-dev \
     python3-dev \
     python3-pip \
     python3-venv \
     python3-setuptools \
-    python3-wheel
+    python3-wheel \
+    build-essential \
+    cmake \
+    pkg-config \
+    libgl1-mesa-dev \
+    libglib2.0-dev
 
 # Install additional system dependencies for RFID and networking
 echo "Installing RFID and networking dependencies..."
@@ -47,6 +47,13 @@ sudo apt install -y \
 # Install Python dependencies globally (not in venv)
 echo "Installing Python dependencies globally..."
 sudo pip3 install --break-system-packages -U pip
+
+# Install PySide6 first as it's often a dependency for other packages
+echo "Installing PySide6 (Qt for Python)..."
+sudo pip3 install --break-system-packages PySide6
+
+# Install other Python dependencies
+echo "Installing remaining Python dependencies..."
 sudo pip3 install --break-system-packages -r "${project_root}/requirements.txt"
 
 # Make scripts executable
