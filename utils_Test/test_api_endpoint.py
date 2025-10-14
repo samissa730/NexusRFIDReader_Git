@@ -347,8 +347,8 @@ class ApiEndpointTester:
         
         test_urls = [
             "https://httpbin.org/get",
-            "https://dev-0m8cx6xlg7z8zy6j.us.auth0.com",
-            "http://dev-api-locate.nexusyms.com/api/sites/0198c311-4801-7445-b73a-3a7dce72c6f6/scans"
+            "https://test-auth.nexusyms.com/oauth/token",
+            "https://apim-test-spotlight.azure-api.net/nexus-locate/api/sites/0198c311-4801-7445-b73a-3a7dce72c6f6/scans"
         ]
         
         session = self._create_session()
