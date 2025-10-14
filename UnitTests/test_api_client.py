@@ -1,5 +1,6 @@
 import unittest
 from unittest import mock
+import time
 
 
 class TestApiClient(unittest.TestCase):
@@ -11,9 +12,11 @@ class TestApiClient(unittest.TestCase):
         with mock.patch.object(self.api, 'API_CONFIG', {}):
             client = self.api.ApiClient()
             self.assertIsNone(client.token)
-            self.assertIsNone(client.email)
-            self.assertIsNone(client.password)
-            self.assertIsNone(client.login_url)
+            self.assertEqual(client.token_expires_at, 0)
+            self.assertIsNone(client.auth0_url)
+            self.assertIsNone(client.client_id)
+            self.assertIsNone(client.client_secret)
+            self.assertIsNone(client.audience)
             self.assertIsNone(client.health_url)
             self.assertIsNone(client.record_url)
             self.assertEqual(client.user_name, 'Unknown')
@@ -31,53 +34,44 @@ class TestApiClient(unittest.TestCase):
             mock_adapter.assert_called()
             s.mount.assert_called()
 
-    def test_headers_with_and_without_token(self):
-        client = self.api.ApiClient()
-        client.token = None
-        h = client._headers()
-        self.assertEqual(h['Content-Type'], 'application/json')
-        self.assertEqual(h['accept'], 'application/json')
-        self.assertEqual(h['idempotency-Key'], '1')
-        self.assertNotIn('Authorization', h)
-        client.token = 'abc'
-        h2 = client._headers()
-        self.assertEqual(h2['Authorization'], 'Bearer abc')
 
     def test_refresh_token_success(self):
         client = self.api.ApiClient()
-        client.login_url = 'https://example/login'
-        client.email = 'e'
-        client.password = 'p'
+        client.auth0_url = 'https://example.auth0.com/oauth/token'
+        client.client_id = 'test_client_id'
+        client.client_secret = 'test_client_secret'
+        client.audience = 'test_audience'
         with mock.patch.object(client, '_session') as ms:
             sess = mock.MagicMock()
             ms.return_value = sess
             resp = mock.MagicMock()
             resp.status_code = 200
             resp.json.return_value = {
-                'metadata': {'code': '200'},
-                'result': {'acessToken': 'tok', 'userNameId': 'UserX'}
+                'access_token': 'test_token',
+                'expires_in': 3600
             }
             sess.post.return_value = resp
             ok = client.refresh_token()
             self.assertTrue(ok)
-            self.assertEqual(client.token, 'tok')
-            self.assertEqual(client.user_name, 'UserX')
+            self.assertEqual(client.token, 'test_token')
+            self.assertGreater(client.token_expires_at, time.time())
             sess.close.assert_called()
 
     def test_refresh_token_failure_and_no_url(self):
         client = self.api.ApiClient()
-        client.login_url = 'https://example/login'
-        client.email = 'e'
-        client.password = 'p'
+        client.auth0_url = 'https://example.auth0.com/oauth/token'
+        client.client_id = 'test_client_id'
+        client.client_secret = 'test_client_secret'
+        client.audience = 'test_audience'
         with mock.patch.object(client, '_session') as ms:
             sess = mock.MagicMock()
             ms.return_value = sess
             resp = mock.MagicMock()
-            resp.status_code = 200
-            resp.json.return_value = {'metadata': {'code': '400'}}
+            resp.status_code = 400
+            resp.raise_for_status.side_effect = Exception('Bad request')
             sess.post.return_value = resp
             self.assertFalse(client.refresh_token())
-        client.login_url = None
+        client.auth0_url = None
         self.assertFalse(client.refresh_token())
 
     def test_upload_health_success_and_failure(self):
@@ -88,12 +82,19 @@ class TestApiClient(unittest.TestCase):
              mock.patch.object(client, '_headers', return_value={'Authorization': 'x'}):
             sess = mock.MagicMock()
             ms.return_value = sess
+            # Test new API format success
             ok_resp = mock.MagicMock()
-            ok_resp.json.return_value = {'metadata': {'code': '200'}}
+            ok_resp.json.return_value = {'isSuccess': True, 'status': 'Ok'}
             sess.post.return_value = ok_resp
             self.assertTrue(client.upload_health(True, 'Connected', 1.0, 2.0))
+            # Test legacy API format success
+            legacy_resp = mock.MagicMock()
+            legacy_resp.json.return_value = {'metadata': {'code': '200'}}
+            sess.post.return_value = legacy_resp
+            self.assertTrue(client.upload_health(True, 'Connected', 1.0, 2.0))
+            # Test failure
             bad_resp = mock.MagicMock()
-            bad_resp.json.return_value = {'metadata': {'code': '400'}}
+            bad_resp.json.return_value = {'isSuccess': False, 'status': 'Error'}
             sess.post.return_value = bad_resp
             self.assertFalse(client.upload_health(True, 'Connected', 1.0, 2.0))
         client.health_url = None
@@ -102,7 +103,7 @@ class TestApiClient(unittest.TestCase):
     def test_upload_records_success_failure_exception(self):
         client = self.api.ApiClient()
         client.record_url = 'https://example/rec'
-        # New API format - array of records instead of wrapped object
+        # New API format - array of records
         payload = [
             {
                 "rfidTag": "019817e3-daa8-76e0-a844-c639ed12ac32",
@@ -120,12 +121,19 @@ class TestApiClient(unittest.TestCase):
              mock.patch.object(client, '_headers', return_value={'Authorization': 'x'}):
             sess = mock.MagicMock()
             ms.return_value = sess
+            # Test new API format success
             ok_resp = mock.MagicMock()
-            ok_resp.json.return_value = {'metadata': {'code': '200'}}
+            ok_resp.json.return_value = {'isSuccess': True, 'status': 'Ok'}
             sess.post.return_value = ok_resp
             self.assertTrue(client.upload_records(payload))
+            # Test legacy API format success
+            legacy_resp = mock.MagicMock()
+            legacy_resp.json.return_value = {'metadata': {'code': '200'}}
+            sess.post.return_value = legacy_resp
+            self.assertTrue(client.upload_records(payload))
+            # Test failure
             bad_resp = mock.MagicMock()
-            bad_resp.json.return_value = {'metadata': {'code': '400'}}
+            bad_resp.json.return_value = {'isSuccess': False, 'status': 'Error'}
             sess.post.return_value = bad_resp
             self.assertFalse(client.upload_records(payload))
         with mock.patch.object(client, '_session') as ms:
@@ -135,6 +143,59 @@ class TestApiClient(unittest.TestCase):
             self.assertFalse(client.upload_records(payload))
         client.record_url = None
         self.assertFalse(client.upload_records(payload))
+
+    def test_decrypt_config_value(self):
+        client = self.api.ApiClient()
+        # Test non-encrypted value
+        result = client._decrypt_config_value("plain_text")
+        self.assertEqual(result, "plain_text")
+        
+        # Test None value
+        result = client._decrypt_config_value(None)
+        self.assertIsNone(result)
+        
+        # Test empty string
+        result = client._decrypt_config_value("")
+        self.assertEqual(result, "")
+        
+        # Test encrypted value (this would need a real encrypted string to test properly)
+        # For now, just test that it handles the prefix correctly
+        result = client._decrypt_config_value("enc:invalid_base64")
+        self.assertEqual(result, "enc:invalid_base64")  # Should return as-is on error
+
+    def test_headers_with_token_expiration(self):
+        client = self.api.ApiClient()
+        client.token = 'test_token'
+        client.token_expires_at = time.time() + 3600  # Valid for 1 hour
+        
+        with mock.patch.object(client, 'refresh_token', return_value=True) as mock_refresh:
+            headers = client._headers()
+            self.assertEqual(headers['Authorization'], 'Bearer test_token')
+            mock_refresh.assert_not_called()  # Should not refresh if token is valid
+            
+        # Test token expiration
+        client.token_expires_at = time.time() - 1  # Expired
+        with mock.patch.object(client, 'refresh_token', return_value=True) as mock_refresh:
+            headers = client._headers()
+            mock_refresh.assert_called_once()
+            
+        # Test refresh failure - the method doesn't clear the token, just logs a warning
+        client.token_expires_at = time.time() - 1  # Expired
+        with mock.patch.object(client, 'refresh_token', return_value=False) as mock_refresh:
+            headers = client._headers()
+            # The token is not cleared on refresh failure, so Authorization header should still be present
+            self.assertEqual(headers['Authorization'], 'Bearer test_token')
+
+    def test_headers_without_token(self):
+        client = self.api.ApiClient()
+        client.token = None
+        with mock.patch.object(client, 'refresh_token', return_value=False) as mock_refresh:
+            headers = client._headers()
+            self.assertEqual(headers['Content-Type'], 'application/json')
+            self.assertEqual(headers['accept'], 'application/json')
+            self.assertEqual(headers['idempotency-Key'], '1')
+            self.assertNotIn('Authorization', headers)
+            mock_refresh.assert_called_once()
 
 
 if __name__ == '__main__':
