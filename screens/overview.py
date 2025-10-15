@@ -170,13 +170,20 @@ class OverviewScreen(BaseScreen):
             lon = round(lon, 7)
 
             upload_flag = True
+            
+            # First check GPS data validity - do not store/upload if lat=0, lon=0, speed=0
+            if lat == 0 and lon == 0 and speed == 0:
+                upload_flag = False
+                logger.warning(f"Skipping record storage - no GPS data: TAG {tag['EPC-96']} ant={tag['AntennaID']} rssi={tag['PeakRSSI']} (lat=0, lon=0, speed=0)")
+            
             # Apply filters from settings
-            sp = FILTER_CONFIG.get('speed', {})
-            if sp.get('enabled'):
-                min_s = sp.get('min')
-                max_s = sp.get('max')
-                if min_s is not None and max_s is not None and (speed < min_s or speed > max_s):
-                    upload_flag = False
+            if upload_flag:
+                sp = FILTER_CONFIG.get('speed', {})
+                if sp.get('enabled'):
+                    min_s = sp.get('min')
+                    max_s = sp.get('max')
+                    if min_s is not None and max_s is not None and (speed < min_s or speed > max_s):
+                        upload_flag = False
 
             if upload_flag:
                 rs = FILTER_CONFIG.get('rssi', {})
@@ -197,12 +204,6 @@ class OverviewScreen(BaseScreen):
                             upload_flag = False
                     except Exception:
                         upload_flag = False
-
-            # Check GPS data validity - do not store/upload if lat=0, lon=0, speed=0
-            if upload_flag:
-                if lat == 0 and lon == 0 and speed == 0:
-                    upload_flag = False
-                    logger.warning(f"Skipping record storage - no GPS data: TAG {tag['EPC-96']} ant={tag['AntennaID']} rssi={tag['PeakRSSI']} (lat=0, lon=0, speed=0)")
 
             if upload_flag:
                 if self.storage.use_db:
