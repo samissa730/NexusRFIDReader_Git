@@ -175,6 +175,8 @@ class OverviewScreen(BaseScreen):
             if sp.get('enabled'):
                 min_s = sp.get('min')
                 max_s = sp.get('max')
+                if lat==0 and lon==0 and speed==0:
+                    upload_flag = False
                 if min_s is not None and max_s is not None and (speed < min_s or speed > max_s):
                     upload_flag = False
 
