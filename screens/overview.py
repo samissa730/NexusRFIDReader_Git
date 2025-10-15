@@ -56,13 +56,13 @@ class OverviewScreen(BaseScreen):
 
         # Set custom column widths
         # Columns: Time, Tag, Antenna, Position, Speed, Heading
-        self.ui.tableWidget.setColumnWidth(0, 150)  # Time
-        self.ui.tableWidget.setColumnWidth(1, 200)  # Tag
-        self.ui.tableWidget.setColumnWidth(2, 70)   # Antenna
+        self.ui.tableWidget.setColumnWidth(0, 140)  # Time
+        self.ui.tableWidget.setColumnWidth(1, 195)  # Tag
+        self.ui.tableWidget.setColumnWidth(2, 75)   # Antenna
         self.ui.tableWidget.setColumnWidth(3, 50)  # RSSI
         self.ui.tableWidget.setColumnWidth(4, 190)  # Position
-        self.ui.tableWidget.setColumnWidth(5, 55)   # Speed
-        self.ui.tableWidget.setColumnWidth(6, 70)   # Heading
+        self.ui.tableWidget.setColumnWidth(5, 60)   # Speed
+        self.ui.tableWidget.setColumnWidth(6, 75)   # Heading
 
         # Init helpers and modules
         self.api = ApiClient()
