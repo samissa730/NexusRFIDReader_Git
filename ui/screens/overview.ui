@@ -604,7 +604,7 @@ border-bottom: 2px solid #404040;</string>
         <number>8</number>
        </property>
        <property name="columnCount">
-        <number>6</number>
+        <number>7</number>
        </property>
        <attribute name="horizontalHeaderVisible">
         <bool>true</bool>
@@ -613,10 +613,10 @@ border-bottom: 2px solid #404040;</string>
         <bool>true</bool>
        </attribute>
        <attribute name="horizontalHeaderMinimumSectionSize">
-        <number>70</number>
+        <number>30</number>
        </attribute>
        <attribute name="horizontalHeaderDefaultSectionSize">
-        <number>70</number>
+        <number>50</number>
        </attribute>
        <attribute name="horizontalHeaderHighlightSections">
         <bool>true</bool>
@@ -654,6 +654,11 @@ border-bottom: 2px solid #404040;</string>
        <column>
         <property name="text">
          <string>Antenna</string>
+        </property>
+       </column>
+       <column>
+        <property name="text">
+         <string>RSSI</string>
         </property>
        </column>
        <column>

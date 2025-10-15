@@ -58,10 +58,11 @@ class OverviewScreen(BaseScreen):
         # Columns: Time, Tag, Antenna, Position, Speed, Heading
         self.ui.tableWidget.setColumnWidth(0, 150)  # Time
         self.ui.tableWidget.setColumnWidth(1, 200)  # Tag
-        self.ui.tableWidget.setColumnWidth(2, 80)   # Antenna
-        self.ui.tableWidget.setColumnWidth(3, 190)  # Position
-        self.ui.tableWidget.setColumnWidth(4, 70)   # Speed
-        self.ui.tableWidget.setColumnWidth(5, 80)   # Heading
+        self.ui.tableWidget.setColumnWidth(2, 70)   # Antenna
+        self.ui.tableWidget.setColumnWidth(3, 50)  # RSSI
+        self.ui.tableWidget.setColumnWidth(4, 190)  # Position
+        self.ui.tableWidget.setColumnWidth(5, 55)   # Speed
+        self.ui.tableWidget.setColumnWidth(6, 70)   # Heading
 
         # Init helpers and modules
         self.api = ApiClient()
@@ -174,7 +175,7 @@ class OverviewScreen(BaseScreen):
             # First check GPS data validity - do not store/upload if lat=0, lon=0, speed=0
             if lat == 0 and lon == 0 and speed == 0:
                 upload_flag = False
-                logger.warning(f"Skipping record storage - no GPS data: TAG {tag['EPC-96']} ant={tag['AntennaID']} rssi={tag['PeakRSSI']} (lat=0, lon=0, speed=0)")
+                # logger.warning(f"Skipping record storage - no GPS data: TAG {tag['EPC-96']} ant={tag['AntennaID']} rssi={tag['PeakRSSI']} (lat=0, lon=0, speed=0)")
             
             # Apply filters from settings
             if upload_flag:
@@ -236,7 +237,7 @@ class OverviewScreen(BaseScreen):
             # logger.debug(f"TAG {tag['EPC-96']} ant={tag['AntennaID']} rssi={tag['PeakRSSI']} pos=({lat:.7f},{lon:.7f}) speed={speed} heading={bearing}")
 
             # UI updates
-            self._refresh_table([get_date_from_utc(tag['LastSeenTimestampUTC']), tag['EPC-96'], f"{tag['AntennaID']}",
+            self._refresh_table([get_date_from_utc(tag['LastSeenTimestampUTC']), tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
                                  f"{lat:.7f}".rstrip('0').rstrip('.') + ", " + f"{lon:.7f}".rstrip('0').rstrip('.'),
                                  f"{speed:.4f}".rstrip('0').rstrip('.'), f"{bearing}"])
             self.ui.last_rfid_read.setText(tag['EPC-96'])
