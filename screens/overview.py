@@ -175,8 +175,6 @@ class OverviewScreen(BaseScreen):
             if sp.get('enabled'):
                 min_s = sp.get('min')
                 max_s = sp.get('max')
-                if lat==0 and lon==0 and speed==0:
-                    upload_flag = False
                 if min_s is not None and max_s is not None and (speed < min_s or speed > max_s):
                     upload_flag = False
 
@@ -370,13 +368,21 @@ class OverviewScreen(BaseScreen):
         site_id = API_CONFIG.get('site_id', '')
         
         for row in data:
+            # Skip records with no GPS data (lat=0, lon=0, speed=0)
+            latitude = row[4] if row[4] else 0
+            longitude = row[5] if row[5] else 0  
+            speed = int(row[6]) if row[6] else 0
+            
+            if latitude == 0 and longitude == 0 and speed == 0:
+                continue  # Skip this record
+                
             # adapt to new API format
             record = {
                 "siteId": site_id,  # siteId from settings
                 "tagName": row[1],  # tagName (was rfidTag)
-                "latitude": row[4],  # latitude
-                "longitude": row[5],  # longitude
-                "speed": int(row[6]) if row[6] else 0,  # speed as integer
+                "latitude": latitude,  # latitude
+                "longitude": longitude,  # longitude
+                "speed": speed,  # speed as integer
                 "deviceId": device_id,  # deviceId from get_processor_id()
                 "barrier": "90",  # updated barrier value
                 "antenna": int(row[2]) if row[2] else 1,  # antenna number
