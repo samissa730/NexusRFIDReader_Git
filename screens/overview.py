@@ -198,6 +198,12 @@ class OverviewScreen(BaseScreen):
                     except Exception:
                         upload_flag = False
 
+            # Check GPS data validity - do not store/upload if lat=0, lon=0, speed=0
+            if upload_flag:
+                if lat == 0 and lon == 0 and speed == 0:
+                    upload_flag = False
+                    logger.warning(f"Skipping record storage - no GPS data: TAG {tag['EPC-96']} ant={tag['AntennaID']} rssi={tag['PeakRSSI']} (lat=0, lon=0, speed=0)")
+
             if upload_flag:
                 if self.storage.use_db:
                     # Prevent duplicates within 10 seconds
