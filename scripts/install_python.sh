@@ -130,18 +130,37 @@ fi
 
 # Step 4: Install PyInstaller
 echo -e "${YELLOW}Step 4: Installing PyInstaller...${NC}"
-$PIP_CMD install --upgrade pip
-$PIP_CMD install pyinstaller
+
+# Check if we need to use --break-system-packages flag for newer Python versions
+PYTHON_MAJOR=$(echo $PYTHON_VERSION | cut -d'.' -f1)
+PYTHON_MINOR=$(echo $PYTHON_VERSION | cut -d'.' -f2)
+
+if [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -ge 11 ]; then
+    echo -e "   ${YELLOW}WARNING: Python 3.11+ detected - using --break-system-packages flag${NC}"
+    $PIP_CMD install --upgrade pip --break-system-packages
+    $PIP_CMD install pyinstaller --break-system-packages
+else
+    $PIP_CMD install --upgrade pip
+    $PIP_CMD install pyinstaller
+fi
 echo -e "   ${GREEN}SUCCESS${NC} PyInstaller installed"
 
 # Step 5: Install project dependencies
 echo -e "${YELLOW}Step 5: Installing project dependencies...${NC}"
+
+# Use the same flag logic for dependencies
+if [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -ge 11 ]; then
+    PIP_FLAG="--break-system-packages"
+else
+    PIP_FLAG=""
+fi
+
 if [ -f "requirements.txt" ]; then
-    $PIP_CMD install -r requirements.txt
+    $PIP_CMD install -r requirements.txt $PIP_FLAG
     echo -e "   ${GREEN}SUCCESS${NC} Project dependencies installed from requirements.txt"
 else
     echo -e "   ${YELLOW}WARNING: requirements.txt not found. Installing common dependencies...${NC}"
-    $PIP_CMD install \
+    $PIP_CMD install $PIP_FLAG \
         PySide6 \
         requests \
         urllib3 \
