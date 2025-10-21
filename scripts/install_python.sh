@@ -1,11 +1,12 @@
 #!/bin/bash
 
-# NexusRFIDReader Python Installation Script for Raspberry Pi
-# This script installs Python 3.9 and required dependencies
+# NexusRFIDReader Global Python Installation Script for Raspberry Pi
+# This script installs Python 3.9+ and all required dependencies globally
+# for running the NexusRFIDReader application
 
 set -e  # Exit on any error
 
-# Colors for beautiful output
+# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -15,34 +16,37 @@ CYAN='\033[0;36m'
 WHITE='\033[1;37m'
 NC='\033[0m' # No Color
 
-echo -e "${CYAN}╔══════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║                NexusRFIDReader Python Installer              ║${NC}"
-echo -e "${CYAN}║                    For Raspberry Pi                          ║${NC}"
-echo -e "${CYAN}╚══════════════════════════════════════════════════════════════╝${NC}"
+echo -e "${CYAN}==============================================================${NC}"
+echo -e "${CYAN}        NexusRFIDReader Global Python Installer${NC}"
+echo -e "${CYAN}              For Raspberry Pi${NC}"
+echo -e "${CYAN}==============================================================${NC}"
 echo ""
 
 # Check if running as root
-if [ "$EUID" -eq 0 ]; then
-    echo -e "${YELLOW}⚠️  Warning: Running as root. This is not recommended.${NC}"
-    echo -e "${YELLOW}   Consider running as a regular user with sudo privileges.${NC}"
-    echo ""
+if [ "$EUID" -ne 0 ]; then
+    echo -e "${RED}ERROR: This script must be run as root for global installation${NC}"
+    echo -e "${YELLOW}Run: sudo bash scripts/install_python.sh${NC}"
+    exit 1
 fi
 
+echo -e "${GREEN}Running as root - proceeding with global installation${NC}"
+echo ""
+
 # Detect system information
-echo -e "${BLUE}🔍 System Information:${NC}"
+echo -e "${BLUE}System Information:${NC}"
 echo -e "   ${WHITE}OS:${NC} $(lsb_release -d | cut -f2)"
 echo -e "   ${WHITE}Architecture:${NC} $(uname -m)"
 echo -e "   ${WHITE}Kernel:${NC} $(uname -r)"
 echo ""
 
 # Step 1: Update package lists
-echo -e "${YELLOW}📦 Step 1: Updating package lists...${NC}"
-sudo apt update
-echo -e "   ${GREEN}✓${NC} Package lists updated"
+echo -e "${YELLOW}Step 1: Updating package lists...${NC}"
+apt update
+echo -e "   ${GREEN}SUCCESS${NC} Package lists updated"
 
 # Step 2: Install system dependencies
-echo -e "${YELLOW}🔧 Step 2: Installing system dependencies...${NC}"
-sudo apt install -y \
+echo -e "${YELLOW}Step 2: Installing system dependencies...${NC}"
+apt install -y \
     build-essential \
     python3-dev \
     python3-pip \
@@ -77,12 +81,19 @@ sudo apt install -y \
     tk-dev \
     git \
     curl \
-    wget
+    wget \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libxext6 \
+    libxrender1 \
+    libgomp1 \
+    libgstreamer1.0-0 \
+    libgstreamer-plugins-base1.0-0
 
-echo -e "   ${GREEN}✓${NC} System dependencies installed"
+echo -e "   ${GREEN}SUCCESS${NC} System dependencies installed"
 
 # Step 3: Check Python version
-echo -e "${YELLOW}🐍 Step 3: Checking Python installation...${NC}"
+echo -e "${YELLOW}Step 3: Checking Python installation...${NC}"
 PYTHON_VERSION=$(python3 --version 2>&1 | cut -d' ' -f2)
 echo -e "   ${WHITE}Current Python version:${NC} $PYTHON_VERSION"
 
@@ -91,18 +102,18 @@ PYTHON_MAJOR=$(echo $PYTHON_VERSION | cut -d'.' -f1)
 PYTHON_MINOR=$(echo $PYTHON_VERSION | cut -d'.' -f2)
 
 if [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -ge 9 ]; then
-    echo -e "   ${GREEN}✓${NC} Python 3.9+ is available"
+    echo -e "   ${GREEN}SUCCESS${NC} Python 3.9+ is available"
     PYTHON_CMD="python3"
     PIP_CMD="pip3"
 else
-    echo -e "   ${YELLOW}⚠️  Python 3.9+ not found. Installing Python 3.9...${NC}"
+    echo -e "   ${YELLOW}WARNING: Python 3.9+ not found. Installing Python 3.9...${NC}"
     
     # Install Python 3.9 from deadsnakes PPA (for Ubuntu/Debian)
     if command -v add-apt-repository &> /dev/null; then
-        sudo add-apt-repository -y ppa:deadsnakes/ppa
-        sudo apt update
-        sudo apt install -y python3.9 python3.9-dev python3.9-venv python3.9-distutils
-        sudo apt install -y python3.9-pip || {
+        add-apt-repository -y ppa:deadsnakes/ppa
+        apt update
+        apt install -y python3.9 python3.9-dev python3.9-venv python3.9-distutils
+        apt install -y python3.9-pip || {
             # If python3.9-pip is not available, install pip manually
             curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
             python3.9 get-pip.py
@@ -111,25 +122,25 @@ else
         PYTHON_CMD="python3.9"
         PIP_CMD="python3.9 -m pip"
     else
-        echo -e "   ${RED}❌ Cannot install Python 3.9. Please install manually.${NC}"
+        echo -e "   ${RED}ERROR: Cannot install Python 3.9. Please install manually.${NC}"
         exit 1
     fi
-    echo -e "   ${GREEN}✓${NC} Python 3.9 installed"
+    echo -e "   ${GREEN}SUCCESS${NC} Python 3.9 installed"
 fi
 
 # Step 4: Install PyInstaller
-echo -e "${YELLOW}📦 Step 4: Installing PyInstaller...${NC}"
+echo -e "${YELLOW}Step 4: Installing PyInstaller...${NC}"
 $PIP_CMD install --upgrade pip
 $PIP_CMD install pyinstaller
-echo -e "   ${GREEN}✓${NC} PyInstaller installed"
+echo -e "   ${GREEN}SUCCESS${NC} PyInstaller installed"
 
 # Step 5: Install project dependencies
-echo -e "${YELLOW}📚 Step 5: Installing project dependencies...${NC}"
+echo -e "${YELLOW}Step 5: Installing project dependencies...${NC}"
 if [ -f "requirements.txt" ]; then
     $PIP_CMD install -r requirements.txt
-    echo -e "   ${GREEN}✓${NC} Project dependencies installed from requirements.txt"
+    echo -e "   ${GREEN}SUCCESS${NC} Project dependencies installed from requirements.txt"
 else
-    echo -e "   ${YELLOW}⚠️  requirements.txt not found. Installing common dependencies...${NC}"
+    echo -e "   ${YELLOW}WARNING: requirements.txt not found. Installing common dependencies...${NC}"
     $PIP_CMD install \
         PySide6 \
         requests \
@@ -142,37 +153,37 @@ else
         schedule \
         ping3 \
         numpy
-    echo -e "   ${GREEN}✓${NC} Common dependencies installed"
+    echo -e "   ${GREEN}SUCCESS${NC} Common dependencies installed"
 fi
 
 # Step 6: Verify installation
-echo -e "${YELLOW}✅ Step 6: Verifying installation...${NC}"
+echo -e "${YELLOW}Step 6: Verifying installation...${NC}"
 echo -e "   ${WHITE}Python version:${NC} $($PYTHON_CMD --version)"
 echo -e "   ${WHITE}Pip version:${NC} $($PIP_CMD --version)"
 echo -e "   ${WHITE}PyInstaller version:${NC} $($PIP_CMD show pyinstaller | grep Version | cut -d' ' -f2)"
 
 # Test PyInstaller
 if $PYTHON_CMD -c "import PyInstaller" 2>/dev/null; then
-    echo -e "   ${GREEN}✓${NC} PyInstaller import test passed"
+    echo -e "   ${GREEN}SUCCESS${NC} PyInstaller import test passed"
 else
-    echo -e "   ${RED}❌ PyInstaller import test failed${NC}"
+    echo -e "   ${RED}ERROR: PyInstaller import test failed${NC}"
     exit 1
 fi
 
 # Test PySide6
 if $PYTHON_CMD -c "import PySide6" 2>/dev/null; then
-    echo -e "   ${GREEN}✓${NC} PySide6 import test passed"
+    echo -e "   ${GREEN}SUCCESS${NC} PySide6 import test passed"
 else
-    echo -e "   ${RED}❌ PySide6 import test failed${NC}"
+    echo -e "   ${RED}ERROR: PySide6 import test failed${NC}"
     exit 1
 fi
 
 echo ""
-echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║                🎉 INSTALLATION COMPLETED! 🎉                  ║${NC}"
-echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
+echo -e "${GREEN}==============================================================${NC}"
+echo -e "${GREEN}            INSTALLATION COMPLETED SUCCESSFULLY!${NC}"
+echo -e "${GREEN}==============================================================${NC}"
 echo ""
-echo -e "${CYAN}🚀 Next Steps:${NC}"
+echo -e "${CYAN}Next Steps:${NC}"
 echo -e "   ${YELLOW}1.${NC} Create the package:"
 echo -e "      ${WHITE}bash scripts/create_pkg_rpi.sh${NC}"
 echo ""
@@ -182,10 +193,10 @@ echo ""
 echo -e "   ${YELLOW}3.${NC} Reboot to activate:"
 echo -e "      ${WHITE}sudo reboot${NC}"
 echo ""
-echo -e "${PURPLE}📋 Installed Components:${NC}"
-echo -e "   • Python $($PYTHON_CMD --version | cut -d' ' -f2)"
-echo -e "   • PyInstaller $($PIP_CMD show pyinstaller | grep Version | cut -d' ' -f2)"
-echo -e "   • All project dependencies"
-echo -e "   • System libraries for GUI applications"
+echo -e "${PURPLE}Installed Components:${NC}"
+echo -e "   - Python $($PYTHON_CMD --version | cut -d' ' -f2)"
+echo -e "   - PyInstaller $($PIP_CMD show pyinstaller | grep Version | cut -d' ' -f2)"
+echo -e "   - All project dependencies"
+echo -e "   - System libraries for GUI applications"
 echo ""
-echo -e "${GREEN}✨ Ready to build the package! ✨${NC}"
+echo -e "${GREEN}Ready to build the package!${NC}"

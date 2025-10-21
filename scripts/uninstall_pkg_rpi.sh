@@ -17,20 +17,20 @@ NC='\033[0m' # No Color
 
 PACKAGE_NAME=NexusRFIDReader
 
-echo -e "${CYAN}╔══════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║                NexusRFIDReader Uninstaller                  ║${NC}"
-echo -e "${CYAN}║                    For Raspberry Pi                        ║${NC}"
-echo -e "${CYAN}╚══════════════════════════════════════════════════════════════╝${NC}"
+echo -e "${CYAN}==============================================================${NC}"
+echo -e "${CYAN}            NexusRFIDReader Uninstaller${NC}"
+echo -e "${CYAN}              For Raspberry Pi${NC}"
+echo -e "${CYAN}==============================================================${NC}"
 echo ""
 
 # Check if running as root
 if [ "$EUID" -ne 0 ]; then
-    echo -e "${RED}❌ This script must be run as root (use sudo)${NC}"
+    echo -e "${RED}ERROR: This script must be run as root (use sudo)${NC}"
     exit 1
 fi
 
-echo -e "${YELLOW}⚠️  WARNING: This will completely remove NexusRFIDReader and all its data!${NC}"
-echo -e "${YELLOW}   This action cannot be undone.${NC}"
+echo -e "${YELLOW}WARNING: This will completely remove NexusRFIDReader and all its data!${NC}"
+echo -e "${YELLOW}This action cannot be undone.${NC}"
 echo ""
 read -p "Are you sure you want to continue? (y/N): " -n 1 -r
 echo
@@ -42,7 +42,7 @@ fi
 echo ""
 
 # Step 1: Stop all running processes
-echo -e "${YELLOW}🛑 Step 1: Stopping NexusRFIDReader processes...${NC}"
+echo -e "${YELLOW}Step 1: Stopping NexusRFIDReader processes...${NC}"
 echo -e "   ${WHITE}Stopping application processes...${NC}"
 pkill -f "NexusRFIDReader" || echo -e "   ${BLUE}No running NexusRFIDReader processes found${NC}"
 
@@ -56,51 +56,51 @@ sleep 2
 pkill -9 -f "NexusRFIDReader" 2>/dev/null || true
 pkill -9 -f "monitor_nexus_rfid.sh" 2>/dev/null || true
 
-echo -e "   ${GREEN}✓${NC} All processes stopped"
+echo -e "   ${GREEN}SUCCESS${NC} All processes stopped"
 
 # Step 2: Remove the package using dpkg
-echo -e "${YELLOW}📦 Step 2: Removing package using dpkg...${NC}"
+echo -e "${YELLOW}Step 2: Removing package using dpkg...${NC}"
 if dpkg -l | grep -q "^ii.*${PACKAGE_NAME}"; then
     dpkg --remove ${PACKAGE_NAME} || echo -e "   ${YELLOW}⚠️  Package removal had issues, continuing...${NC}"
-    echo -e "   ${GREEN}✓${NC} Package removed"
+    echo -e "   ${GREEN}SUCCESS${NC} Package removed"
 else
     echo -e "   ${BLUE}Package not found in dpkg database${NC}"
 fi
 
 # Step 3: Purge configuration files
-echo -e "${YELLOW}🧹 Step 3: Purging configuration files...${NC}"
+echo -e "${YELLOW}Step 3: Purging configuration files...${NC}"
 apt-get purge -y ${PACKAGE_NAME} 2>/dev/null || echo -e "   ${BLUE}No configuration files to purge${NC}"
-echo -e "   ${GREEN}✓${NC} Configuration files purged"
+echo -e "   ${GREEN}SUCCESS${NC} Configuration files purged"
 
 # Step 4: Remove application files
-echo -e "${YELLOW}🗑️  Step 4: Removing application files...${NC}"
+echo -e "${YELLOW}Step 4: Removing application files...${NC}"
 
 # Remove executable
 if [ -f "/usr/local/bin/NexusRFIDReader" ]; then
     rm -f /usr/local/bin/NexusRFIDReader
-    echo -e "   ${GREEN}✓${NC} Removed executable: /usr/local/bin/NexusRFIDReader"
+    echo -e "   ${GREEN}SUCCESS${NC} Removed executable: /usr/local/bin/NexusRFIDReader"
 fi
 
 # Remove monitoring script
 if [ -f "/usr/local/bin/monitor_nexus_rfid.sh" ]; then
     rm -f /usr/local/bin/monitor_nexus_rfid.sh
-    echo -e "   ${GREEN}✓${NC} Removed monitoring script: /usr/local/bin/monitor_nexus_rfid.sh"
+    echo -e "   ${GREEN}SUCCESS${NC} Removed monitoring script: /usr/local/bin/monitor_nexus_rfid.sh"
 fi
 
 # Remove desktop entry
 if [ -f "/usr/share/applications/${PACKAGE_NAME}.desktop" ]; then
     rm -f /usr/share/applications/${PACKAGE_NAME}.desktop
-    echo -e "   ${GREEN}✓${NC} Removed desktop entry: /usr/share/applications/${PACKAGE_NAME}.desktop"
+    echo -e "   ${GREEN}SUCCESS${NC} Removed desktop entry: /usr/share/applications/${PACKAGE_NAME}.desktop"
 fi
 
 # Remove icon
 if [ -f "/usr/share/icons/hicolor/512x512/apps/${PACKAGE_NAME}.ico" ]; then
     rm -f /usr/share/icons/hicolor/512x512/apps/${PACKAGE_NAME}.ico
-    echo -e "   ${GREEN}✓${NC} Removed icon: /usr/share/icons/hicolor/512x512/apps/${PACKAGE_NAME}.ico"
+    echo -e "   ${GREEN}SUCCESS${NC} Removed icon: /usr/share/icons/hicolor/512x512/apps/${PACKAGE_NAME}.ico"
 fi
 
 # Step 5: Remove data directories
-echo -e "${YELLOW}📁 Step 5: Removing data directories...${NC}"
+echo -e "${YELLOW}Step 5: Removing data directories...${NC}"
 
 # Remove main data directory
 RFID_DATA_DIR=/var/lib/nexusrfid
@@ -111,7 +111,7 @@ if [ -d "$RFID_DATA_DIR" ]; then
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         rm -rf "$RFID_DATA_DIR"
-        echo -e "   ${GREEN}✓${NC} Removed data directory: $RFID_DATA_DIR"
+        echo -e "   ${GREEN}SUCCESS${NC} Removed data directory: $RFID_DATA_DIR"
     else
         echo -e "   ${BLUE}Data directory preserved: $RFID_DATA_DIR${NC}"
     fi
@@ -120,7 +120,7 @@ else
 fi
 
 # Step 6: Clean up autostart entries
-echo -e "${YELLOW}🚀 Step 6: Removing autostart entries...${NC}"
+echo -e "${YELLOW}Step 6: Removing autostart entries...${NC}"
 AUTOSTART_REMOVED=0
 for user_dir in /home/*; do
     if [ -d "$user_dir" ]; then
@@ -128,7 +128,7 @@ for user_dir in /home/*; do
         autostart_file="$user_autostart_dir/monitor-nexus-rfid.desktop"
         if [ -f "$autostart_file" ]; then
             rm -f "$autostart_file"
-            echo -e "   ${GREEN}✓${NC} Removed autostart for user: $(basename "$user_dir")"
+            echo -e "   ${GREEN}SUCCESS${NC} Removed autostart for user: $(basename "$user_dir")"
             AUTOSTART_REMOVED=1
         fi
     fi
@@ -139,7 +139,7 @@ if [ $AUTOSTART_REMOVED -eq 0 ]; then
 fi
 
 # Step 7: Remove log files
-echo -e "${YELLOW}📋 Step 7: Cleaning up log files...${NC}"
+echo -e "${YELLOW}Step 7: Cleaning up log files...${NC}"
 if [ -f "/var/log/nexus-rfid-monitor.log" ]; then
     echo -e "   ${WHITE}Found log file: /var/log/nexus-rfid-monitor.log${NC}"
     read -p "   Remove log file? (y/N): " -n 1 -r
@@ -188,17 +188,17 @@ if [ -f "/usr/local/bin/NexusRFIDReader" ] || \
 fi
 
 if [ $REMAINING_FILES -eq 0 ]; then
-    echo -e "   ${GREEN}✓${NC} All application files removed successfully"
+    echo -e "   ${GREEN}SUCCESS${NC} All application files removed successfully"
 else
-    echo -e "   ${YELLOW}⚠️  Some files may still remain${NC}"
+    echo -e "   ${YELLOW}WARNING: Some files may still remain${NC}"
 fi
 
 echo ""
-echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║                🎉 UNINSTALLATION COMPLETED! 🎉               ║${NC}"
-echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
+echo -e "${GREEN}==============================================================${NC}"
+echo -e "${GREEN}            UNINSTALLATION COMPLETED!${NC}"
+echo -e "${GREEN}==============================================================${NC}"
 echo ""
-echo -e "${CYAN}📋 Summary of removed components:${NC}"
+echo -e "${CYAN}Summary of removed components:${NC}"
 echo -e "   • Application executable"
 echo -e "   • Monitoring script"
 echo -e "   • Desktop entry"
@@ -206,12 +206,12 @@ echo -e "   • Application icon"
 echo -e "   • Autostart configurations"
 echo -e "   • Package database entries"
 echo ""
-echo -e "${PURPLE}📁 Preserved components (if you chose to keep them):${NC}"
+echo -e "${PURPLE}Preserved components (if you chose to keep them):${NC}"
 echo -e "   • Data directory: /var/lib/nexusrfid"
 echo -e "   • Log file: /var/log/nexus-rfid-monitor.log"
 echo ""
-echo -e "${BLUE}💡 Note:${NC}"
+echo -e "${BLUE}Note:${NC}"
 echo -e "   • You may need to log out and log back in for all changes to take effect"
 echo -e "   • If you want to reinstall, run the installation script again"
 echo ""
-echo -e "${GREEN}✨ NexusRFIDReader has been completely removed! ✨${NC}"
+echo -e "${GREEN}NexusRFIDReader has been completely removed!${NC}"
