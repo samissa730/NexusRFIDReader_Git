@@ -45,6 +45,9 @@ hiddenimports = [
     'signal',
     'traceback',
     'functools',
+    'os',
+    'sys',
+    'pathlib',
 ]
 
 a = Analysis(

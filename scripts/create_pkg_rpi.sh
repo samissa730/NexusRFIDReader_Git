@@ -31,7 +31,7 @@ echo ""
 
 # Check if we're in the right directory
 if [ ! -f "main.py" ] || [ ! -f "NexusRFIDReader.spec" ]; then
-    echo -e "${RED}❌ Error: Please run this script from the project root directory${NC}"
+    echo -e "${RED}ERROR: Please run this script from the project root directory${NC}"
     echo -e "${YELLOW}   Expected files: main.py, NexusRFIDReader.spec${NC}"
     exit 1
 fi
@@ -91,28 +91,67 @@ cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/local/bin/monitor_nexus_rfid.sh <<'
 APP_NAME="NexusRFIDReader"
 APP_PATH="/usr/local/bin/NexusRFIDReader"
 LOG_FILE="/var/log/nexus-rfid-monitor.log"
+LOCK_FILE="/var/run/nexus-rfid-monitor.lock"
 
 # Function to log messages
 log_message() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$LOG_FILE"
 }
 
-log_message "Starting NexusRFIDReader monitor"
+# Check if another instance is already running
+if [ -f "$LOCK_FILE" ]; then
+    PID=$(cat "$LOCK_FILE")
+    if ps -p "$PID" > /dev/null 2>&1; then
+        log_message "Monitor already running with PID $PID"
+        exit 0
+    else
+        rm -f "$LOCK_FILE"
+    fi
+fi
+
+# Create lock file
+echo $$ > "$LOCK_FILE"
+
+# Cleanup function
+cleanup() {
+    rm -f "$LOCK_FILE"
+    exit 0
+}
+
+# Set up signal handlers
+trap cleanup SIGTERM SIGINT
+
+log_message "Starting NexusRFIDReader monitor (PID: $$)"
 
 while true; do
-    if ! pgrep -x "$APP_NAME" > /dev/null; then
+    # Check if any NexusRFIDReader processes are running
+    RUNNING_COUNT=$(pgrep -c "$APP_NAME" 2>/dev/null || echo "0")
+    
+    if [ "$RUNNING_COUNT" -eq 0 ]; then
         log_message "$APP_NAME is not running. Starting..."
+        # Change to data directory to ensure proper file creation
+        cd /var/lib/nexusrfid
         $APP_PATH &
-        sleep 2
-        if pgrep -x "$APP_NAME" > /dev/null; then
+        sleep 3
+        
+        # Verify it started
+        NEW_COUNT=$(pgrep -c "$APP_NAME" 2>/dev/null || echo "0")
+        if [ "$NEW_COUNT" -gt 0 ]; then
             log_message "$APP_NAME started successfully"
         else
             log_message "Failed to start $APP_NAME"
         fi
+    elif [ "$RUNNING_COUNT" -gt 1 ]; then
+        log_message "WARNING: Multiple $APP_NAME processes detected ($RUNNING_COUNT)"
+        # Kill all processes and restart
+        pkill -f "$APP_NAME"
+        sleep 2
+        log_message "Killed all $APP_NAME processes, will restart on next cycle"
     else
-        log_message "$APP_NAME is running normally"
+        log_message "$APP_NAME is running normally (1 process)"
     fi
-    sleep 10
+    
+    sleep 15
 done
 EOL
 
@@ -190,9 +229,13 @@ echo "Setting up NexusRFIDReader environment..."
 RFID_DATA_DIR=/var/lib/nexusrfid
 if [ ! -d "$RFID_DATA_DIR" ]; then
     mkdir -p "$RFID_DATA_DIR"
-    chmod -R 755 "$RFID_DATA_DIR"
+    chmod 755 "$RFID_DATA_DIR"
     echo "Created data directory at $RFID_DATA_DIR"
 fi
+
+# Ensure proper ownership of data directory
+chown root:root "$RFID_DATA_DIR"
+chmod 755 "$RFID_DATA_DIR"
 
 # Create log directory
 LOG_DIR=/var/log
@@ -203,6 +246,11 @@ fi
 # Set up log file for monitoring script
 touch /var/log/nexus-rfid-monitor.log
 chmod 644 /var/log/nexus-rfid-monitor.log
+chown root:root /var/log/nexus-rfid-monitor.log
+
+# Create run directory for lock files
+mkdir -p /var/run
+chmod 755 /var/run
 
 # Copy autostart configurations to existing users' directories
 for user_dir in /home/*; do
@@ -244,9 +292,21 @@ cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/DEBIAN/prerm <<'EOL'
 
 echo "Stopping NexusRFIDReader processes..."
 
-# Stop the application if running
-pkill -f "NexusRFIDReader" || true
+# Stop monitoring script first
 pkill -f "monitor_nexus_rfid.sh" || true
+
+# Stop all NexusRFIDReader processes
+pkill -f "NexusRFIDReader" || true
+
+# Wait a moment for graceful shutdown
+sleep 2
+
+# Force kill if still running
+pkill -9 -f "NexusRFIDReader" || true
+pkill -9 -f "monitor_nexus_rfid.sh" || true
+
+# Clean up lock file
+rm -f /var/run/nexus-rfid-monitor.lock
 
 echo "NexusRFIDReader processes stopped."
 EOL

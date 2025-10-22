@@ -2,7 +2,7 @@
 
 This document provides comprehensive instructions for packaging the NexusRFIDReader application using PyInstaller and creating a .deb package for easy installation on Raspberry Pi.
 
-## 📋 Table of Contents
+## Table of Contents
 
 - [Overview](#overview)
 - [Prerequisites](#prerequisites)
@@ -14,7 +14,7 @@ This document provides comprehensive instructions for packaging the NexusRFIDRea
 - [Troubleshooting](#troubleshooting)
 - [Uninstallation](#uninstallation)
 
-## 🎯 Overview
+## Overview
 
 The NexusRFIDReader packaging system creates a standalone executable and packages it into a .deb file for easy installation on Raspberry Pi. The package includes:
 
@@ -24,7 +24,7 @@ The NexusRFIDReader packaging system creates a standalone executable and package
 - **Monitoring**: Automatic restart if application crashes
 - **Data Persistence**: Local database and configuration storage
 
-## 🔧 Prerequisites
+## Prerequisites
 
 ### System Requirements
 - Raspberry Pi OS (Ubuntu/Debian-based)
@@ -40,7 +40,7 @@ Ensure these files are present in your project directory:
 - `ui/img/icon.ico` - Application icon
 - All project source files
 
-## 🚀 Quick Start
+## Quick Start
 
 ### One-Command Installation
 ```bash
@@ -59,7 +59,7 @@ sudo reboot
 
 That's it! The application will start automatically on login.
 
-## 📖 Detailed Instructions
+## Detailed Instructions
 
 ### Step 1: Install Python and Dependencies
 
@@ -79,42 +79,42 @@ This script will:
 
 **Expected Output:**
 ```
-╔══════════════════════════════════════════════════════════════╗
-║                NexusRFIDReader Python Installer              ║
-║                    For Raspberry Pi                          ║
-╚══════════════════════════════════════════════════════════════╝
+==============================================================
+        NexusRFIDReader Global Python Installer
+              For Raspberry Pi
+==============================================================
 
-🔍 System Information:
+System Information:
    OS: Raspberry Pi OS
    Architecture: arm64
    Kernel: 5.15.0-rpi
 
-📦 Step 1: Updating package lists...
-   ✓ Package lists updated
+Step 1: Updating package lists...
+   SUCCESS Package lists updated
 
-🔧 Step 2: Installing system dependencies...
-   ✓ System dependencies installed
+Step 2: Installing system dependencies...
+   SUCCESS System dependencies installed
 
-🐍 Step 3: Checking Python installation...
+Step 3: Checking Python installation...
    Current Python version: 3.9.2
-   ✓ Python 3.9+ is available
+   SUCCESS Python 3.9+ is available
 
-📦 Step 4: Installing PyInstaller...
-   ✓ PyInstaller installed
+Step 4: Installing PyInstaller...
+   SUCCESS PyInstaller installed
 
-📚 Step 5: Installing project dependencies...
-   ✓ Project dependencies installed from requirements.txt
+Step 5: Installing project dependencies...
+   SUCCESS Project dependencies installed from requirements.txt
 
-✅ Step 6: Verifying installation...
+Step 6: Verifying installation...
    Python version: Python 3.9.2
    Pip version: pip 21.3.1
    PyInstaller version: 4.10
-   ✓ PyInstaller import test passed
-   ✓ PySide6 import test passed
+   SUCCESS PyInstaller import test passed
+   SUCCESS PySide6 import test passed
 
-╔══════════════════════════════════════════════════════════════╗
-║                🎉 INSTALLATION COMPLETED! 🎉                  ║
-╚══════════════════════════════════════════════════════════════╝
+==============================================================
+            INSTALLATION COMPLETED SUCCESSFULLY!
+==============================================================
 ```
 
 ### Step 2: Create the Package
@@ -137,59 +137,59 @@ This script will:
 
 **Expected Output:**
 ```
-╔══════════════════════════════════════════════════════════════╗
-║                    NexusRFIDReader Package Builder           ║
-║                      For Raspberry Pi                        ║
-╚══════════════════════════════════════════════════════════════╝
+==============================================================
+        NexusRFIDReader Package Builder
+              For Raspberry Pi
+==============================================================
 
-📋 Package Information:
+Package Information:
    Name: NexusRFIDReader
    Version: 1.0
    Architecture: arm64
    Description: Nexus RFID Reader - Advanced RFID scanning and GPS tracking system
 
-🔨 Step 1: Building PyInstaller executable...
-   ✓ PyInstaller found
-   ✓ Executable built successfully
+Step 1: Building PyInstaller executable...
+   SUCCESS PyInstaller found
+   SUCCESS Executable built successfully
 
-📁 Step 2: Creating package directory structure...
-   ✓ Directory structure created
+Step 2: Creating package directory structure...
+   SUCCESS Directory structure created
 
-📦 Step 3: Copying application files...
-   ✓ Application files copied
+Step 3: Copying application files...
+   SUCCESS Application files copied
 
-🔍 Step 4: Creating application monitoring script...
-   ✓ Monitoring script created
+Step 4: Creating application monitoring script...
+   SUCCESS Monitoring script created
 
-🖥️  Step 5: Creating desktop application entry...
-   ✓ Desktop entry created
+Step 5: Creating desktop application entry...
+   SUCCESS Desktop entry created
 
-🚀 Step 6: Creating autostart configuration...
-   ✓ Autostart configuration created
+Step 6: Creating autostart configuration...
+   SUCCESS Autostart configuration created
 
-📋 Step 7: Creating package control file...
-   ✓ Control file created
+Step 7: Creating package control file...
+   SUCCESS Control file created
 
-⚙️  Step 8: Creating post-installation script...
-   ✓ Post-installation script created
+Step 8: Creating post-installation script...
+   SUCCESS Post-installation script created
 
-🧹 Step 9: Creating pre-removal script...
-   ✓ Pre-removal script created
+Step 9: Creating pre-removal script...
+   SUCCESS Pre-removal script created
 
-📦 Step 10: Building the .deb package...
-   ✓ Package built successfully
+Step 10: Building the .deb package...
+   SUCCESS Package built successfully
 
-🧹 Step 11: Cleaning up build files...
-   ✓ Build files cleaned up
+Step 11: Cleaning up build files...
+   SUCCESS Build files cleaned up
 
-╔══════════════════════════════════════════════════════════════╗
-║                    🎉 PACKAGE CREATED SUCCESSFULLY! 🎉        ║
-╚══════════════════════════════════════════════════════════════╝
+==============================================================
+            PACKAGE CREATED SUCCESSFULLY!
+==============================================================
 
-📦 Package File: NexusRFIDReader-1.0.deb
-📏 Package Size: 45.2M
+Package File: NexusRFIDReader-1.0.deb
+Package Size: 45.2M
 
-🚀 Installation Instructions:
+Installation Instructions:
    1. Install the package:
       sudo apt install ./NexusRFIDReader-1.0.deb
 
@@ -199,15 +199,15 @@ This script will:
    3. The application will start automatically on login
    4. You can also find it in the Applications menu
 
-📋 Package Contents:
-   • Executable: /usr/local/bin/NexusRFIDReader
-   • Icon: /usr/share/icons/hicolor/512x512/apps/NexusRFIDReader.ico
-   • Desktop Entry: /usr/share/applications/NexusRFIDReader.desktop
-   • Data Directory: /var/lib/nexusrfid
-   • Log File: /var/log/nexus-rfid-monitor.log
-   • Autostart: ~/.config/autostart/monitor-nexus-rfid.desktop
+Package Contents:
+   - Executable: /usr/local/bin/NexusRFIDReader
+   - Icon: /usr/share/icons/hicolor/512x512/apps/NexusRFIDReader.ico
+   - Desktop Entry: /usr/share/applications/NexusRFIDReader.desktop
+   - Data Directory: /var/lib/nexusrfid
+   - Log File: /var/log/nexus-rfid-monitor.log
+   - Autostart: ~/.config/autostart/monitor-nexus-rfid.desktop
 
-✨ Ready for deployment! ✨
+Ready for deployment!
 ```
 
 ### Step 3: Install the Package
@@ -255,7 +255,7 @@ sudo reboot
 
 After reboot, the application will start automatically.
 
-## 📦 Package Contents
+## Package Contents
 
 The .deb package includes the following components:
 
@@ -274,7 +274,7 @@ The .deb package includes the following components:
 - `/var/lib/nexusrfid/` - Application data directory
 - `/var/log/nexus-rfid-monitor.log` - Monitoring script log
 
-## 🔄 Installation Process
+## Installation Process
 
 The installation process includes several automated steps:
 
@@ -284,7 +284,7 @@ The installation process includes several automated steps:
 4. **Database Updates**: Updates desktop and icon databases
 5. **Service Setup**: Configures monitoring and autostart
 
-## 📁 File Locations
+## File Locations
 
 ### Application Files
 ```
@@ -308,7 +308,7 @@ The installation process includes several automated steps:
 ~/.config/autostart/monitor-nexus-rfid.desktop  # Autostart configuration
 ```
 
-## 🔧 Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
@@ -342,8 +342,8 @@ sudo apt install -f
 sudo apt install ./NexusRFIDReader-1.0.deb
 ```
 
-#### 3. Application Doesn't Start
-**Problem**: Application doesn't start automatically
+#### 3. Application Does Not Start
+**Problem**: Application does not start automatically
 **Solution**:
 ```bash
 # Check if autostart is configured
@@ -384,7 +384,7 @@ journalctl -u nexus-rfid -f
 tail -f ~/.nexusrfid/rfid.log
 ```
 
-## 🗑️ Uninstallation
+## Uninstallation
 
 To completely remove the application:
 
@@ -403,75 +403,75 @@ This will:
 
 **Expected Output:**
 ```
-╔══════════════════════════════════════════════════════════════╗
-║                NexusRFIDReader Uninstaller                  ║
-║                    For Raspberry Pi                        ║
-╚══════════════════════════════════════════════════════════════╝
+==============================================================
+            NexusRFIDReader Uninstaller
+              For Raspberry Pi
+==============================================================
 
-⚠️  WARNING: This will completely remove NexusRFIDReader and all its data!
-   This action cannot be undone.
+WARNING: This will completely remove NexusRFIDReader and all its data!
+This action cannot be undone.
 
 Are you sure you want to continue? (y/N): y
 
-🛑 Step 1: Stopping NexusRFIDReader processes...
+Step 1: Stopping NexusRFIDReader processes...
    Stopping application processes...
    No running NexusRFIDReader processes found
    Stopping monitoring processes...
    No running monitoring processes found
-   ✓ All processes stopped
+   SUCCESS All processes stopped
 
-📦 Step 2: Removing package using dpkg...
-   ✓ Package removed
+Step 2: Removing package using dpkg...
+   SUCCESS Package removed
 
-🧹 Step 3: Purging configuration files...
-   ✓ Configuration files purged
+Step 3: Purging configuration files...
+   SUCCESS Configuration files purged
 
-🗑️  Step 4: Removing application files...
-   ✓ Removed executable: /usr/local/bin/NexusRFIDReader
-   ✓ Removed monitoring script: /usr/local/bin/monitor_nexus_rfid.sh
-   ✓ Removed desktop entry: /usr/share/applications/NexusRFIDReader.desktop
-   ✓ Removed icon: /usr/share/icons/hicolor/512x512/apps/NexusRFIDReader.ico
+Step 4: Removing application files...
+   SUCCESS Removed executable: /usr/local/bin/NexusRFIDReader
+   SUCCESS Removed monitoring script: /usr/local/bin/monitor_nexus_rfid.sh
+   SUCCESS Removed desktop entry: /usr/share/applications/NexusRFIDReader.desktop
+   SUCCESS Removed icon: /usr/share/icons/hicolor/512x512/apps/NexusRFIDReader.ico
 
-📁 Step 5: Removing data directories...
+Step 5: Removing data directories...
    Found data directory: /var/lib/nexusrfid
-   ⚠️  This directory may contain important data!
+   WARNING: This directory may contain important data!
    Remove data directory? (y/N): y
-   ✓ Removed data directory: /var/lib/nexusrfid
+   SUCCESS Removed data directory: /var/lib/nexusrfid
 
-🚀 Step 6: Removing autostart entries...
-   ✓ Removed autostart for user: pi
+Step 6: Removing autostart entries...
+   SUCCESS Removed autostart for user: pi
 
-📋 Step 7: Cleaning up log files...
+Step 7: Cleaning up log files...
    Found log file: /var/log/nexus-rfid-monitor.log
    Remove log file? (y/N): y
-   ✓ Removed log file: /var/log/nexus-rfid-monitor.log
+   SUCCESS Removed log file: /var/log/nexus-rfid-monitor.log
 
-🔄 Step 8: Updating system databases...
-   ✓ Updated desktop database
-   ✓ Updated icon cache
+Step 8: Updating system databases...
+   SUCCESS Updated desktop database
+   SUCCESS Updated icon cache
 
-🧽 Step 9: Cleaning up package cache...
-   ✓ Package cache cleaned
+Step 9: Cleaning up package cache...
+   SUCCESS Package cache cleaned
 
-✅ Step 10: Final verification...
-   ✓ All application files removed successfully
+Step 10: Final verification...
+   SUCCESS All application files removed successfully
 
-╔══════════════════════════════════════════════════════════════╗
-║                🎉 UNINSTALLATION COMPLETED! 🎉               ║
-╚══════════════════════════════════════════════════════════════╝
+==============================================================
+            UNINSTALLATION COMPLETED!
+==============================================================
 
-📋 Summary of removed components:
-   • Application executable
-   • Monitoring script
-   • Desktop entry
-   • Application icon
-   • Autostart configurations
-   • Package database entries
+Summary of removed components:
+   - Application executable
+   - Monitoring script
+   - Desktop entry
+   - Application icon
+   - Autostart configurations
+   - Package database entries
 
-✨ NexusRFIDReader has been completely removed! ✨
+NexusRFIDReader has been completely removed!
 ```
 
-## 📞 Support
+## Support
 
 For issues or questions:
 
@@ -480,6 +480,6 @@ For issues or questions:
 3. Check application logs in `~/.nexusrfid/rfid.log`
 4. Verify system requirements and dependencies
 
-## 📄 License
+## License
 
 This packaging system is part of the NexusRFIDReader project. Please refer to the main project license for usage terms.

@@ -56,12 +56,15 @@ sleep 2
 pkill -9 -f "NexusRFIDReader" 2>/dev/null || true
 pkill -9 -f "monitor_nexus_rfid.sh" 2>/dev/null || true
 
+# Clean up lock file
+rm -f /var/run/nexus-rfid-monitor.lock
+
 echo -e "   ${GREEN}SUCCESS${NC} All processes stopped"
 
 # Step 2: Remove the package using dpkg
 echo -e "${YELLOW}Step 2: Removing package using dpkg...${NC}"
 if dpkg -l | grep -q "^ii.*${PACKAGE_NAME}"; then
-    dpkg --remove ${PACKAGE_NAME} || echo -e "   ${YELLOW}⚠️  Package removal had issues, continuing...${NC}"
+    dpkg --remove ${PACKAGE_NAME} || echo -e "   ${YELLOW}WARNING: Package removal had issues, continuing...${NC}"
     echo -e "   ${GREEN}SUCCESS${NC} Package removed"
 else
     echo -e "   ${BLUE}Package not found in dpkg database${NC}"
@@ -106,7 +109,7 @@ echo -e "${YELLOW}Step 5: Removing data directories...${NC}"
 RFID_DATA_DIR=/var/lib/nexusrfid
 if [ -d "$RFID_DATA_DIR" ]; then
     echo -e "   ${WHITE}Found data directory: $RFID_DATA_DIR${NC}"
-    echo -e "   ${YELLOW}⚠️  This directory may contain important data!${NC}"
+    echo -e "   ${YELLOW}WARNING: This directory may contain important data!${NC}"
     read -p "   Remove data directory? (y/N): " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
@@ -146,7 +149,7 @@ if [ -f "/var/log/nexus-rfid-monitor.log" ]; then
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         rm -f /var/log/nexus-rfid-monitor.log
-        echo -e "   ${GREEN}✓${NC} Removed log file: /var/log/nexus-rfid-monitor.log"
+        echo -e "   ${GREEN}SUCCESS${NC} Removed log file: /var/log/nexus-rfid-monitor.log"
     else
         echo -e "   ${BLUE}Log file preserved: /var/log/nexus-rfid-monitor.log${NC}"
     fi
@@ -155,28 +158,28 @@ else
 fi
 
 # Step 8: Update system databases
-echo -e "${YELLOW}🔄 Step 8: Updating system databases...${NC}"
+echo -e "${YELLOW}Step 8: Updating system databases...${NC}"
 
 # Update desktop database
 if command -v update-desktop-database &> /dev/null; then
     update-desktop-database /usr/share/applications 2>/dev/null || true
-    echo -e "   ${GREEN}✓${NC} Updated desktop database"
+    echo -e "   ${GREEN}SUCCESS${NC} Updated desktop database"
 fi
 
 # Update icon cache
 if command -v gtk-update-icon-cache &> /dev/null; then
     gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
-    echo -e "   ${GREEN}✓${NC} Updated icon cache"
+    echo -e "   ${GREEN}SUCCESS${NC} Updated icon cache"
 fi
 
 # Step 9: Clean up package cache
-echo -e "${YELLOW}🧽 Step 9: Cleaning up package cache...${NC}"
+echo -e "${YELLOW}Step 9: Cleaning up package cache...${NC}"
 apt-get autoremove -y 2>/dev/null || true
 apt-get autoclean 2>/dev/null || true
-echo -e "   ${GREEN}✓${NC} Package cache cleaned"
+echo -e "   ${GREEN}SUCCESS${NC} Package cache cleaned"
 
 # Step 10: Final verification
-echo -e "${YELLOW}✅ Step 10: Final verification...${NC}"
+echo -e "${YELLOW}Step 10: Final verification...${NC}"
 REMAINING_FILES=0
 
 # Check for remaining files
