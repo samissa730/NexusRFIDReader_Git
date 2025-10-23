@@ -88,6 +88,19 @@ def get_mac_address():
     return formatted_mac_address
 
 
+def enable_gps_at_command():
+    """Send AT+QGPS=1 command to ttyUSB2 to enable GPS"""
+    try:
+        with serial.Serial('/dev/ttyUSB2', baudrate=115200, timeout=1, rtscts=True, dsrdtr=True) as ser:
+            ser.write('AT+QGPS=1\r'.encode())
+            logger.info("Sent AT+QGPS=1 command to ttyUSB2")
+            ser.close()
+            time.sleep(2)  # Give GPS time to initialize
+            return True
+    except (OSError, serial.SerialException) as e:
+        logger.warning(f"Failed to send AT+QGPS=1 command to ttyUSB2: {e}")
+        return False
+
 def pre_config_gps():
     serial_ports = [port.device for port in serial.tools.list_ports.comports()]
     logger.debug(f"Available ports:{serial_ports}")

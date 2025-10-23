@@ -91,6 +91,14 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"Error executing 'sudo dhclient usb0': {e}")
 
+    # Enable GPS on startup
+    try:
+        from utils.common import enable_gps_at_command
+        logger.info("Attempting to enable GPS on application startup...")
+        enable_gps_at_command()
+    except Exception as e:
+        logger.error(f"Error enabling GPS on startup: {e}")
+
     logger.info("========== Starting Kiosk App ==========")
 
     # Try different Qt platforms for Raspberry Pi

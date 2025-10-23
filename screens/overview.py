@@ -6,7 +6,7 @@ from ui.screens.ui_overview import Ui_OverviewScreen
 from utils.logger import logger
 from utils.rfid import RFID
 from utils.gps import GPS
-from utils.common import extract_from_gps, get_date_from_utc, pre_config_gps, find_gps_port, get_processor_id
+from utils.common import extract_from_gps, get_date_from_utc, pre_config_gps, find_gps_port, get_processor_id, enable_gps_at_command
 from utils.data_storage import DataStorage
 from utils.api_client import ApiClient
 from settings import API_CONFIG, FILTER_CONFIG, DATABASE_CONFIG, INTERNET_LIMIT_TIME
@@ -84,6 +84,17 @@ class OverviewScreen(BaseScreen):
         self.external_retry_timer.timeout.connect(self._start_gps_scan)
         self.external_retry_timer.setInterval(30000)
 
+        # GPS connection timeout tracking
+        self.gps_connection_start_time = None
+        self.gps_timeout_seconds = 300  # 5 minutes timeout
+        self.gps_timeout_timer = QTimer(self)
+        self.gps_timeout_timer.timeout.connect(self._check_gps_timeout)
+        self.gps_timeout_timer.setInterval(10000)  # Check every 10 seconds
+
+        # Enable GPS on startup
+        logger.info("Attempting to enable GPS on startup...")
+        enable_gps_at_command()
+
         # Always attempt external; retry every 30s if not connected
         self._start_gps_scan()
 
@@ -127,6 +138,8 @@ class OverviewScreen(BaseScreen):
             self.gps_display_timer.stop()
         if hasattr(self, 'internet_timer'):
             self.internet_timer.stop()
+        if hasattr(self, 'gps_timeout_timer'):
+            self.gps_timeout_timer.stop()
         self.storage.close()
 
     def _set_gps_status(self, text, ok):
@@ -141,9 +154,15 @@ class OverviewScreen(BaseScreen):
         # Called by external GPS worker
         if status:
             self._set_gps_status("External GPS Connected", True)
+            # Reset timeout tracking when GPS connects
+            self.gps_connection_start_time = None
+            self.gps_timeout_timer.stop()
         else:
             # External disconnected: update status and start GPS scan
             self._set_gps_status("Disconnected", False)
+            # Start timeout tracking when GPS disconnects
+            self.gps_connection_start_time = time.time()
+            self.gps_timeout_timer.start()
             self._start_gps_scan()
 
     def _on_rfid_status(self, status):
@@ -261,10 +280,33 @@ class OverviewScreen(BaseScreen):
         for column in range(self.ui.tableWidget.columnCount()):
             self.ui.tableWidget.setItem(0, column, QTableWidgetItem(new_data[column]))
 
+    def _check_gps_timeout(self):
+        """Check if GPS has been disconnected for too long and enable GPS if needed"""
+        if self.gps_connection_start_time is None:
+            return  # No timeout tracking active
+        
+        current_time = time.time()
+        disconnection_duration = current_time - self.gps_connection_start_time
+        
+        if disconnection_duration >= self.gps_timeout_seconds:
+            logger.warning(f"GPS disconnected for {disconnection_duration:.0f} seconds (timeout: {self.gps_timeout_seconds} seconds). Attempting to enable GPS...")
+            enable_gps_at_command()
+            # Reset timeout tracking after attempting to enable GPS
+            self.gps_connection_start_time = None
+            self.gps_timeout_timer.stop()
+        else:
+            remaining_time = self.gps_timeout_seconds - disconnection_duration
+            logger.debug(f"GPS still disconnected. {remaining_time:.0f} seconds remaining before GPS enable attempt")
+
     def _start_gps_scan(self):
         """Start GPS port scanning in background thread"""
         if self.gps_scanner and self.gps_scanner.isRunning():
             return  # Already scanning
+        
+        # Start timeout tracking when scanning for GPS
+        if self.gps_connection_start_time is None:
+            self.gps_connection_start_time = time.time()
+            self.gps_timeout_timer.start()
         
         self.gps_scanner = GPSScannerThread()
         self.gps_scanner.gps_found.connect(self._on_gps_found)
@@ -281,6 +323,10 @@ class OverviewScreen(BaseScreen):
     def _on_gps_not_found(self):
         """Called when no GPS port is found in background thread"""
         self._set_gps_status("Disconnected", False)
+        # Start timeout tracking when GPS is not found
+        if self.gps_connection_start_time is None:
+            self.gps_connection_start_time = time.time()
+            self.gps_timeout_timer.start()
         if not self.external_retry_timer.isActive():
             self.external_retry_timer.start()
         logger.debug("No GPS port found, will retry in 30 seconds")
