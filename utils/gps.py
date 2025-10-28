@@ -55,9 +55,14 @@ class GPS(QThread):
                 self._sdata = [speed_knots * 1.15078, course_degrees]
                 # Update timestamp when GPS data is successfully parsed
                 self._last_data_timestamp = int(time.time() * 1_000_000)
-            except pynmea2.ParseError:
+                logger.debug(f"GPS data parsed: lat={self._data.get('lat', 'N/A')}, lon={self._data.get('lon', 'N/A')}, speed={speed_knots}")
+            except pynmea2.ParseError as e:
+                logger.debug(f"GPS parse error: {e}")
                 self._data = {}
                 self._sdata = [0, 0]
+        elif line.startswith('$G'):
+            # Log other GPS sentences for debugging
+            logger.debug(f"GPS sentence: {line[:50]}...")
 
     def run(self):
         self._ser = self._connect()

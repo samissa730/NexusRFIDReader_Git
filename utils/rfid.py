@@ -96,15 +96,23 @@ class RFID(QThread):
 
     def tag_seen_callback(self, reader, tags):
         if tags:
+            logger.debug(f"RFID tags detected: {len(tags)} tags")
             self.tag_data = _convert_to_unicode(tags)
+            logger.debug(f"Tag data: {self.tag_data}")
             self.sig_msg.emit(3)
+        else:
+            logger.debug("RFID callback called but no tags found")
 
     def run(self):
+        logger.debug(f"RFID thread starting, attempting to connect to {self.host}:{self._cfg['port']}")
         while not self._b_stop.is_set():
             try:
+                logger.debug("Attempting RFID reader connection...")
                 self.reader.connect()
+                logger.info("RFID reader connected successfully")
                 break
-            except Exception:
+            except Exception as e:
+                logger.debug(f"RFID connection attempt failed: {e}")
                 if self.connectivity is True:
                     self.connectivity = False
                     self.sig_msg.emit(2)
@@ -113,6 +121,7 @@ class RFID(QThread):
         if self.connectivity is False:
             self.connectivity = True
             self.sig_msg.emit(1)
+            logger.info("RFID reader status changed to connected")
 
         while not self._b_stop.is_set():
             try:

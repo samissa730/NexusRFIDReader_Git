@@ -123,17 +123,24 @@ def pre_config_gps():
 def find_gps_port(baud_rate):
     serial_ports = [port.device for port in serial.tools.list_ports.comports()]
     logger.debug(f"Available ports:{serial_ports}")
+    
+    # Try each port multiple times to ensure we catch GPS data
     for port in serial_ports:
         try:
-            with serial.Serial(port, baudrate=baud_rate, timeout=0.1, rtscts=True, dsrdtr=True) as ser:
-                buffer = ser.in_waiting
-                if buffer < 80:
-                    time.sleep(0.1)  # Reduced from 0.5 to 0.1 seconds
-                line = ser.readline().decode('utf-8', errors='ignore').strip()
-                if line.startswith('$G'):
-                    logger.info(f"GPS found on port: {port}")
-                    return port
-        except (OSError, serial.SerialException):
+            with serial.Serial(port, baudrate=baud_rate, timeout=1, rtscts=True, dsrdtr=True) as ser:
+                # Try multiple reads to catch GPS data
+                for attempt in range(5):
+                    buffer = ser.in_waiting
+                    if buffer < 80:
+                        time.sleep(0.2)  # Wait a bit longer for data
+                    line = ser.readline().decode('utf-8', errors='ignore').strip()
+                    logger.debug(f"Port {port} attempt {attempt + 1}: {line[:50]}...")  # Log first 50 chars
+                    if line.startswith('$G'):
+                        logger.info(f"GPS found on port: {port}")
+                        return port
+                logger.debug(f"No GPS data found on port {port} after 5 attempts")
+        except (OSError, serial.SerialException) as e:
+            logger.debug(f"Port {port} error: {e}")
             pass
     logger.info("No GPS port found")
     return None
