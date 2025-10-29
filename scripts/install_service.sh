@@ -79,12 +79,16 @@ print_step "Creating systemd service unit file..."
 sudo bash -c "cat > '${UNIT_PATH}'" <<UNIT
 [Unit]
 Description=Nexus RFID Application
-After=graphical.target network-online.target
-Wants=graphical.target network-online.target
+After=graphical.target
+Wants=graphical.target
 
 [Service]
 Type=simple
 WorkingDirectory=${PROJECT_ROOT}
+# Setup internet connection via usb0 FIRST, before anything else
+# This runs before network-online.target since we're setting up the connection ourselves
+ExecStartPre=/bin/bash -c '/usr/bin/sudo /sbin/dhclient usb0 || true'
+ExecStartPre=/bin/sleep 5
 ExecStart=${RUN_SCRIPT}
 Restart=always
 RestartSec=5
@@ -95,7 +99,6 @@ Environment=XAUTHORITY=${HOME_DIR}/.Xauthority
 Environment=HOME=${HOME_DIR}
 Environment=XDG_RUNTIME_DIR=/run/user/1000
 Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
-ExecStartPre=/bin/sleep 5
 
 [Install]
 WantedBy=graphical.target

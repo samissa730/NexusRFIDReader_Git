@@ -2,6 +2,10 @@
 
 set -e
 
+# Setup internet connection via usb0 FIRST, before anything else
+# This must run before any network-dependent operations
+sudo dhclient usb0 2>&1 || true
+
 # Resolve project root as the parent of this script directory
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
