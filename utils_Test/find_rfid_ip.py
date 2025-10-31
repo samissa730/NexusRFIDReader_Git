@@ -120,61 +120,79 @@ class RFIDIPFinder:
         
         # arp-scan requires sudo/root privileges
         # Build command: arp-scan --interface=<interface> <network_range>
+        # Don't use --quiet so we can see progress and debug output
         cmd = ['arp-scan', '--interface', self.interface, self.network_range]
         
         if self.debug:
             print(f"DEBUG: Running command: {' '.join(cmd)}", file=sys.stderr)
             print(f"DEBUG: Network range: {self.network_range}", file=sys.stderr)
+            print(f"DEBUG: Starting arp-scan subprocess...", file=sys.stderr)
         
         try:
+            # Run with longer timeout - arp-scan on /16 network can take time
+            # Also use stderr=subprocess.STDOUT to capture both streams
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=120  # Timeout after 120 seconds (arp-scan can be slower on large ranges)
+                timeout=300,  # Timeout after 300 seconds (5 minutes) for large network ranges
+                bufsize=1  # Line buffered
             )
+            
+            # Combine stdout and stderr - arp-scan outputs header info to stderr
+            combined_output = ""
+            if result.stderr:
+                combined_output += result.stderr
+            if result.stdout:
+                combined_output += "\n" + result.stdout if combined_output else result.stdout
             
             if self.debug:
                 print(f"DEBUG: Return code: {result.returncode}", file=sys.stderr)
                 print(f"DEBUG: stdout length: {len(result.stdout)} chars", file=sys.stderr)
                 print(f"DEBUG: stderr length: {len(result.stderr)} chars", file=sys.stderr)
-                if result.stdout:
-                    print(f"DEBUG: stdout preview (first 500 chars):\n{result.stdout[:500]}", file=sys.stderr)
+                print(f"DEBUG: Combined output length: {len(combined_output)} chars", file=sys.stderr)
+                
                 if result.stderr:
-                    print(f"DEBUG: stderr:\n{result.stderr}", file=sys.stderr)
+                    print(f"DEBUG: stderr content:\n{result.stderr}", file=sys.stderr)
+                if result.stdout:
+                    print(f"DEBUG: stdout content:\n{result.stdout}", file=sys.stderr)
+                if combined_output:
+                    print(f"DEBUG: Combined full output:\n{combined_output}", file=sys.stderr)
             
-            # arp-scan returns non-zero on errors, but may still have valid output
-            # Check stderr for actual errors
-            error_output = result.stderr.strip()
-            if error_output and not any(keyword in error_output.lower() for keyword in ['warnings', 'packets']):
-                # Actual error, not just warnings
-                if not has_sudo and ("permission" in error_output.lower() or 
-                                    "Operation not permitted" in error_output or
-                                    "root" in error_output.lower()):
+            # Check stderr for actual errors (before combining)
+            error_output = result.stderr.strip() if result.stderr else ""
+            
+            # Check for permission errors
+            if error_output and ("permission" in error_output.lower() or 
+                                "Operation not permitted" in error_output or
+                                "pcap_activate" in error_output.lower()):
+                if not has_sudo:
                     print("\nError: arp-scan requires root/sudo privileges to scan networks.", file=sys.stderr)
                     print("Please run this script with sudo:", file=sys.stderr)
                     print("  sudo python3 utils_Test/find_rfid_ip.py", file=sys.stderr)
-                    return None
                 else:
-                    print(f"Error running arp-scan: {error_output}", file=sys.stderr)
-                    return None
+                    print(f"\nError: Permission issue detected even with sudo: {error_output}", file=sys.stderr)
+                return None
             
-            if self.debug:
-                print(f"DEBUG: Full arp-scan output:\n{result.stdout}", file=sys.stderr)
+            # Return combined output - parsing will extract the actual data
+            # arp-scan outputs results to stdout, header info to stderr
+            # We need both for complete parsing
+            return combined_output
             
-            return result.stdout
-            
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as e:
             if self.debug:
                 print("DEBUG: Timeout exception caught", file=sys.stderr)
+                print(f"DEBUG: Timeout after 300 seconds", file=sys.stderr)
             if not has_sudo:
                 print("\nError: arp-scan timed out (likely waiting for sudo password or missing privileges).", file=sys.stderr)
                 print("arp-scan requires root privileges for network scanning.", file=sys.stderr)
                 print("Please run this script with sudo:", file=sys.stderr)
                 print("  sudo python3 utils_Test/find_rfid_ip.py", file=sys.stderr)
             else:
-                print("Error: arp-scan timed out after 120 seconds", file=sys.stderr)
+                print("Error: arp-scan timed out after 300 seconds", file=sys.stderr)
                 print("This may indicate network issues or a large network range.", file=sys.stderr)
+                print("Try running arp-scan manually to verify it works:", file=sys.stderr)
+                print(f"  sudo arp-scan --interface={self.interface} {self.network_range}", file=sys.stderr)
             return None
         except Exception as e:
             print(f"Error running arp-scan: {e}", file=sys.stderr)
@@ -209,8 +227,11 @@ class RFIDIPFinder:
             if self.debug and i < 30:  # Debug first 30 lines
                 print(f"DEBUG: Line {i}: {line[:80]}", file=sys.stderr)
             
-            # Skip header lines and summary lines
-            if any(skip in line.lower() for skip in ['starting', 'interface:', 'ending', 'packets', 'hosts']):
+            # Skip header lines and summary lines (but keep for debug)
+            # Note: "Interface:" and "Starting" appear in stderr output, "packets" in summary
+            if any(skip in line.lower() for skip in ['interface:', 'type:', 'mac:', 'ipv4:', 'starting arp-scan', 'ending', 'packets sent', 'hosts found']):
+                if self.debug:
+                    print(f"DEBUG: Skipping header/summary line: {line[:80]}", file=sys.stderr)
                 continue
             
             # Parse arp-scan output format: IP    MAC    VENDOR
