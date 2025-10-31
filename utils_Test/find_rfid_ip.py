@@ -17,6 +17,7 @@ import subprocess
 import re
 import sys
 import platform
+import os
 from typing import List, Dict, Optional
 
 
@@ -49,6 +50,10 @@ class RFIDIPFinder:
         except (subprocess.TimeoutExpired, FileNotFoundError):
             return False
     
+    def _check_sudo_privileges(self) -> bool:
+        """Check if running with sudo/root privileges."""
+        return os.geteuid() == 0 if hasattr(os, 'geteuid') else False
+    
     def _run_nmap_scan(self) -> Optional[str]:
         """
         Run nmap scan to discover hosts on the network.
@@ -61,11 +66,19 @@ class RFIDIPFinder:
             print("Please install nmap: sudo apt-get install nmap (Linux) or install from https://nmap.org", file=sys.stderr)
             return None
         
+        # Check if we have sudo privileges
+        has_sudo = self._check_sudo_privileges()
+        
+        if not has_sudo:
+            print("Warning: Not running with sudo privileges.", file=sys.stderr)
+            print("Attempting to run nmap directly (may fail if privileges required)...", file=sys.stderr)
+            # Try without sudo first
+            cmd = ['nmap', '-sn', self.network_range]
+        else:
+            # Already running as root, no need for sudo
+            cmd = ['nmap', '-sn', self.network_range]
+        
         try:
-            # Run nmap scan with -sn (no port scan, just ping sweep)
-            # This is faster and sufficient for finding hosts
-            cmd = ['sudo', 'nmap', '-sn', self.network_range]
-            
             result = subprocess.run(
                 cmd,
                 capture_output=True,
@@ -74,20 +87,34 @@ class RFIDIPFinder:
             )
             
             if result.returncode != 0:
-                error_msg = result.stderr.strip() or "Unknown error"
-                if "sudo" in error_msg.lower() or "permission" in error_msg.lower():
-                    print("Error: This script requires sudo privileges to run nmap", file=sys.stderr)
+                error_msg = result.stderr.strip() or result.stdout.strip() or "Unknown error"
+                
+                # If we tried without sudo and got permission error, suggest using sudo
+                if not has_sudo and ("permission" in error_msg.lower() or 
+                                    "Operation not permitted" in error_msg or
+                                    "root" in error_msg.lower()):
+                    print("\nError: nmap requires root/sudo privileges to scan networks.", file=sys.stderr)
+                    print("Please run this script with sudo:", file=sys.stderr)
+                    print("  sudo python3 utils_Test/find_rfid_ip.py", file=sys.stderr)
+                    return None
                 else:
                     print(f"Error running nmap: {error_msg}", file=sys.stderr)
-                return None
+                    return None
             
             return result.stdout
             
         except subprocess.TimeoutExpired:
-            print("Error: nmap scan timed out after 60 seconds", file=sys.stderr)
+            if not has_sudo:
+                print("\nError: nmap scan timed out (likely waiting for sudo password).", file=sys.stderr)
+                print("Please run this script with sudo:", file=sys.stderr)
+                print("  sudo python3 utils_Test/find_rfid_ip.py", file=sys.stderr)
+            else:
+                print("Error: nmap scan timed out after 60 seconds", file=sys.stderr)
             return None
         except Exception as e:
             print(f"Error running nmap: {e}", file=sys.stderr)
+            if not has_sudo:
+                print("Tip: Try running with sudo: sudo python3 utils_Test/find_rfid_ip.py", file=sys.stderr)
             return None
     
     def _parse_nmap_output(self, nmap_output: str) -> List[Dict[str, str]]:
@@ -189,6 +216,12 @@ def main():
         print("Warning: This script is designed for Linux/Unix systems.", file=sys.stderr)
         print("nmap on Windows may require different privileges.", file=sys.stderr)
         print()
+    
+    # Check for sudo privileges at start
+    has_sudo = os.geteuid() == 0 if hasattr(os, 'geteuid') else False
+    if not has_sudo and platform.system() != "Windows":
+        print("Note: This script may require sudo privileges for network scanning.")
+        print("If you encounter permission errors, please run: sudo python3 utils_Test/find_rfid_ip.py\n")
     
     finder = RFIDIPFinder()
     readers = finder.find_readers()
