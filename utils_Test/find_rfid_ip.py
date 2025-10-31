@@ -2,12 +2,12 @@
 """
 RFID Reader IP Finder
 
-This script uses nmap to scan the 169.254.0.0/16 network range (Link-Local addresses)
+This script uses arp-scan to scan the 169.254.0.0/16 network range (Link-Local addresses)
 to find connected RFID readers. It identifies RFID readers by detecting MAC addresses
 associated with "Zebra Technologies" or "Impinj" vendors.
 
 Usage:
-    sudo python3 find_rfid_ip.py
+    sudo python3 find_rfid_ip.py [--interface eth0] [--network 169.254.0.0/16]
     
 Output:
     Prints the IP address and product name for each detected RFID reader.
@@ -22,28 +22,66 @@ from typing import List, Dict, Optional
 
 
 class RFIDIPFinder:
-    """Finds RFID reader IP addresses using nmap."""
+    """Finds RFID reader IP addresses using arp-scan."""
     
-    # RFID vendor keywords to look for in nmap output
+    # RFID vendor keywords to look for in arp-scan output
     RFID_VENDORS = ['Zebra', 'Impinj']
     
-    def __init__(self, network_range: str = "169.254.0.0/16", debug: bool = False):
+    def __init__(self, network_range: str = "169.254.0.0/16", interface: Optional[str] = None, debug: bool = False):
         """
         Initialize the RFID IP finder.
         
         Args:
             network_range: Network range to scan (default: 169.254.0.0/16 for Link-Local)
+            interface: Network interface to use (default: auto-detect or 'eth0')
             debug: Enable debug output (default: False)
         """
         self.network_range = network_range
+        self.interface = interface or self._detect_interface()
         self.readers_found = []
         self.debug = debug
     
-    def _check_nmap_available(self) -> bool:
-        """Check if nmap is available on the system."""
+    def _detect_interface(self) -> str:
+        """Auto-detect network interface, default to eth0."""
+        try:
+            # Try to get default route interface
+            result = subprocess.run(
+                ['ip', 'route', 'show', 'default'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0 and result.stdout:
+                # Extract interface from route output
+                match = re.search(r'dev\s+(\w+)', result.stdout)
+                if match:
+                    return match.group(1)
+        except:
+            pass
+        
+        # Try common interface names
+        for iface in ['eth0', 'eth1', 'enp0s3', 'enp0s8']:
+            try:
+                # Check if interface exists
+                result = subprocess.run(
+                    ['ip', 'link', 'show', iface],
+                    capture_output=True,
+                    text=True,
+                    timeout=2
+                )
+                if result.returncode == 0:
+                    return iface
+            except:
+                continue
+        
+        # Default fallback
+        return 'eth0'
+    
+    def _check_arpscan_available(self) -> bool:
+        """Check if arp-scan is available on the system."""
         try:
             result = subprocess.run(
-                ['nmap', '--version'],
+                ['arp-scan', '--version'],
                 capture_output=True,
                 text=True,
                 timeout=5
@@ -56,16 +94,16 @@ class RFIDIPFinder:
         """Check if running with sudo/root privileges."""
         return os.geteuid() == 0 if hasattr(os, 'geteuid') else False
     
-    def _run_nmap_scan(self) -> Optional[str]:
+    def _run_arpscan(self) -> Optional[str]:
         """
-        Run nmap scan to discover hosts on the network.
+        Run arp-scan to discover hosts on the network.
         
         Returns:
-            nmap output as string, or None if scan fails
+            arp-scan output as string, or None if scan fails
         """
-        if not self._check_nmap_available():
-            print("Error: nmap is not installed or not available in PATH", file=sys.stderr)
-            print("Please install nmap: sudo apt-get install nmap (Linux) or install from https://nmap.org", file=sys.stderr)
+        if not self._check_arpscan_available():
+            print("Error: arp-scan is not installed or not available in PATH", file=sys.stderr)
+            print("Please install arp-scan: sudo apt-get install arp-scan", file=sys.stderr)
             return None
         
         # Check if we have sudo privileges
@@ -74,15 +112,15 @@ class RFIDIPFinder:
         if self.debug:
             print(f"DEBUG: Running with sudo privileges: {has_sudo}", file=sys.stderr)
             print(f"DEBUG: UID: {os.getuid() if hasattr(os, 'getuid') else 'N/A'}, EUID: {os.geteuid() if hasattr(os, 'geteuid') else 'N/A'}", file=sys.stderr)
+            print(f"DEBUG: Using interface: {self.interface}", file=sys.stderr)
         
         if not has_sudo:
             print("Warning: Not running with sudo privileges.", file=sys.stderr)
-            print("Attempting to run nmap directly (may fail if privileges required)...", file=sys.stderr)
-            # Try without sudo first
-            cmd = ['nmap', '-sn', self.network_range]
-        else:
-            # Already running as root, no need for sudo
-            cmd = ['nmap', '-sn', self.network_range]
+            print("Attempting to run arp-scan directly (may fail if privileges required)...", file=sys.stderr)
+        
+        # arp-scan requires sudo/root privileges
+        # Build command: arp-scan --interface=<interface> <network_range>
+        cmd = ['arp-scan', '--interface', self.interface, self.network_range]
         
         if self.debug:
             print(f"DEBUG: Running command: {' '.join(cmd)}", file=sys.stderr)
@@ -93,7 +131,7 @@ class RFIDIPFinder:
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=60  # Timeout after 60 seconds
+                timeout=120  # Timeout after 120 seconds (arp-scan can be slower on large ranges)
             )
             
             if self.debug:
@@ -105,23 +143,24 @@ class RFIDIPFinder:
                 if result.stderr:
                     print(f"DEBUG: stderr:\n{result.stderr}", file=sys.stderr)
             
-            if result.returncode != 0:
-                error_msg = result.stderr.strip() or result.stdout.strip() or "Unknown error"
-                
-                # If we tried without sudo and got permission error, suggest using sudo
-                if not has_sudo and ("permission" in error_msg.lower() or 
-                                    "Operation not permitted" in error_msg or
-                                    "root" in error_msg.lower()):
-                    print("\nError: nmap requires root/sudo privileges to scan networks.", file=sys.stderr)
+            # arp-scan returns non-zero on errors, but may still have valid output
+            # Check stderr for actual errors
+            error_output = result.stderr.strip()
+            if error_output and not any(keyword in error_output.lower() for keyword in ['warnings', 'packets']):
+                # Actual error, not just warnings
+                if not has_sudo and ("permission" in error_output.lower() or 
+                                    "Operation not permitted" in error_output or
+                                    "root" in error_output.lower()):
+                    print("\nError: arp-scan requires root/sudo privileges to scan networks.", file=sys.stderr)
                     print("Please run this script with sudo:", file=sys.stderr)
                     print("  sudo python3 utils_Test/find_rfid_ip.py", file=sys.stderr)
                     return None
                 else:
-                    print(f"Error running nmap: {error_msg}", file=sys.stderr)
+                    print(f"Error running arp-scan: {error_output}", file=sys.stderr)
                     return None
             
             if self.debug:
-                print(f"DEBUG: Full nmap output:\n{result.stdout}", file=sys.stderr)
+                print(f"DEBUG: Full arp-scan output:\n{result.stdout}", file=sys.stderr)
             
             return result.stdout
             
@@ -129,59 +168,62 @@ class RFIDIPFinder:
             if self.debug:
                 print("DEBUG: Timeout exception caught", file=sys.stderr)
             if not has_sudo:
-                print("\nError: nmap scan timed out (likely waiting for sudo password or missing privileges).", file=sys.stderr)
-                print("nmap requires root privileges for network scanning.", file=sys.stderr)
+                print("\nError: arp-scan timed out (likely waiting for sudo password or missing privileges).", file=sys.stderr)
+                print("arp-scan requires root privileges for network scanning.", file=sys.stderr)
                 print("Please run this script with sudo:", file=sys.stderr)
                 print("  sudo python3 utils_Test/find_rfid_ip.py", file=sys.stderr)
             else:
-                print("Error: nmap scan timed out after 60 seconds", file=sys.stderr)
+                print("Error: arp-scan timed out after 120 seconds", file=sys.stderr)
                 print("This may indicate network issues or a large network range.", file=sys.stderr)
             return None
         except Exception as e:
-            print(f"Error running nmap: {e}", file=sys.stderr)
+            print(f"Error running arp-scan: {e}", file=sys.stderr)
             if not has_sudo:
                 print("Tip: Try running with sudo: sudo python3 utils_Test/find_rfid_ip.py", file=sys.stderr)
             return None
     
-    def _parse_nmap_output(self, nmap_output: str) -> List[Dict[str, str]]:
+    def _parse_arpscan_output(self, arpscan_output: str) -> List[Dict[str, str]]:
         """
-        Parse nmap output to extract RFID reader IP addresses and vendor names.
+        Parse arp-scan output to extract RFID reader IP addresses and vendor names.
+        
+        arp-scan output format:
+        169.254.10.1    c4:7d:cc:68:d8:93       Zebra Technologies Inc
         
         Args:
-            nmap_output: The output from nmap command
+            arpscan_output: The output from arp-scan command
             
         Returns:
-            List of dictionaries with 'ip' and 'product' keys
+            List of dictionaries with 'ip', 'product', 'vendor', and 'mac' keys
         """
         readers = []
-        lines = nmap_output.split('\n')
-        
-        current_ip = None
+        lines = arpscan_output.split('\n')
         
         if self.debug:
-            print(f"DEBUG: Parsing {len(lines)} lines from nmap output", file=sys.stderr)
+            print(f"DEBUG: Parsing {len(lines)} lines from arp-scan output", file=sys.stderr)
         
         for i, line in enumerate(lines):
-            if self.debug and i < 20:  # Debug first 20 lines
-                print(f"DEBUG: Line {i}: {line[:80]}", file=sys.stderr)
-            
-            # Look for "Nmap scan report for" line to get IP address
-            ip_match = re.search(r'Nmap scan report for ([\d.]+)', line)
-            if ip_match:
-                current_ip = ip_match.group(1)
-                if self.debug:
-                    print(f"DEBUG: Found IP address: {current_ip}", file=sys.stderr)
+            line = line.strip()
+            if not line:
                 continue
             
-            # Look for MAC Address line with vendor information
-            # Format: "MAC Address: XX:XX:XX:XX:XX:XX (Vendor Name)"
-            mac_match = re.search(r'MAC Address: ([\w:]+) \((.+?)\)', line)
-            if mac_match and current_ip:
-                vendor_name = mac_match.group(2)
-                mac_address = mac_match.group(1)
+            if self.debug and i < 30:  # Debug first 30 lines
+                print(f"DEBUG: Line {i}: {line[:80]}", file=sys.stderr)
+            
+            # Skip header lines and summary lines
+            if any(skip in line.lower() for skip in ['starting', 'interface:', 'ending', 'packets', 'hosts']):
+                continue
+            
+            # Parse arp-scan output format: IP    MAC    VENDOR
+            # Example: 169.254.10.1    c4:7d:cc:68:d8:93       Zebra Technologies Inc
+            # Use regex to match IP, MAC, and vendor (handles variable whitespace)
+            match = re.match(r'^(\d+\.\d+\.\d+\.\d+)\s+([0-9a-fA-F:]{17})\s+(.+)$', line)
+            if match:
+                ip_address = match.group(1)
+                mac_address = match.group(2)
+                vendor_name = match.group(3).strip()
                 
                 if self.debug:
-                    print(f"DEBUG: Found MAC {mac_address} with vendor '{vendor_name}' for IP {current_ip}", file=sys.stderr)
+                    print(f"DEBUG: Found entry - IP: {ip_address}, MAC: {mac_address}, Vendor: {vendor_name}", file=sys.stderr)
                 
                 # Check if vendor is an RFID manufacturer
                 for rfid_vendor in self.RFID_VENDORS:
@@ -198,7 +240,7 @@ class RFIDIPFinder:
                             print(f"DEBUG: Matched RFID vendor: {rfid_vendor} -> Product: {product}", file=sys.stderr)
                         
                         readers.append({
-                            'ip': current_ip,
+                            'ip': ip_address,
                             'product': product,
                             'vendor': vendor_name,
                             'mac': mac_address
@@ -217,14 +259,14 @@ class RFIDIPFinder:
         Returns:
             List of dictionaries with RFID reader information
         """
-        print(f"Scanning network {self.network_range} for RFID readers...")
+        print(f"Scanning network {self.network_range} on interface {self.interface} for RFID readers...")
         print("This may take a few moments...\n")
         
-        nmap_output = self._run_nmap_scan()
-        if nmap_output is None:
+        arpscan_output = self._run_arpscan()
+        if arpscan_output is None:
             return []
         
-        self.readers_found = self._parse_nmap_output(nmap_output)
+        self.readers_found = self._parse_arpscan_output(arpscan_output)
         return self.readers_found
     
     def print_results(self):
@@ -257,17 +299,19 @@ def main():
     """Main function to run the RFID IP finder."""
     import argparse
     
-    parser = argparse.ArgumentParser(description='Find RFID reader IP addresses using nmap')
+    parser = argparse.ArgumentParser(description='Find RFID reader IP addresses using arp-scan')
     parser.add_argument('--debug', action='store_true', 
-                       help='Enable debug output showing nmap command and parsing details')
+                       help='Enable debug output showing arp-scan command and parsing details')
     parser.add_argument('--network', default='169.254.0.0/16',
                        help='Network range to scan (default: 169.254.0.0/16)')
+    parser.add_argument('--interface', default=None,
+                       help='Network interface to use (default: auto-detect or eth0)')
     args = parser.parse_args()
     
     # Check if running on a system that supports sudo
     if platform.system() == "Windows":
         print("Warning: This script is designed for Linux/Unix systems.", file=sys.stderr)
-        print("nmap on Windows may require different privileges.", file=sys.stderr)
+        print("arp-scan on Windows may require different tools.", file=sys.stderr)
         print()
     
     # Check for sudo privileges at start
@@ -276,10 +320,10 @@ def main():
         print(f"DEBUG: Starting with sudo privileges: {has_sudo}", file=sys.stderr)
     
     if not has_sudo and platform.system() != "Windows":
-        print("Note: This script may require sudo privileges for network scanning.")
+        print("Note: This script requires sudo privileges for network scanning.")
         print("If you encounter permission errors, please run: sudo python3 utils_Test/find_rfid_ip.py\n")
     
-    finder = RFIDIPFinder(network_range=args.network, debug=args.debug)
+    finder = RFIDIPFinder(network_range=args.network, interface=args.interface, debug=args.debug)
     readers = finder.find_readers()
     finder.print_results()
     
