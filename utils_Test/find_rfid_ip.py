@@ -121,7 +121,7 @@ class RFIDIPFinder:
         # arp-scan requires sudo/root privileges
         # Build command: arp-scan --interface=<interface> <network_range>
         # Don't use --quiet so we can see progress and debug output
-        cmd = ['arp-scan', '--interface', self.interface, self.network_range]
+        cmd = ['sudo', 'arp-scan', '--interface', self.interface, self.network_range]
         
         if self.debug:
             print(f"DEBUG: Running command: {' '.join(cmd)}", file=sys.stderr)
