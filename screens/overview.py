@@ -9,7 +9,8 @@ from utils.gps import GPS
 from utils.common import extract_from_gps, get_date_from_utc, pre_config_gps, find_gps_port, get_processor_id, enable_gps_at_command
 from utils.data_storage import DataStorage
 from utils.api_client import ApiClient
-from settings import API_CONFIG, FILTER_CONFIG, DATABASE_CONFIG, INTERNET_LIMIT_TIME
+import settings
+from settings import API_CONFIG, FILTER_CONFIG, DATABASE_CONFIG, reload_config
 import time
 import subprocess
 import platform
@@ -129,7 +130,12 @@ class OverviewScreen(BaseScreen):
         
         # Internet disconnection tracking
         self.internet_disconnected_start = None
-        self.internet_limit_seconds = INTERNET_LIMIT_TIME * 60  # Convert minutes to seconds
+        self.internet_limit_seconds = settings.INTERNET_LIMIT_TIME * 60  # Convert minutes to seconds
+        
+        # Config reload timer - reload config every internet_limit_time * 3 seconds
+        self.config_reload_timer = QTimer(self)
+        self.config_reload_timer.timeout.connect(self._reload_config_and_update)
+        self._start_config_reload_timer()
 
     def on_leave(self):
         if self.gps and self.gps.isRunning():
@@ -144,6 +150,8 @@ class OverviewScreen(BaseScreen):
             self.internet_timer.stop()
         if hasattr(self, 'gps_timeout_timer'):
             self.gps_timeout_timer.stop()
+        if hasattr(self, 'config_reload_timer'):
+            self.config_reload_timer.stop()
         self.storage.close()
 
     def _set_gps_status(self, text, ok):
@@ -428,6 +436,54 @@ class OverviewScreen(BaseScreen):
             logger.error(f"Failed to restart device: {e}")
         except Exception as e:
             logger.error(f"Unexpected error during restart: {e}")
+
+    def _start_config_reload_timer(self):
+        """Start or restart the config reload timer with current internet_limit_time * 3"""
+        reload_interval_ms = settings.INTERNET_LIMIT_TIME * 3 * 1000  # Convert to milliseconds
+        if self.config_reload_timer.isActive():
+            self.config_reload_timer.stop()
+        self.config_reload_timer.start(reload_interval_ms)
+        logger.debug(f"Config reload timer started with interval: {reload_interval_ms}ms ({settings.INTERNET_LIMIT_TIME * 3} seconds)")
+
+    def _reload_config_and_update(self):
+        """Reload configuration file and update all config values that depend on it"""
+        logger.info("Reloading configuration from config.json...")
+        if reload_config():
+            # Access updated values from settings module
+            # Note: Dictionary configs (API_CONFIG, FILTER_CONFIG, etc.) are updated in-place
+            # so existing references automatically reflect changes. Only primitives need re-access.
+            
+            # Update internet limit seconds (access via settings module to get updated value)
+            self.internet_limit_seconds = settings.INTERNET_LIMIT_TIME * 60
+            
+            # Update site_id display if it changed (API_CONFIG is updated in-place)
+            new_site_id = settings.API_CONFIG.get('site_id', 'N/A')
+            current_site_id = self.ui.site_id.text()
+            if new_site_id != current_site_id:
+                self.ui.site_id.setText(new_site_id)
+                logger.debug(f"Site ID updated to: {new_site_id}")
+            
+            # Update health timer interval if it changed
+            new_health_interval = int(settings.API_CONFIG.get('health_interval_ms', 15000))
+            if self.health_timer.interval() != new_health_interval:
+                self.health_timer.setInterval(new_health_interval)
+                logger.debug(f"Health timer interval updated to: {new_health_interval}ms")
+            
+            # Update upload timer interval if it changed
+            new_upload_interval = int(settings.API_CONFIG.get('record_interval_ms', 7000))
+            if self.upload_timer.interval() != new_upload_interval:
+                self.upload_timer.setInterval(new_upload_interval)
+                logger.debug(f"Upload timer interval updated to: {new_upload_interval}ms")
+            
+            # Update API client cached values
+            self.api.update_config()
+            
+            # Restart config reload timer with new interval (in case internet_limit_time changed)
+            self._start_config_reload_timer()
+            
+            logger.info("The whole config is updated")
+        else:
+            logger.error("Failed to reload configuration, using existing values")
 
     def _upload_records(self):
         data = self.storage.fetch_all_records()

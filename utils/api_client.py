@@ -19,6 +19,10 @@ class ApiClient:
     def __init__(self):
         self.token = None
         self.token_expires_at = 0
+        self._update_config_values()
+
+    def _update_config_values(self):
+        """Update cached config values from API_CONFIG"""
         self.auth0_url = API_CONFIG.get('auth0_url')
         
         # Decrypt credentials when needed
@@ -29,6 +33,11 @@ class ApiClient:
         self.health_url = API_CONFIG.get('health_url')
         self.record_url = API_CONFIG.get('record_url')
         self.user_name = API_CONFIG.get('user_name', 'Unknown')
+
+    def update_config(self):
+        """Update config values when configuration is reloaded"""
+        self._update_config_values()
+        logger.debug("API client config values updated")
 
     def _session(self):
         retry_strategy = Retry(total=1, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504], allowed_methods=["HEAD", "GET", "OPTIONS", "POST"])  # type: ignore

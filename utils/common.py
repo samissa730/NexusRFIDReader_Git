@@ -12,7 +12,7 @@ from geographiclib.geodesic import Geodesic
 import serial
 import serial.tools.list_ports
 
-from settings import BAUD_RATE_DON, GPS_CONFIG
+import settings
 from utils.logger import logger
 
 
@@ -105,8 +105,8 @@ def pre_config_gps():
     serial_ports = [port.device for port in serial.tools.list_ports.comports()]
     logger.debug(f"Available ports:{serial_ports}")
     if platform.system() == 'Windows':
-        return GPS_CONFIG.get('baud_rate', BAUD_RATE_DON) or BAUD_RATE_DON
-    try_rate = GPS_CONFIG.get('probe_baud_rate', GPS_CONFIG.get('baud_rate', BAUD_RATE_DON)) if isinstance(GPS_CONFIG, dict) else BAUD_RATE_DON
+        return settings.GPS_CONFIG.get('baud_rate', settings.BAUD_RATE_DON) or settings.BAUD_RATE_DON
+    try_rate = settings.GPS_CONFIG.get('probe_baud_rate', settings.GPS_CONFIG.get('baud_rate', settings.BAUD_RATE_DON)) if isinstance(settings.GPS_CONFIG, dict) else settings.BAUD_RATE_DON
     for port in serial_ports:
         try:
             with serial.Serial(port, baudrate=try_rate, timeout=1, rtscts=True, dsrdtr=True) as serw:
@@ -117,7 +117,7 @@ def pre_config_gps():
                 return try_rate
         except (OSError, serial.SerialException):
             pass
-    return GPS_CONFIG.get('baud_rate', BAUD_RATE_DON) or BAUD_RATE_DON
+    return settings.GPS_CONFIG.get('baud_rate', settings.BAUD_RATE_DON) or settings.BAUD_RATE_DON
 
 
 def find_gps_port(baud_rate):

@@ -135,3 +135,34 @@ DATABASE_CONFIG = _config["database_config"]
 FILTER_CONFIG = _config["filter_config"]
 BAUD_RATE_DON = _config["baud_rate_don"]
 INTERNET_LIMIT_TIME = _config["internet_limit_time"]
+
+
+def reload_config():
+    """Reload configuration from JSON file and update all config dictionaries in place"""
+    global GPS_CONFIG, RFID_CONFIG, API_CONFIG, DATABASE_CONFIG, FILTER_CONFIG, BAUD_RATE_DON, INTERNET_LIMIT_TIME
+    try:
+        new_config = load_config()
+        # Update dictionaries in place so existing references reflect changes
+        GPS_CONFIG.clear()
+        GPS_CONFIG.update(new_config["gps_config"])
+        
+        RFID_CONFIG.clear()
+        RFID_CONFIG.update(new_config["rfid_config"])
+        
+        API_CONFIG.clear()
+        API_CONFIG.update(new_config["api_config"])
+        
+        DATABASE_CONFIG.clear()
+        DATABASE_CONFIG.update(new_config["database_config"])
+        
+        FILTER_CONFIG.clear()
+        FILTER_CONFIG.update(new_config["filter_config"])
+        
+        # Update primitives (need to reassign)
+        BAUD_RATE_DON = new_config["baud_rate_don"]
+        INTERNET_LIMIT_TIME = new_config["internet_limit_time"]
+        
+        return True
+    except Exception as e:
+        print(f"Error reloading config: {e}")
+        return False
