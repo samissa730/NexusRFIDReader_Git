@@ -386,6 +386,30 @@ class Ui_OverviewScreen(object):
 
         self.verticalLayout_4.addWidget(self.widget_10)
 
+        self.widget_11 = QWidget(self.widget_9)
+        self.widget_11.setObjectName(u"widget_11")
+        self.horizontalLayout_11 = QHBoxLayout(self.widget_11)
+        self.horizontalLayout_11.setSpacing(4)
+        self.horizontalLayout_11.setObjectName(u"horizontalLayout_11")
+        self.horizontalLayout_11.setContentsMargins(0, 0, 0, 0)
+        self.label_17 = QLabel(self.widget_11)
+        self.label_17.setObjectName(u"label_17")
+        self.label_17.setFont(font4)
+        self.label_17.setStyleSheet(u"color: #ffffff;")
+        self.label_17.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
+
+        self.horizontalLayout_11.addWidget(self.label_17)
+
+        self.site_id = QLabel(self.widget_11)
+        self.site_id.setObjectName(u"site_id")
+        self.site_id.setFont(font5)
+        self.site_id.setStyleSheet(u"color: #ffffff;")
+
+        self.horizontalLayout_11.addWidget(self.site_id)
+
+
+        self.verticalLayout_4.addWidget(self.widget_11)
+
 
         self.horizontalLayout_2.addWidget(self.widget_9)
 
@@ -491,6 +515,8 @@ class Ui_OverviewScreen(object):
         self.label_15.setText(QCoreApplication.translate("OverviewScreen", u"Site Details", None))
         self.label_16.setText(QCoreApplication.translate("OverviewScreen", u"Truck Number: ", None))
         self.truck_number.setText(QCoreApplication.translate("OverviewScreen", u"N/A", None))
+        self.label_17.setText(QCoreApplication.translate("OverviewScreen", u"Site ID: ", None))
+        self.site_id.setText(QCoreApplication.translate("OverviewScreen", u"N/A", None))
         self.label_20.setText(QCoreApplication.translate("OverviewScreen", u"Network Health", None))
         self.label_21.setText(QCoreApplication.translate("OverviewScreen", u"Internet Status: ", None))
         self.internet_status.setText(QCoreApplication.translate("OverviewScreen", u"N/A", None))

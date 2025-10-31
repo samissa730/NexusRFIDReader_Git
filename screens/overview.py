@@ -72,6 +72,10 @@ class OverviewScreen(BaseScreen):
         device_id = get_processor_id()
         self.ui.device_id.setText(device_id)
         self.ui.truck_number.setText(device_id)
+        
+        # Set site ID from API_CONFIG
+        site_id = API_CONFIG.get('site_id', 'N/A')
+        self.ui.site_id.setText(site_id)
 
         # GPS init
         self.last_lat = None
@@ -431,6 +435,7 @@ class OverviewScreen(BaseScreen):
             return
         payload = []
         device_id = get_processor_id()
+        # Get site_id from API_CONFIG in settings (loaded from config.json)
         site_id = API_CONFIG.get('site_id', '')
         
         for row in data:

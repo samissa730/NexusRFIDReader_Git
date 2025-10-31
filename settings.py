@@ -8,82 +8,130 @@ is_win = platform.system() == "Windows"
 if is_rpi:
     ROOT_DIR = os.path.expanduser("~/.nexusrfid")
 elif is_win:
-    ROOT_DIR = os.path.expanduser("~/Documents")
+    ROOT_DIR = os.path.expanduser("~/Documents/NexusRFID")
 
 os.makedirs(ROOT_DIR, exist_ok=True)
 
 INIT_SCREEN = "overview"
 APP_DIR = os.path.dirname(os.path.realpath(__file__))
 CRASH_FILE = os.path.join(ROOT_DIR, "crash.dump")
+CONFIG_FILE = os.path.join(ROOT_DIR, "config.json")
 
-# GPS Configuration - edit these values directly
-GPS_CONFIG = {
-    # use_external: use serial GPS (True) or internet (False)
-    "use_external": True,
-    # default baud rate and optional probe rate
-    "baud_rate": 115200,
-    "probe_baud_rate": 115200,
-}
 
-# RFID Configuration - edit these values directly
-RFID_CONFIG = {
-    "host": "169.254.10.1",
-    "port": 5084,
-    "report_every_n_tags": 1,
-    "antennas": "1",
-    "tx_power": 0,
-    "tari": 0,
-    "session": 1,
-    "mode_ide    ier": None,
-    "tag_population": 4,
-    "impinj_search_mode": None,
-    "impinj_reports": False,
-}
+def get_default_config():
+    """Return default configuration values"""
+    return {
+        "gps_config": {
+            "use_external": True,
+            "baud_rate": 115200,
+            "probe_baud_rate": 115200,
+        },
+        "rfid_config": {
+            "host": "169.254.10.1",
+            "port": 5084,
+            "report_every_n_tags": 1,
+            "antennas": "1",
+            "tx_power": 0,
+            "tari": 0,
+            "session": 1,
+            "mode_identifier": None,
+            "tag_population": 4,
+            "impinj_search_mode": None,
+            "impinj_reports": False,
+        },
+        "api_config": {
+            "login_url": "",
+            "health_url": "",
+            "auth0_url": "https://test-auth.nexusyms.com/oauth/token",
+            "record_url": "https://apim-test-spotlight.azure-api.net/nexus-locate/api/sites/0198c311-4801-7445-b73a-3a7dce72c6f6/scans",
+            "client_id": "enc:Fos_8S--ZaKf0ArsuHXISz607BcGkpBejboEKtkmh7k=",
+            "client_secret": "enc:JfsN9TyjX47T7R7Y-Xr6EGjOAIzKQWFkWrsCNtQrbLqRFmlKL2pCaQLPYbySkLegvsGxPFat7sdiRGEp23-uHw==",
+            "audience": "https://nexus-locate-api",
+            "email": "",
+            "password": "",
+            "token": "",
+            "user_name": "NexusUser",
+            "spotter_id": "120",
+            "site_id": "site_1",
+            "record_interval_ms": 7000,
+            "health_interval_ms": 15000,
+        },
+        "database_config": {
+            "use_db": True,
+        },
+        "filter_config": {
+            "speed": {
+                "enabled": False,
+                "min": 0,
+                "max": 200,
+            },
+            "rssi": {
+                "enabled": False,
+                "min": -80,
+                "max": 0,
+            },
+            "tag_range": {
+                "enabled": False,
+                "min": 0,
+                "max": 999999999,
+            },
+        },
+        "baud_rate_don": 9600,
+        "internet_limit_time": 10,
+    }
 
-# API Configuration - edit these values directly (token-based; no login UI)
-API_CONFIG = {
-    "login_url": "",  # optional, if you will use token refresh
-    "health_url": "",
-    "auth0_url": "https://test-auth.nexusyms.com/oauth/token",
-    "record_url": "https://apim-test-spotlight.azure-api.net/nexus-locate/api/sites/0198c311-4801-7445-b73a-3a7dce72c6f6/scans",
-    "client_id": "enc:Fos_8S--ZaKf0ArsuHXISz607BcGkpBejboEKtkmh7k=",
-    "client_secret": "enc:JfsN9TyjX47T7R7Y-Xr6EGjOAIzKQWFkWrsCNtQrbLqRFmlKL2pCaQLPYbySkLegvsGxPFat7sdiRGEp23-uHw==",
-    "audience": "https://nexus-locate-api",
-    "email": "",      # optional, only if login_url used
-    "password": "",   # optional, only if login_url used
-    "token": "",      # set bearer token here if using token auth
-    "user_name": "NexusUser",
-    "spotter_id": "120",
-    "site_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",  # siteId for new API format
-    # intervals
-    "record_interval_ms": 7000,
-    "health_interval_ms": 15000,
-}
 
-# Data Storage Configuration - edit these values directly
-DATABASE_CONFIG = {
-    "use_db": True,
-}
+def load_config():
+    """Load configuration from JSON file, or create with defaults if it doesn't exist"""
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, 'r') as f:
+                config = json.load(f)
+            # Merge with defaults to ensure all keys exist (in case of partial updates)
+            default_config = get_default_config()
+            merged_config = _deep_merge(default_config, config)
+            return merged_config
+        except (json.JSONDecodeError, IOError) as e:
+            print(f"Error reading config file {CONFIG_FILE}: {e}")
+            print("Using default configuration and recreating config file...")
+            config = get_default_config()
+            save_config(config)
+            return config
+    else:
+        # Create config file with defaults
+        config = get_default_config()
+        save_config(config)
+        return config
 
-# Filter Configuration - edit these values directly
-FILTER_CONFIG = {
-    "speed": {
-        "enabled": False,
-        "min": 0,
-        "max": 200,
-    },
-    "rssi": {
-        "enabled": False,
-        "min": -80,
-        "max": 0,
-    },
-    "tag_range": {
-        "enabled": False,
-        "min": 0,
-        "max": 999999999,
-    },
-}
 
-BAUD_RATE_DON = 9600
+def _deep_merge(default, override):
+    """Deep merge two dictionaries, with override taking precedence"""
+    result = default.copy()
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = _deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
 
-INTERNET_LIMIT_TIME=10
+
+def save_config(config):
+    """Save configuration to JSON file"""
+    try:
+        with open(CONFIG_FILE, 'w') as f:
+            json.dump(config, f, indent=4)
+    except IOError as e:
+        print(f"Error writing config file {CONFIG_FILE}: {e}")
+
+
+# Load configuration from JSON file
+_config = load_config()
+
+# Export configuration values for backward compatibility
+GPS_CONFIG = _config["gps_config"]
+RFID_CONFIG = _config["rfid_config"]
+API_CONFIG = _config["api_config"]
+DATABASE_CONFIG = _config["database_config"]
+FILTER_CONFIG = _config["filter_config"]
+BAUD_RATE_DON = _config["baud_rate_don"]
+INTERNET_LIMIT_TIME = _config["internet_limit_time"]
