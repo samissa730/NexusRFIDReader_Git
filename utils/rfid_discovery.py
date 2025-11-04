@@ -111,6 +111,7 @@ def discover_rfid_readers(interface: str = "eth0", subnet: str = "169.254.0.0/16
         return None
     
     try:
+        logger.info(f"======= RFID DISCOVERY STARTED =======")
         logger.info(f"Scanning for RFID readers on {interface}, subnet {subnet}")
         raw_output = run_arp_scan(interface, subnet)
         results = parse_arp_scan_output(raw_output)

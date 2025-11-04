@@ -189,7 +189,9 @@ class RFID(QThread):
             return
         
         self._discovery_in_progress = True
+        logger.info("======= RFID DISCOVERY PROCESS STARTED =======")
         logger.info("RFID disconnected and ping failed - starting continuous discovery for RFID reader")
+        logger.info("Discovery will run continuously until a reader is found (like 'gpt_find.py')")
         
         # Keep trying until we find a reader or connection is restored
         while not self._b_stop.is_set() and self.connectivity is False:

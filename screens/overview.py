@@ -197,7 +197,7 @@ class OverviewScreen(BaseScreen):
                 logger.warning("RFID tag detected but no tag data available")
                 return
             tag = self.rfid.tag_data[0]
-            logger.debug(f"Processing tag: EPC={tag.get('EPC-96', 'N/A')}, Antenna={tag.get('AntennaID', 'N/A')}, RSSI={tag.get('PeakRSSI', 'N/A')}")
+            # logger.debug(f"Processing tag: EPC={tag.get('EPC-96', 'N/A')}, Antenna={tag.get('AntennaID', 'N/A')}, RSSI={tag.get('PeakRSSI', 'N/A')}")
             lat, lon, speed, bearing = 0, 0, 0, 0
             if self.gps:
                 lat, lon = extract_from_gps(self.gps.get_data())
@@ -219,7 +219,7 @@ class OverviewScreen(BaseScreen):
             # Only skip upload to server if GPS data is invalid
             if lat == 0 and lon == 0 and speed == 0:
                 upload_flag = False
-                logger.debug(f"Tag detected but no GPS data: TAG {tag['EPC-96']} ant={tag['AntennaID']} rssi={tag['PeakRSSI']} (lat=0, lon=0, speed=0)")
+                # logger.debug(f"Tag detected but no GPS data: TAG {tag['EPC-96']} ant={tag['AntennaID']} rssi={tag['PeakRSSI']} (lat=0, lon=0, speed=0)")
             
             # Apply filters from settings
             if upload_flag:
@@ -284,7 +284,7 @@ class OverviewScreen(BaseScreen):
             table_data = [get_date_from_utc(tag['LastSeenTimestampUTC']), tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
                          f"{lat:.7f}".rstrip('0').rstrip('.') + ", " + f"{lon:.7f}".rstrip('0').rstrip('.'),
                          f"{speed:.4f}".rstrip('0').rstrip('.'), f"{bearing}"]
-            logger.debug(f"Updating table with data: {table_data}")
+            # logger.debug(f"Updating table with data: {table_data}")
             self._refresh_table(table_data)
             self.ui.last_rfid_read.setText(tag['EPC-96'])
             self.ui.last_rfid_time.setText(get_date_from_utc(tag['LastSeenTimestampUTC']))
