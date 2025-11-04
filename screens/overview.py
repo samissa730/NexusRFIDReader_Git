@@ -182,7 +182,7 @@ class OverviewScreen(BaseScreen):
             self._start_gps_scan()
 
     def _on_rfid_status(self, status):
-        logger.debug(f"RFID status received: {status}")
+        # logger.debug(f"RFID status received: {status}")
         if status == 1:
             self.ui.rfid_connection_status.setStyleSheet("""color: #00ff00;""")
             self.ui.rfid_connection_status.setText("Connected")
@@ -192,7 +192,7 @@ class OverviewScreen(BaseScreen):
             self.ui.rfid_connection_status.setText("Disconnected")
             logger.warning("RFID reader disconnected")
         elif status == 3:
-            logger.debug("RFID tag detected, processing...")
+            # logger.debug("RFID tag detected, processing...")
             if not self.rfid.tag_data or len(self.rfid.tag_data) == 0:
                 logger.warning("RFID tag detected but no tag data available")
                 return
@@ -298,7 +298,7 @@ class OverviewScreen(BaseScreen):
                     self.ui.last_gps_time.setText(get_date_from_utc(tag['LastSeenTimestampUTC']))
             else:
                 self.ui.last_gps_time.setText(get_date_from_utc(tag['LastSeenTimestampUTC']))
-            logger.info(f"Tag processed and displayed: {tag['EPC-96']} at {get_date_from_utc(tag['LastSeenTimestampUTC'])}")
+            # logger.info(f"Tag processed and displayed: {tag['EPC-96']} at {get_date_from_utc(tag['LastSeenTimestampUTC'])}")
 
     def _refresh_table(self, new_data):
         for row in range(self.ui.tableWidget.rowCount() - 2, -1, -1):
