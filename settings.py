@@ -137,6 +137,20 @@ BAUD_RATE_DON = _config["baud_rate_don"]
 INTERNET_LIMIT_TIME = _config["internet_limit_time"]
 
 
+def update_rfid_host(new_host: str):
+    """Update the RFID host in the configuration file and reload config"""
+    try:
+        config = load_config()
+        config["rfid_config"]["host"] = new_host
+        save_config(config)
+        # Reload to update the global RFID_CONFIG
+        reload_config()
+        return True
+    except Exception as e:
+        print(f"Error updating RFID host: {e}")
+        return False
+
+
 def reload_config():
     """Reload configuration from JSON file and update all config dictionaries in place"""
     global GPS_CONFIG, RFID_CONFIG, API_CONFIG, DATABASE_CONFIG, FILTER_CONFIG, BAUD_RATE_DON, INTERNET_LIMIT_TIME

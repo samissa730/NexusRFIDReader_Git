@@ -5,8 +5,9 @@ from PySide6.QtCore import QThread, Signal
 from sllurp.llrp import LLRP_DEFAULT_PORT, LLRPReaderConfig, LLRPReaderClient
 from ping3 import ping
 
-from settings import RFID_CONFIG
+from settings import RFID_CONFIG, update_rfid_host, reload_config
 from utils.logger import logger
+from utils.rfid_discovery import discover_rfid_readers
 
 
 def _parse_args_from_settings(rfid_cfg):
@@ -50,6 +51,7 @@ class RFID(QThread):
         self._cfg = _parse_args_from_settings(RFID_CONFIG if isinstance(RFID_CONFIG, dict) else {})
         self.host = self._cfg['host']
         self._set_reader(self.host, False)
+        self._discovery_in_progress = False
 
     def set_reader(self, host, status):
         self._set_reader(host, status)
@@ -142,15 +144,117 @@ class RFID(QThread):
                         self._set_reader(self.host, True)
                         self.reader.connect()
                         self.sig_msg.emit(1)
+                        # Reset discovery tracking when connection is restored
+                        self._discovery_in_progress = False
                 else:
                     if self.connectivity is True:
                         self.connectivity = False
                         self.sig_msg.emit(2)
+                    # Check if we should trigger discovery: disconnected and ping failed
+                    elif self.connectivity is False:
+                        # Continuously attempt discovery if not already in progress
+                        if not self._discovery_in_progress:
+                            self._attempt_discovery()
             except Exception:
                 if self.connectivity is True:
                     self.connectivity = False
                     self.sig_msg.emit(2)
+                # Also check for discovery on ping exceptions
+                elif self.connectivity is False:
+                    # Continuously attempt discovery if not already in progress
+                    if not self._discovery_in_progress:
+                        self._attempt_discovery()
             time.sleep(.1)
+
+    def _attempt_discovery(self):
+        """Attempt to discover a new RFID reader when disconnected. Runs continuously until a reader is found."""
+        if self._discovery_in_progress:
+            return
+        
+        self._discovery_in_progress = True
+        logger.info("RFID disconnected and ping failed - starting continuous discovery for RFID reader")
+        
+        # Keep trying until we find a reader or connection is restored
+        while not self._b_stop.is_set() and self.connectivity is False:
+            try:
+                # Discover RFID readers on the network
+                new_host = discover_rfid_readers(interface="eth0", subnet="169.254.0.0/16")
+                
+                if new_host:
+                    if new_host != self.host:
+                        logger.info(f"Found new RFID reader at {new_host}, updating settings and reconnecting")
+                        
+                        # Update settings with the new host
+                        if update_rfid_host(new_host):
+                            # Reload config to get updated host
+                            reload_config()
+                            # Update local config
+                            self._cfg = _parse_args_from_settings(RFID_CONFIG if isinstance(RFID_CONFIG, dict) else {})
+                            
+                            # Disconnect current reader and set up new one
+                            try:
+                                LLRPReaderClient.disconnect_all_readers()
+                            except Exception:
+                                pass
+                            
+                            self.reader = None
+                            self.host = new_host
+                            self._set_reader(self.host, False)
+                            
+                            # Attempt to connect to the new reader
+                            try:
+                                logger.info(f"Attempting to connect to newly discovered reader at {self.host}")
+                                self.reader.connect()
+                                self.connectivity = True
+                                self.sig_msg.emit(1)
+                                logger.info(f"Successfully connected to newly discovered RFID reader at {self.host}")
+                                break  # Exit discovery loop on successful connection
+                            except Exception as e:
+                                logger.warning(f"Failed to connect to newly discovered reader at {self.host}: {e}")
+                                self.connectivity = False
+                                self.sig_msg.emit(2)
+                                # Continue discovery loop to retry
+                        else:
+                            logger.error("Failed to update RFID host in settings")
+                            # Continue discovery loop to retry
+                    else:
+                        # Same host discovered - try to reconnect (network issue may be resolved)
+                        logger.info(f"Discovered reader is the same as current host: {self.host}, attempting to reconnect")
+                        try:
+                            LLRPReaderClient.disconnect_all_readers()
+                        except Exception:
+                            pass
+                        
+                        self.reader = None
+                        self._set_reader(self.host, False)
+                        
+                        try:
+                            logger.info(f"Attempting to reconnect to reader at {self.host}")
+                            self.reader.connect()
+                            self.connectivity = True
+                            self.sig_msg.emit(1)
+                            logger.info(f"Successfully reconnected to RFID reader at {self.host}")
+                            break  # Exit discovery loop on successful connection
+                        except Exception as e:
+                            logger.warning(f"Failed to reconnect to reader at {self.host}: {e}")
+                            self.connectivity = False
+                            self.sig_msg.emit(2)
+                            # Continue discovery loop to retry
+                else:
+                    logger.debug("No RFID reader found during discovery, retrying...")
+                    # Small delay before retry to avoid tight loop (but still continuous)
+                    time.sleep(1)
+                    
+            except Exception as e:
+                logger.error(f"Error during RFID discovery: {e}")
+                # Small delay before retry on error
+                time.sleep(1)
+        
+        self._discovery_in_progress = False
+        if self.connectivity is True:
+            logger.info("RFID discovery completed - reader connected")
+        else:
+            logger.debug("RFID discovery stopped (thread stopping or connection restored)")
 
     def stop(self):
         self._b_stop.set()
