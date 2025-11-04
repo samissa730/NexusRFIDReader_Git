@@ -104,6 +104,10 @@ class OverviewScreen(BaseScreen):
         self._start_gps_scan()
 
         # RFID init
+        # Initialize RFID connection status to "Disconnected" instead of "N/A"
+        self.ui.rfid_connection_status.setStyleSheet("""color: #ff0000;""")
+        self.ui.rfid_connection_status.setText("Disconnected")
+        
         self.rfid = RFID()
         self.rfid.sig_msg.connect(self._on_rfid_status)
         self.rfid.start()

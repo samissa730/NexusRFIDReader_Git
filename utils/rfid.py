@@ -105,6 +105,11 @@ class RFID(QThread):
 
     def run(self):
         logger.debug(f"RFID thread starting, attempting to connect to {self.host}:{self._cfg['port']}")
+        # Emit initial "Disconnected" status if connectivity is False or None
+        if self.connectivity is not True:
+            self.connectivity = False
+            self.sig_msg.emit(2)
+        
         while not self._b_stop.is_set():
             try:
                 logger.debug("Attempting RFID reader connection...")
@@ -114,6 +119,10 @@ class RFID(QThread):
             except Exception as e:
                 logger.debug(f"RFID connection attempt failed: {e}")
                 if self.connectivity is True:
+                    self.connectivity = False
+                    self.sig_msg.emit(2)
+                elif self.connectivity is not False:
+                    # Handle None case - ensure it's set to False and emit Disconnected
                     self.connectivity = False
                     self.sig_msg.emit(2)
             time.sleep(.1)
