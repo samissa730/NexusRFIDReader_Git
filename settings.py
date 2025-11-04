@@ -77,7 +77,7 @@ def get_default_config():
             },
         },
         "baud_rate_don": 9600,
-        "internet_limit_time": 10,
+        "internet_limit_time": 5,
     }
 
 

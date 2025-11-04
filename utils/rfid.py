@@ -96,9 +96,9 @@ class RFID(QThread):
 
     def tag_seen_callback(self, reader, tags):
         if tags:
-            logger.debug(f"RFID tags detected: {len(tags)} tags")
+            # logger.debug(f"RFID tags detected: {len(tags)} tags")
             self.tag_data = _convert_to_unicode(tags)
-            logger.debug(f"Tag data: {self.tag_data}")
+            # logger.debug(f"Tag data: {self.tag_data}")
             self.sig_msg.emit(3)
         else:
             logger.debug("RFID callback called but no tags found")

@@ -125,7 +125,7 @@ class OverviewScreen(BaseScreen):
         # Internet status check timer
         self.internet_timer = QTimer(self)
         self.internet_timer.timeout.connect(self._check_internet_status)
-        self.internet_timer.start(1800000)  # Check every 1800 seconds
+        self.internet_timer.start(5000)  # Check every 5 seconds
         self._check_internet_status()  # Initial check
         
         # Internet disconnection tracking
