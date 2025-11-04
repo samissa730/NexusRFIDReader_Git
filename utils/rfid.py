@@ -112,14 +112,21 @@ class RFID(QThread):
             self.connectivity = False
             self.sig_msg.emit(2)
         
-        while not self._b_stop.is_set():
+        # Initial connection attempts with limited retries before triggering discovery
+        connection_attempts = 0
+        max_initial_attempts = 10  # Try 10 times before switching to discovery mode
+        
+        while not self._b_stop.is_set() and connection_attempts < max_initial_attempts:
             try:
                 logger.debug("Attempting RFID reader connection...")
                 self.reader.connect()
                 logger.info("RFID reader connected successfully")
+                self.connectivity = True
+                self.sig_msg.emit(1)
                 break
             except Exception as e:
                 logger.debug(f"RFID connection attempt failed: {e}")
+                connection_attempts += 1
                 if self.connectivity is True:
                     self.connectivity = False
                     self.sig_msg.emit(2)
@@ -128,11 +135,21 @@ class RFID(QThread):
                     self.connectivity = False
                     self.sig_msg.emit(2)
             time.sleep(.1)
-
-        if self.connectivity is False:
-            self.connectivity = True
-            self.sig_msg.emit(1)
-            logger.info("RFID reader status changed to connected")
+        
+        # If initial connection failed, check ping and trigger discovery
+        if self.connectivity is False and not self._b_stop.is_set():
+            logger.info("Initial connection attempts failed, checking network connectivity and starting discovery")
+            # Check if host is reachable via ping
+            try:
+                response_time = ping(self.host, timeout=3)
+                if response_time is None:
+                    logger.info("Host is not reachable, starting RFID discovery")
+                    if not self._discovery_in_progress:
+                        self._attempt_discovery()
+            except Exception:
+                logger.info("Ping failed, starting RFID discovery")
+                if not self._discovery_in_progress:
+                    self._attempt_discovery()
 
         while not self._b_stop.is_set():
             try:
