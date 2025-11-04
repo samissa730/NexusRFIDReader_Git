@@ -49,14 +49,12 @@ def run_arp_scan(interface: str, subnet: str, use_sudo: bool = True) -> str:
             check=True, 
             stdout=subprocess.PIPE, 
             stderr=subprocess.PIPE, 
-            text=True,
-            timeout=30
+            text=True
+            # No timeout - let arp-scan run as long as needed, just like the gpt_find.py script
         )
         return res.stdout
     except FileNotFoundError:
         raise RuntimeError("arp-scan not found. Please install arp-scan (e.g. `sudo apt install arp-scan`).")
-    except subprocess.TimeoutExpired:
-        raise RuntimeError("arp-scan timed out after 30 seconds.")
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"arp-scan failed (rc={e.returncode}). stderr:\n{e.stderr.strip()}")
 
