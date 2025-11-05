@@ -71,7 +71,6 @@ mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/local/bin
 mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/share/applications
 mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/share/icons/hicolor/512x512/apps
 mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/etc/skel/.config/autostart
-mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/var/lib/nexusrfid
 echo -e "   ${GREEN}SUCCESS${NC} Directory structure created"
 
 # Step 3: Copy files to package
@@ -129,8 +128,11 @@ while true; do
     
     if [ "$RUNNING_COUNT" -eq 0 ]; then
         log_message "$APP_NAME is not running. Starting..."
-        # Change to data directory to ensure proper file creation
-        cd /var/lib/nexusrfid
+        # Change to user's data directory to ensure proper file creation
+        # Use $HOME if available, otherwise default to /home/$(whoami)
+        DATA_DIR="${HOME:-/home/$(whoami)}/.nexusrfid"
+        mkdir -p "$DATA_DIR"
+        cd "$DATA_DIR"
         $APP_PATH &
         sleep 3
         
@@ -199,7 +201,7 @@ Priority: optional
 Architecture: ${ARCHITECTURE}
 Maintainer: ${MAINTAINER} <support@nexusyms.com>
 Homepage: ${WEBSITE}
-Depends: libxcb-xinerama0, libxcb-cursor0, libx11-xcb1, libxcb1, libxfixes3, libxi6, libxrender1, libxcb-render0, libxcb-shape0, libxcb-xfixes0, x11-xserver-utils, python3, python3-pip
+Depends: libxcb-xinerama0, libxcb-cursor0, libx11-xcb1, libxcb1, libxfixes3, libxi6, libxrender1, libxcb-render0, libxcb-shape0, libxcb-xfixes0, x11-xserver-utils, python3, python3-pip, arp-scan
 Description: ${DESCRIPTION}
  This application provides advanced RFID scanning capabilities with GPS tracking,
  real-time data processing, and cloud synchronization. It's designed for inventory
@@ -225,17 +227,8 @@ set -e
 
 echo "Setting up NexusRFIDReader environment..."
 
-# Create data directory with proper permissions
-RFID_DATA_DIR=/var/lib/nexusrfid
-if [ ! -d "$RFID_DATA_DIR" ]; then
-    mkdir -p "$RFID_DATA_DIR"
-    chmod 755 "$RFID_DATA_DIR"
-    echo "Created data directory at $RFID_DATA_DIR"
-fi
-
-# Ensure proper ownership of data directory
-chown root:root "$RFID_DATA_DIR"
-chmod 755 "$RFID_DATA_DIR"
+# Note: Application data directory (~/.nexusrfid/) will be created automatically
+# by the application on first run. No need to create it here.
 
 # Create log directory
 LOG_DIR=/var/log
@@ -346,7 +339,9 @@ echo -e "${PURPLE}Package Contents:${NC}"
 echo -e "   • Executable: /usr/local/bin/NexusRFIDReader"
 echo -e "   • Icon: /usr/share/icons/hicolor/512x512/apps/${PACKAGE_NAME}.ico"
 echo -e "   • Desktop Entry: /usr/share/applications/${PACKAGE_NAME}.desktop"
-echo -e "   • Data Directory: /var/lib/nexusrfid"
+echo -e "   • Data Directory: ~/.nexusrfid/ (created on first run)"
+echo -e "   • Database: ~/.nexusrfid/database.db (created on first run)"
+echo -e "   • Config: ~/.nexusrfid/config.json (created on first run)"
 echo -e "   • Log File: /var/log/nexus-rfid-monitor.log"
 echo -e "   • Autostart: ~/.config/autostart/monitor-nexus-rfid.desktop"
 echo ""

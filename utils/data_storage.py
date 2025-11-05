@@ -4,6 +4,7 @@ from typing import List, Tuple, Optional
 
 from utils.common import find_smallest_available_id
 from utils.logger import logger
+from settings import DATABASE_FILE
 
 
 class DataStorage:
@@ -17,7 +18,7 @@ class DataStorage:
             self._init_db()
 
     def _init_db(self):
-        self.db_connection = sqlite3.connect('database.db')
+        self.db_connection = sqlite3.connect(DATABASE_FILE)
         self.db_cursor = self.db_connection.cursor()
         self.db_cursor.execute('''
                             CREATE TABLE IF NOT EXISTS records (

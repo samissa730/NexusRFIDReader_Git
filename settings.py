@@ -16,6 +16,7 @@ INIT_SCREEN = "overview"
 APP_DIR = os.path.dirname(os.path.realpath(__file__))
 CRASH_FILE = os.path.join(ROOT_DIR, "crash.dump")
 CONFIG_FILE = os.path.join(ROOT_DIR, "config.json")
+DATABASE_FILE = os.path.join(ROOT_DIR, "database.db")
 
 
 def get_default_config():
