@@ -105,6 +105,12 @@ if [ -f "/usr/share/icons/hicolor/512x512/apps/${PACKAGE_NAME}.ico" ]; then
     echo -e "   ${GREEN}SUCCESS${NC} Removed icon: /usr/share/icons/hicolor/512x512/apps/${PACKAGE_NAME}.ico"
 fi
 
+# Remove sudoers configuration
+if [ -f "/etc/sudoers.d/nexusrfid" ]; then
+    rm -f /etc/sudoers.d/nexusrfid
+    echo -e "   ${GREEN}SUCCESS${NC} Removed sudoers configuration: /etc/sudoers.d/nexusrfid"
+fi
+
 # Step 5: Remove data directories
 echo -e "${YELLOW}Step 5: Removing data directories...${NC}"
 

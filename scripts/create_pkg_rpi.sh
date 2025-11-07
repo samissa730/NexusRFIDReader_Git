@@ -72,6 +72,7 @@ mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/share/applications
 mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/share/icons/hicolor/512x512/apps
 mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/etc/skel/.config/autostart
 mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/var/lib/nexusrfid
+mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/etc/sudoers.d
 echo -e "   ${GREEN}SUCCESS${NC} Directory structure created"
 
 # Step 3: Copy files to package
@@ -92,6 +93,7 @@ APP_NAME="NexusRFIDReader"
 APP_PATH="/usr/local/bin/NexusRFIDReader"
 LOG_FILE="/var/log/nexus-rfid-monitor.log"
 LOCK_FILE="/var/run/nexus-rfid-monitor.lock"
+DHCLIENT_BIN="$(command -v dhclient || command -v /usr/sbin/dhclient || command -v /sbin/dhclient)"
 
 # Function to log messages
 log_message() {
@@ -122,6 +124,18 @@ cleanup() {
 trap cleanup SIGTERM SIGINT
 
 log_message "Starting NexusRFIDReader monitor (PID: $$)"
+
+if [ -n "$DHCLIENT_BIN" ]; then
+    log_message "Requesting DHCP lease on usb0 using $DHCLIENT_BIN"
+    if sudo -n "$DHCLIENT_BIN" usb0 >> "$LOG_FILE" 2>&1; then
+        log_message "DHCP request on usb0 completed successfully"
+    else
+        status=$?
+        log_message "Failed to run dhclient on usb0 (exit code $status)"
+    fi
+else
+    log_message "dhclient binary not found; skipping DHCP request"
+fi
 
 while true; do
     # Check if any NexusRFIDReader processes are running
@@ -180,7 +194,7 @@ echo -e "${YELLOW}Step 6: Creating autostart configuration...${NC}"
 cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/etc/skel/.config/autostart/monitor-nexus-rfid.desktop <<EOL
 [Desktop Entry]
 Type=Application
-Exec=/bin/bash -c 'sudo dhclient usb0 && /usr/local/bin/monitor_nexus_rfid.sh'
+Exec=/usr/local/bin/monitor_nexus_rfid.sh
 Hidden=false
 NoDisplay=false
 X-GNOME-Autostart-enabled=true
@@ -189,8 +203,17 @@ Comment=Ensures NexusRFIDReader keeps running
 EOL
 echo -e "   ${GREEN}SUCCESS${NC} Autostart configuration created"
 
-# Step 7: Create control file
-echo -e "${YELLOW}Step 7: Creating package control file...${NC}"
+# Step 7: Create sudoers configuration
+echo -e "${YELLOW}Step 7: Creating sudoers configuration...${NC}"
+cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/etc/sudoers.d/nexusrfid <<'EOL'
+Cmnd_Alias NEXUS_RFID_DHCLIENT = /usr/sbin/dhclient usb0, /sbin/dhclient usb0, /usr/bin/dhclient usb0
+ALL ALL=(root) NOPASSWD: NEXUS_RFID_DHCLIENT
+EOL
+chmod 440 ${PACKAGE_NAME}-${PACKAGE_VERSION}/etc/sudoers.d/nexusrfid
+echo -e "   ${GREEN}SUCCESS${NC} Sudoers configuration created"
+
+# Step 8: Create control file
+echo -e "${YELLOW}Step 8: Creating package control file...${NC}"
 cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/DEBIAN/control <<EOL
 Package: ${PACKAGE_NAME}
 Version: ${PACKAGE_VERSION}
@@ -216,8 +239,8 @@ Description: ${DESCRIPTION}
 EOL
 echo -e "   ${GREEN}SUCCESS${NC} Control file created"
 
-# Step 8: Create postinst script
-echo -e "${YELLOW}Step 8: Creating post-installation script...${NC}"
+# Step 9: Create postinst script
+echo -e "${YELLOW}Step 9: Creating post-installation script...${NC}"
 cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/DEBIAN/postinst <<'EOL'
 #!/bin/bash
 
@@ -285,8 +308,8 @@ EOL
 chmod 0755 ${PACKAGE_NAME}-${PACKAGE_VERSION}/DEBIAN/postinst
 echo -e "   ${GREEN}SUCCESS${NC} Post-installation script created"
 
-# Step 9: Create prerm script for clean removal
-echo -e "${YELLOW}Step 9: Creating pre-removal script...${NC}"
+# Step 10: Create prerm script for clean removal
+echo -e "${YELLOW}Step 10: Creating pre-removal script...${NC}"
 cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/DEBIAN/prerm <<'EOL'
 #!/bin/bash
 
@@ -314,13 +337,13 @@ EOL
 chmod 0755 ${PACKAGE_NAME}-${PACKAGE_VERSION}/DEBIAN/prerm
 echo -e "   ${GREEN}SUCCESS${NC} Pre-removal script created"
 
-# Step 10: Build the .deb package
-echo -e "${YELLOW}Step 10: Building the .deb package...${NC}"
+# Step 11: Build the .deb package
+echo -e "${YELLOW}Step 11: Building the .deb package...${NC}"
 dpkg-deb --build ${PACKAGE_NAME}-${PACKAGE_VERSION}
 echo -e "   ${GREEN}SUCCESS${NC} Package built successfully"
 
-# Step 11: Clean up build directory
-echo -e "${YELLOW}Step 11: Cleaning up build files...${NC}"
+# Step 12: Clean up build directory
+echo -e "${YELLOW}Step 12: Cleaning up build files...${NC}"
 rm -rf ${PACKAGE_NAME}-${PACKAGE_VERSION}
 echo -e "   ${GREEN}SUCCESS${NC} Build files cleaned up"
 
@@ -349,5 +372,6 @@ echo -e "   • Desktop Entry: /usr/share/applications/${PACKAGE_NAME}.desktop"
 echo -e "   • Data Directory: /var/lib/nexusrfid"
 echo -e "   • Log File: /var/log/nexus-rfid-monitor.log"
 echo -e "   • Autostart: ~/.config/autostart/monitor-nexus-rfid.desktop"
+echo -e "   • Sudoers Rule: /etc/sudoers.d/nexusrfid"
 echo ""
 echo -e "${GREEN}Ready for deployment!${NC}"
