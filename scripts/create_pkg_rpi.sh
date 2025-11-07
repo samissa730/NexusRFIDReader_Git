@@ -222,7 +222,7 @@ Priority: optional
 Architecture: ${ARCHITECTURE}
 Maintainer: ${MAINTAINER} <support@nexusyms.com>
 Homepage: ${WEBSITE}
-Depends: libxcb-xinerama0, libxcb-cursor0, libx11-xcb1, libxcb1, libxfixes3, libxi6, libxrender1, libxcb-render0, libxcb-shape0, libxcb-xfixes0, x11-xserver-utils, python3, python3-pip
+Depends: libxcb-xinerama0, libxcb-cursor0, libx11-xcb1, libxcb1, libxfixes3, libxi6, libxrender1, libxcb-render0, libxcb-shape0, libxcb-xfixes0, x11-xserver-utils, python3, python3-pip, arp-scan
 Description: ${DESCRIPTION}
  This application provides advanced RFID scanning capabilities with GPS tracking,
  real-time data processing, and cloud synchronization. It's designed for inventory
@@ -373,5 +373,6 @@ echo -e "   • Data Directory: /var/lib/nexusrfid"
 echo -e "   • Log File: /var/log/nexus-rfid-monitor.log"
 echo -e "   • Autostart: ~/.config/autostart/monitor-nexus-rfid.desktop"
 echo -e "   • Sudoers Rule: /etc/sudoers.d/nexusrfid"
+echo -e "   • Dependencies: libxcb-*, x11-xserver-utils, python3, python3-pip, arp-scan"
 echo ""
 echo -e "${GREEN}Ready for deployment!${NC}"
