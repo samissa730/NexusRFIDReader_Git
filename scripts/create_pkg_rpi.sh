@@ -264,8 +264,18 @@ fi
 
 # Set up log file for monitoring script
 touch /var/log/nexus-rfid-monitor.log
-chmod 644 /var/log/nexus-rfid-monitor.log
+chmod 666 /var/log/nexus-rfid-monitor.log
 chown root:root /var/log/nexus-rfid-monitor.log
+
+# Configure passwordless sudo for dhclient on usb0 so the monitor can bring up networking
+DHCLIENT_PATH=$(command -v dhclient || true)
+if [ -n "$DHCLIENT_PATH" ]; then
+    cat <<EOF >/etc/sudoers.d/nexus-rfid-monitor
+# Allow NexusRFID monitor to manage USB0 networking without prompting for a password
+ALL ALL=(root) NOPASSWD: $DHCLIENT_PATH usb0
+EOF
+    chmod 0440 /etc/sudoers.d/nexus-rfid-monitor
+fi
 
 # Create run directory for lock files
 mkdir -p /var/run

@@ -157,6 +157,11 @@ else
     echo -e "   ${BLUE}No log file found${NC}"
 fi
 
+if [ -f "/etc/sudoers.d/nexus-rfid-monitor" ]; then
+    rm -f /etc/sudoers.d/nexus-rfid-monitor
+    echo -e "   ${GREEN}SUCCESS${NC} Removed sudoers entry: /etc/sudoers.d/nexus-rfid-monitor"
+fi
+
 # Step 8: Update system databases
 echo -e "${YELLOW}Step 8: Updating system databases...${NC}"
 
