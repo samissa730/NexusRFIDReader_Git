@@ -141,18 +141,18 @@ if [ $AUTOSTART_REMOVED -eq 0 ]; then
     echo -e "   ${BLUE}No autostart entries found${NC}"
 fi
 
+# Remove default autostart template
+SYSTEM_AUTOSTART="/etc/skel/.config/autostart/monitor-nexus-rfid.desktop"
+if [ -f "$SYSTEM_AUTOSTART" ]; then
+    rm -f "$SYSTEM_AUTOSTART"
+    echo -e "   ${GREEN}SUCCESS${NC} Removed system autostart template: $SYSTEM_AUTOSTART"
+fi
+
 # Step 7: Remove log files
 echo -e "${YELLOW}Step 7: Cleaning up log files...${NC}"
 if [ -f "/var/log/nexus-rfid-monitor.log" ]; then
-    echo -e "   ${WHITE}Found log file: /var/log/nexus-rfid-monitor.log${NC}"
-    read -p "   Remove log file? (y/N): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        rm -f /var/log/nexus-rfid-monitor.log
-        echo -e "   ${GREEN}SUCCESS${NC} Removed log file: /var/log/nexus-rfid-monitor.log"
-    else
-        echo -e "   ${BLUE}Log file preserved: /var/log/nexus-rfid-monitor.log${NC}"
-    fi
+    rm -f /var/log/nexus-rfid-monitor.log
+    echo -e "   ${GREEN}SUCCESS${NC} Removed log file: /var/log/nexus-rfid-monitor.log"
 else
     echo -e "   ${BLUE}No log file found${NC}"
 fi
