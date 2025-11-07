@@ -47,14 +47,14 @@ echo ""
 echo -e "${YELLOW}Step 1: Building PyInstaller executable...${NC}"
 if command -v pyinstaller &> /dev/null; then
     echo -e "   ${GREEN}SUCCESS${NC} PyInstaller found"
-    pyinstaller --clean --onefile --icon=ui/img/icon.ico --name=NexusRFIDReader main.py
-    echo -e "   ${GREEN}SUCCESS${NC} Executable built successfully"
 else
     echo -e "   ${RED}ERROR: PyInstaller not found. Installing...${NC}"
     pip3 install pyinstaller
-    pyinstaller --clean --onefile --icon=ui/img/icon.ico --name=NexusRFIDReader main.py
-    echo -e "   ${GREEN}SUCCESS${NC} PyInstaller installed and executable built"
 fi
+
+# Always build using the project spec file so bundled resources match development mode
+pyinstaller --clean --noconfirm NexusRFIDReader.spec
+echo -e "   ${GREEN}SUCCESS${NC} Executable built successfully"
 
 # Check if executable was created
 if [ ! -f "dist/NexusRFIDReader" ]; then
