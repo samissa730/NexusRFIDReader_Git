@@ -147,7 +147,26 @@ log_message() {
     echo "\$(date '+%Y-%m-%d %H:%M:%S') - \$1" >> "\$LOG_FILE"
 }
 
+# Ensure USB network interface obtains an IP address
+run_dhclient() {
+    if ! command -v dhclient >/dev/null 2>&1; then
+        log_message "dhclient not found; skipping USB network initialization"
+        return
+    fi
+
+    log_message "Running 'sudo dhclient usb0' to initialize USB network interface"
+    if sudo dhclient usb0 >> "\$LOG_FILE" 2>&1; then
+        log_message "'sudo dhclient usb0' completed successfully"
+    else
+        STATUS=$?
+        log_message "WARNING: 'sudo dhclient usb0' exited with status \$STATUS"
+    fi
+}
+
 log_message "Starting NexusRFIDReader monitor"
+
+# Attempt to establish network connectivity for the USB interface on startup
+run_dhclient
 
 while true; do
     if ! pgrep -x "\$APP_NAME" > /dev/null; then
