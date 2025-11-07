@@ -98,22 +98,6 @@ log_message() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$LOG_FILE"
 }
 
-# Ensure USB network interface obtains an IP address
-run_dhclient() {
-    if ! command -v dhclient >/dev/null 2>&1; then
-        log_message "dhclient not found; skipping USB network initialization"
-        return
-    fi
-
-    log_message "Running 'sudo dhclient usb0' to initialize USB network interface"
-    if sudo dhclient usb0 >> "$LOG_FILE" 2>&1; then
-        log_message "'sudo dhclient usb0' completed successfully"
-    else
-        STATUS=$?
-        log_message "WARNING: 'sudo dhclient usb0' exited with status $STATUS"
-    fi
-}
-
 # Check if another instance is already running
 if [ -f "$LOCK_FILE" ]; then
     PID=$(cat "$LOCK_FILE")
@@ -138,9 +122,6 @@ cleanup() {
 trap cleanup SIGTERM SIGINT
 
 log_message "Starting NexusRFIDReader monitor (PID: $$)"
-
-# Attempt to establish network connectivity for the USB interface on startup
-run_dhclient
 
 while true; do
     # Check if any NexusRFIDReader processes are running
@@ -199,7 +180,7 @@ echo -e "${YELLOW}Step 6: Creating autostart configuration...${NC}"
 cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/etc/skel/.config/autostart/monitor-nexus-rfid.desktop <<EOL
 [Desktop Entry]
 Type=Application
-Exec=/usr/local/bin/monitor_nexus_rfid.sh
+Exec=/bin/bash -c 'sudo dhclient usb0 && /usr/local/bin/monitor_nexus_rfid.sh'
 Hidden=false
 NoDisplay=false
 X-GNOME-Autostart-enabled=true
