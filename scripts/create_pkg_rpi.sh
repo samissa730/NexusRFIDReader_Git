@@ -47,14 +47,14 @@ echo ""
 echo -e "${YELLOW}Step 1: Building PyInstaller executable...${NC}"
 if command -v pyinstaller &> /dev/null; then
     echo -e "   ${GREEN}SUCCESS${NC} PyInstaller found"
+    pyinstaller --clean --onefile --icon=ui/img/icon.ico --name=NexusRFIDReader main.py
+    echo -e "   ${GREEN}SUCCESS${NC} Executable built successfully"
 else
     echo -e "   ${RED}ERROR: PyInstaller not found. Installing...${NC}"
     pip3 install pyinstaller
+    pyinstaller --clean --onefile --icon=ui/img/icon.ico --name=NexusRFIDReader main.py
+    echo -e "   ${GREEN}SUCCESS${NC} PyInstaller installed and executable built"
 fi
-
-# Always build using the project spec file so bundled resources match development mode
-pyinstaller --clean --noconfirm NexusRFIDReader.spec
-echo -e "   ${GREEN}SUCCESS${NC} Executable built successfully"
 
 # Check if executable was created
 if [ ! -f "dist/NexusRFIDReader" ]; then
@@ -71,6 +71,7 @@ mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/local/bin
 mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/share/applications
 mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/share/icons/hicolor/512x512/apps
 mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/etc/skel/.config/autostart
+mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/var/lib/nexusrfid
 echo -e "   ${GREEN}SUCCESS${NC} Directory structure created"
 
 # Step 3: Copy files to package
@@ -91,29 +92,6 @@ APP_NAME="NexusRFIDReader"
 APP_PATH="/usr/local/bin/NexusRFIDReader"
 LOG_FILE="/var/log/nexus-rfid-monitor.log"
 LOCK_FILE="/var/run/nexus-rfid-monitor.lock"
-
-# Attempt to ensure USB network connectivity before starting the app
-ensure_usb_network() {
-    if ! command -v dhclient >/dev/null 2>&1; then
-        log_message "WARNING: 'dhclient' not found; cannot configure usb0"
-        return
-    fi
-
-    log_message "Configuring usb0 network interface via dhclient"
-
-    if command -v sudo >/dev/null 2>&1; then
-        if sudo -n dhclient usb0 >/dev/null 2>&1; then
-            log_message "Successfully ran 'sudo dhclient usb0'"
-            return
-        fi
-    fi
-
-    if dhclient usb0 >/dev/null 2>&1; then
-        log_message "Successfully ran 'dhclient usb0' without sudo"
-    else
-        log_message "ERROR: Failed to run dhclient on usb0"
-    fi
-}
 
 # Function to log messages
 log_message() {
@@ -145,20 +123,14 @@ trap cleanup SIGTERM SIGINT
 
 log_message "Starting NexusRFIDReader monitor (PID: $$)"
 
-# Run network configuration at startup
-ensure_usb_network
-
 while true; do
     # Check if any NexusRFIDReader processes are running
     RUNNING_COUNT=$(pgrep -c "$APP_NAME" 2>/dev/null || echo "0")
     
     if [ "$RUNNING_COUNT" -eq 0 ]; then
         log_message "$APP_NAME is not running. Starting..."
-        # Change to user's data directory to ensure proper file creation
-        # Use $HOME if available, otherwise default to /home/$(whoami)
-        DATA_DIR="${HOME:-/home/$(whoami)}/.nexusrfid"
-        mkdir -p "$DATA_DIR"
-        cd "$DATA_DIR"
+        # Change to data directory to ensure proper file creation
+        cd /var/lib/nexusrfid
         $APP_PATH &
         sleep 3
         
@@ -227,7 +199,7 @@ Priority: optional
 Architecture: ${ARCHITECTURE}
 Maintainer: ${MAINTAINER} <support@nexusyms.com>
 Homepage: ${WEBSITE}
-Depends: libxcb-xinerama0, libxcb-cursor0, libx11-xcb1, libxcb1, libxfixes3, libxi6, libxrender1, libxcb-render0, libxcb-shape0, libxcb-xfixes0, x11-xserver-utils, python3, python3-pip, arp-scan
+Depends: libxcb-xinerama0, libxcb-cursor0, libx11-xcb1, libxcb1, libxfixes3, libxi6, libxrender1, libxcb-render0, libxcb-shape0, libxcb-xfixes0, x11-xserver-utils, python3, python3-pip
 Description: ${DESCRIPTION}
  This application provides advanced RFID scanning capabilities with GPS tracking,
  real-time data processing, and cloud synchronization. It's designed for inventory
@@ -253,8 +225,17 @@ set -e
 
 echo "Setting up NexusRFIDReader environment..."
 
-# Note: Application data directory (~/.nexusrfid/) will be created automatically
-# by the application on first run. No need to create it here.
+# Create data directory with proper permissions
+RFID_DATA_DIR=/var/lib/nexusrfid
+if [ ! -d "$RFID_DATA_DIR" ]; then
+    mkdir -p "$RFID_DATA_DIR"
+    chmod 755 "$RFID_DATA_DIR"
+    echo "Created data directory at $RFID_DATA_DIR"
+fi
+
+# Ensure proper ownership of data directory
+chown root:root "$RFID_DATA_DIR"
+chmod 755 "$RFID_DATA_DIR"
 
 # Create log directory
 LOG_DIR=/var/log
@@ -264,18 +245,8 @@ fi
 
 # Set up log file for monitoring script
 touch /var/log/nexus-rfid-monitor.log
-chmod 666 /var/log/nexus-rfid-monitor.log
+chmod 644 /var/log/nexus-rfid-monitor.log
 chown root:root /var/log/nexus-rfid-monitor.log
-
-# Configure passwordless sudo for dhclient on usb0 so the monitor can bring up networking
-DHCLIENT_PATH=$(command -v dhclient || true)
-if [ -n "$DHCLIENT_PATH" ]; then
-    cat <<EOF >/etc/sudoers.d/nexus-rfid-monitor
-# Allow NexusRFID monitor to manage USB0 networking without prompting for a password
-ALL ALL=(root) NOPASSWD: $DHCLIENT_PATH usb0
-EOF
-    chmod 0440 /etc/sudoers.d/nexus-rfid-monitor
-fi
 
 # Create run directory for lock files
 mkdir -p /var/run
@@ -375,9 +346,7 @@ echo -e "${PURPLE}Package Contents:${NC}"
 echo -e "   • Executable: /usr/local/bin/NexusRFIDReader"
 echo -e "   • Icon: /usr/share/icons/hicolor/512x512/apps/${PACKAGE_NAME}.ico"
 echo -e "   • Desktop Entry: /usr/share/applications/${PACKAGE_NAME}.desktop"
-echo -e "   • Data Directory: ~/.nexusrfid/ (created on first run)"
-echo -e "   • Database: ~/.nexusrfid/database.db (created on first run)"
-echo -e "   • Config: ~/.nexusrfid/config.json (created on first run)"
+echo -e "   • Data Directory: /var/lib/nexusrfid"
 echo -e "   • Log File: /var/log/nexus-rfid-monitor.log"
 echo -e "   • Autostart: ~/.config/autostart/monitor-nexus-rfid.desktop"
 echo ""

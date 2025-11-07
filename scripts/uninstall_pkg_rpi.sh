@@ -16,8 +16,6 @@ WHITE='\033[1;37m'
 NC='\033[0m' # No Color
 
 PACKAGE_NAME=NexusRFIDReader
-PACKAGE_NAME_LOWER=$(echo "$PACKAGE_NAME" | tr '[:upper:]' '[:lower:]')
-REMOVED_PACKAGE=""
 
 echo -e "${CYAN}==============================================================${NC}"
 echo -e "${CYAN}            NexusRFIDReader Uninstaller${NC}"
@@ -65,43 +63,16 @@ echo -e "   ${GREEN}SUCCESS${NC} All processes stopped"
 
 # Step 2: Remove the package using dpkg
 echo -e "${YELLOW}Step 2: Removing package using dpkg...${NC}"
-for PKG_CANDIDATE in "$PACKAGE_NAME" "$PACKAGE_NAME_LOWER"; do
-    if dpkg -l | awk '/^ii/{print $2}' | grep -Fxq "$PKG_CANDIDATE"; then
-        if dpkg --remove "$PKG_CANDIDATE"; then
-            echo -e "   ${GREEN}SUCCESS${NC} Package removed: $PKG_CANDIDATE"
-            REMOVED_PACKAGE="$PKG_CANDIDATE"
-        else
-            echo -e "   ${YELLOW}WARNING: Package removal had issues for $PKG_CANDIDATE, continuing...${NC}"
-        fi
-        break
-    fi
-done
-
-if [ -z "$REMOVED_PACKAGE" ]; then
+if dpkg -l | grep -q "^ii.*${PACKAGE_NAME}"; then
+    dpkg --remove ${PACKAGE_NAME} || echo -e "   ${YELLOW}WARNING: Package removal had issues, continuing...${NC}"
+    echo -e "   ${GREEN}SUCCESS${NC} Package removed"
+else
     echo -e "   ${BLUE}Package not found in dpkg database${NC}"
 fi
 
 # Step 3: Purge configuration files
 echo -e "${YELLOW}Step 3: Purging configuration files...${NC}"
-PURGE_TARGETS=()
-if [ -n "$REMOVED_PACKAGE" ]; then
-    PURGE_TARGETS+=("$REMOVED_PACKAGE")
-else
-    PURGE_TARGETS+=("$PACKAGE_NAME" "$PACKAGE_NAME_LOWER")
-fi
-
-PURGE_PERFORMED=0
-for PKG in "${PURGE_TARGETS[@]}"; do
-    if apt-get purge -y "$PKG" 2>/dev/null; then
-        PURGE_PERFORMED=1
-        echo -e "   ${GREEN}SUCCESS${NC} Purged configuration for: $PKG"
-        break
-    fi
-done
-
-if [ $PURGE_PERFORMED -eq 0 ]; then
-    echo -e "   ${BLUE}No configuration files to purge${NC}"
-fi
+apt-get purge -y ${PACKAGE_NAME} 2>/dev/null || echo -e "   ${BLUE}No configuration files to purge${NC}"
 echo -e "   ${GREEN}SUCCESS${NC} Configuration files purged"
 
 # Step 4: Remove application files
@@ -170,25 +141,20 @@ if [ $AUTOSTART_REMOVED -eq 0 ]; then
     echo -e "   ${BLUE}No autostart entries found${NC}"
 fi
 
-# Remove default autostart template
-SYSTEM_AUTOSTART="/etc/skel/.config/autostart/monitor-nexus-rfid.desktop"
-if [ -f "$SYSTEM_AUTOSTART" ]; then
-    rm -f "$SYSTEM_AUTOSTART"
-    echo -e "   ${GREEN}SUCCESS${NC} Removed system autostart template: $SYSTEM_AUTOSTART"
-fi
-
 # Step 7: Remove log files
 echo -e "${YELLOW}Step 7: Cleaning up log files...${NC}"
 if [ -f "/var/log/nexus-rfid-monitor.log" ]; then
-    rm -f /var/log/nexus-rfid-monitor.log
-    echo -e "   ${GREEN}SUCCESS${NC} Removed log file: /var/log/nexus-rfid-monitor.log"
+    echo -e "   ${WHITE}Found log file: /var/log/nexus-rfid-monitor.log${NC}"
+    read -p "   Remove log file? (y/N): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        rm -f /var/log/nexus-rfid-monitor.log
+        echo -e "   ${GREEN}SUCCESS${NC} Removed log file: /var/log/nexus-rfid-monitor.log"
+    else
+        echo -e "   ${BLUE}Log file preserved: /var/log/nexus-rfid-monitor.log${NC}"
+    fi
 else
     echo -e "   ${BLUE}No log file found${NC}"
-fi
-
-if [ -f "/etc/sudoers.d/nexus-rfid-monitor" ]; then
-    rm -f /etc/sudoers.d/nexus-rfid-monitor
-    echo -e "   ${GREEN}SUCCESS${NC} Removed sudoers entry: /etc/sudoers.d/nexus-rfid-monitor"
 fi
 
 # Step 8: Update system databases
