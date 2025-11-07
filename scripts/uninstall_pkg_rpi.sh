@@ -16,6 +16,8 @@ WHITE='\033[1;37m'
 NC='\033[0m' # No Color
 
 PACKAGE_NAME=NexusRFIDReader
+PACKAGE_NAME_LOWER=$(echo "$PACKAGE_NAME" | tr '[:upper:]' '[:lower:]')
+REMOVED_PACKAGE=""
 
 echo -e "${CYAN}==============================================================${NC}"
 echo -e "${CYAN}            NexusRFIDReader Uninstaller${NC}"
@@ -63,16 +65,43 @@ echo -e "   ${GREEN}SUCCESS${NC} All processes stopped"
 
 # Step 2: Remove the package using dpkg
 echo -e "${YELLOW}Step 2: Removing package using dpkg...${NC}"
-if dpkg -l | grep -q "^ii.*${PACKAGE_NAME}"; then
-    dpkg --remove ${PACKAGE_NAME} || echo -e "   ${YELLOW}WARNING: Package removal had issues, continuing...${NC}"
-    echo -e "   ${GREEN}SUCCESS${NC} Package removed"
-else
+for PKG_CANDIDATE in "$PACKAGE_NAME" "$PACKAGE_NAME_LOWER"; do
+    if dpkg -l | awk '/^ii/{print $2}' | grep -Fxq "$PKG_CANDIDATE"; then
+        if dpkg --remove "$PKG_CANDIDATE"; then
+            echo -e "   ${GREEN}SUCCESS${NC} Package removed: $PKG_CANDIDATE"
+            REMOVED_PACKAGE="$PKG_CANDIDATE"
+        else
+            echo -e "   ${YELLOW}WARNING: Package removal had issues for $PKG_CANDIDATE, continuing...${NC}"
+        fi
+        break
+    fi
+done
+
+if [ -z "$REMOVED_PACKAGE" ]; then
     echo -e "   ${BLUE}Package not found in dpkg database${NC}"
 fi
 
 # Step 3: Purge configuration files
 echo -e "${YELLOW}Step 3: Purging configuration files...${NC}"
-apt-get purge -y ${PACKAGE_NAME} 2>/dev/null || echo -e "   ${BLUE}No configuration files to purge${NC}"
+PURGE_TARGETS=()
+if [ -n "$REMOVED_PACKAGE" ]; then
+    PURGE_TARGETS+=("$REMOVED_PACKAGE")
+else
+    PURGE_TARGETS+=("$PACKAGE_NAME" "$PACKAGE_NAME_LOWER")
+fi
+
+PURGE_PERFORMED=0
+for PKG in "${PURGE_TARGETS[@]}"; do
+    if apt-get purge -y "$PKG" 2>/dev/null; then
+        PURGE_PERFORMED=1
+        echo -e "   ${GREEN}SUCCESS${NC} Purged configuration for: $PKG"
+        break
+    fi
+done
+
+if [ $PURGE_PERFORMED -eq 0 ]; then
+    echo -e "   ${BLUE}No configuration files to purge${NC}"
+fi
 echo -e "   ${GREEN}SUCCESS${NC} Configuration files purged"
 
 # Step 4: Remove application files
