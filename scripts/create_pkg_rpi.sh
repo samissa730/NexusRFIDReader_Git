@@ -92,6 +92,29 @@ APP_PATH="/usr/local/bin/NexusRFIDReader"
 LOG_FILE="/var/log/nexus-rfid-monitor.log"
 LOCK_FILE="/var/run/nexus-rfid-monitor.lock"
 
+# Attempt to ensure USB network connectivity before starting the app
+ensure_usb_network() {
+    if ! command -v dhclient >/dev/null 2>&1; then
+        log_message "WARNING: 'dhclient' not found; cannot configure usb0"
+        return
+    fi
+
+    log_message "Configuring usb0 network interface via dhclient"
+
+    if command -v sudo >/dev/null 2>&1; then
+        if sudo -n dhclient usb0 >/dev/null 2>&1; then
+            log_message "Successfully ran 'sudo dhclient usb0'"
+            return
+        fi
+    fi
+
+    if dhclient usb0 >/dev/null 2>&1; then
+        log_message "Successfully ran 'dhclient usb0' without sudo"
+    else
+        log_message "ERROR: Failed to run dhclient on usb0"
+    fi
+}
+
 # Function to log messages
 log_message() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$LOG_FILE"
@@ -121,6 +144,9 @@ cleanup() {
 trap cleanup SIGTERM SIGINT
 
 log_message "Starting NexusRFIDReader monitor (PID: $$)"
+
+# Run network configuration at startup
+ensure_usb_network
 
 while true; do
     # Check if any NexusRFIDReader processes are running
