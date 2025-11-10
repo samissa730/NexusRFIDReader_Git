@@ -70,8 +70,8 @@ mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/DEBIAN
 mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/local/bin
 mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/share/applications
 mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/share/icons/hicolor/512x512/apps
-mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/etc/skel/.config/autostart
 mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/etc/systemd/system
+mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/etc/default
 echo -e "   ${GREEN}SUCCESS${NC} Directory structure created"
 
 # Step 3: Copy files to package
@@ -93,15 +93,48 @@ APP_PATH="/usr/local/bin/NexusRFIDReader"
 LOG_FILE="/var/log/nexus-rfid-monitor.log"
 LOCK_FILE="/var/run/nexus-rfid-monitor.lock"
 APP_WORKDIR="/usr/local/bin"
-DEFAULT_HOME_DIR="$(getent passwd $(logname 2>/dev/null || id -un) 2>/dev/null | cut -d: -f6)"
-USER_UID="$(id -u)"
 
-# Function to log messages
 log_message() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$LOG_FILE"
 }
 
-# Check if another instance is already running
+select_default_user() {
+    awk -F: '$3 >= 1000 && $1 != "nobody" {print $1; exit}' /etc/passwd
+}
+
+TARGET_USER="${NEXUSRFID_USER:-$(select_default_user)}"
+if [ -z "$TARGET_USER" ]; then
+    TARGET_USER="root"
+fi
+
+TARGET_HOME="${NEXUSRFID_HOME:-$(getent passwd "$TARGET_USER" | cut -d: -f6)}"
+if [ -z "$TARGET_HOME" ]; then
+    TARGET_HOME="/root"
+fi
+
+TARGET_UID="${NEXUSRFID_UID:-$(id -u "$TARGET_USER" 2>/dev/null || echo 0)}"
+TARGET_GID="${NEXUSRFID_GID:-$(id -g "$TARGET_USER" 2>/dev/null || echo 0)}"
+TARGET_DISPLAY="${NEXUSRFID_DISPLAY:-:0}"
+TARGET_XAUTHORITY="${NEXUSRFID_XAUTHORITY:-${TARGET_HOME}/.Xauthority}"
+TARGET_RUNTIME_DIR="${NEXUSRFID_RUNTIME_DIR:-/tmp/nexusrfid-runtime}"
+
+mkdir -p "$TARGET_RUNTIME_DIR"
+if [ "$TARGET_UID" -gt 0 ] && [ "$TARGET_GID" -gt 0 ]; then
+    chown "$TARGET_USER:$TARGET_GID" "$TARGET_RUNTIME_DIR" 2>/dev/null || true
+fi
+chmod 700 "$TARGET_RUNTIME_DIR" 2>/dev/null || true
+
+log_message "Monitor starting as user $(id -un) (PID: $$)"
+log_message "Configured target user: $TARGET_USER (UID: $TARGET_UID)"
+log_message "Using DISPLAY=$TARGET_DISPLAY, XAUTHORITY=$TARGET_XAUTHORITY, XDG_RUNTIME_DIR=$TARGET_RUNTIME_DIR"
+
+cleanup() {
+    rm -f "$LOCK_FILE"
+    exit 0
+}
+
+trap cleanup SIGTERM SIGINT
+
 if [ -f "$LOCK_FILE" ]; then
     PID=$(cat "$LOCK_FILE")
     if ps -p "$PID" > /dev/null 2>&1; then
@@ -112,47 +145,28 @@ if [ -f "$LOCK_FILE" ]; then
     fi
 fi
 
-# Create lock file
 echo $$ > "$LOCK_FILE"
 
-# Cleanup function
-cleanup() {
-    rm -f "$LOCK_FILE"
-    exit 0
+launch_application() {
+    log_message "Attempting to launch $APP_NAME for user $TARGET_USER"
+    if command -v runuser >/dev/null 2>&1; then
+        runuser -u "$TARGET_USER" -- env DISPLAY="$TARGET_DISPLAY" HOME="$TARGET_HOME" XAUTHORITY="$TARGET_XAUTHORITY" XDG_RUNTIME_DIR="$TARGET_RUNTIME_DIR" "$APP_PATH" >> "$LOG_FILE" 2>&1 &
+    elif command -v sudo >/dev/null 2>&1; then
+        sudo -u "$TARGET_USER" env DISPLAY="$TARGET_DISPLAY" HOME="$TARGET_HOME" XAUTHORITY="$TARGET_XAUTHORITY" XDG_RUNTIME_DIR="$TARGET_RUNTIME_DIR" "$APP_PATH" >> "$LOG_FILE" 2>&1 &
+    else
+        su - "$TARGET_USER" -c "env DISPLAY='$TARGET_DISPLAY' HOME='$TARGET_HOME' XAUTHORITY='$TARGET_XAUTHORITY' XDG_RUNTIME_DIR='$TARGET_RUNTIME_DIR' '$APP_PATH'" >> "$LOG_FILE" 2>&1 &
+    fi
 }
 
-# Set up signal handlers
-trap cleanup SIGTERM SIGINT
-
-log_message "Starting NexusRFIDReader monitor (PID: $$)"
-
-# Ensure UI environment variables are set for application display
-if [ -z "$DEFAULT_HOME_DIR" ]; then
-    DEFAULT_HOME_DIR="$HOME"
-fi
-export DISPLAY=${DISPLAY:-:0}
-export HOME=${HOME:-${DEFAULT_HOME_DIR:-/home/pi}}
-export XAUTHORITY=${XAUTHORITY:-${HOME}/.Xauthority}
-if [ -z "$XDG_RUNTIME_DIR" ]; then
-    if [ -d "/run/user/$USER_UID" ]; then
-        export XDG_RUNTIME_DIR="/run/user/$USER_UID"
-    else
-        export XDG_RUNTIME_DIR="/tmp"
-    fi
-fi
-
 while true; do
-    # Check if any NexusRFIDReader processes are running
     RUNNING_COUNT=$(pgrep -c "$APP_NAME" 2>/dev/null || echo "0")
-    
+
     if [ "$RUNNING_COUNT" -eq 0 ]; then
         log_message "$APP_NAME is not running. Starting..."
-        # Change to application directory before starting
         cd "$APP_WORKDIR"
-        $APP_PATH &
+        launch_application
         sleep 3
-        
-        # Verify it started
+
         NEW_COUNT=$(pgrep -c "$APP_NAME" 2>/dev/null || echo "0")
         if [ "$NEW_COUNT" -gt 0 ]; then
             log_message "$APP_NAME started successfully"
@@ -161,14 +175,13 @@ while true; do
         fi
     elif [ "$RUNNING_COUNT" -gt 1 ]; then
         log_message "WARNING: Multiple $APP_NAME processes detected ($RUNNING_COUNT)"
-        # Kill all processes and restart
         pkill -f "$APP_NAME"
         sleep 2
         log_message "Killed all $APP_NAME processes, will restart on next cycle"
     else
         log_message "$APP_NAME is running normally (1 process)"
     fi
-    
+
     sleep 15
 done
 EOL
@@ -199,8 +212,45 @@ WantedBy=multi-user.target
 EOL
 echo -e "   ${GREEN}SUCCESS${NC} Systemd service created"
 
-# Step 6: Create .desktop file for application menu
-echo -e "${YELLOW}Step 6: Creating desktop application entry...${NC}"
+# Step 6: Create default service environment configuration
+echo -e "${YELLOW}Step 6: Creating default service environment file...${NC}"
+cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/etc/default/nexusrfid <<'EOL'
+# Environment overrides for NexusRFID systemd services
+# Values can be customized after installation
+# NEXUSRFID_USER=rfid
+# NEXUSRFID_HOME=/home/rfid
+# NEXUSRFID_DISPLAY=:0
+# NEXUSRFID_XAUTHORITY=/home/rfid/.Xauthority
+# NEXUSRFID_RUNTIME_DIR=/tmp/nexusrfid-runtime
+# NEXUSRFID_UID=1000
+# NEXUSRFID_GID=1000
+EOL
+chmod 0644 ${PACKAGE_NAME}-${PACKAGE_VERSION}/etc/default/nexusrfid
+echo -e "   ${GREEN}SUCCESS${NC} Service environment file created"
+
+# Step 7: Create systemd service for application monitor
+echo -e "${YELLOW}Step 7: Creating systemd service for NexusRFID monitor...${NC}"
+cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/etc/systemd/system/nexusrfid-monitor.service <<'EOL'
+[Unit]
+Description=NexusRFIDReader Monitor Service
+After=network.target nexusrfid-dhcp.service multi-user.target
+Wants=nexusrfid-dhcp.service
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/default/nexusrfid
+ExecStart=/usr/local/bin/monitor_nexus_rfid.sh
+Restart=always
+RestartSec=10
+KillMode=process
+
+[Install]
+WantedBy=graphical.target
+EOL
+echo -e "   ${GREEN}SUCCESS${NC} Monitor systemd service created"
+
+# Step 8: Create .desktop file for application menu
+echo -e "${YELLOW}Step 8: Creating desktop application entry...${NC}"
 cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/share/applications/${PACKAGE_NAME}.desktop <<EOL
 [Desktop Entry]
 Version=1.0
@@ -216,22 +266,8 @@ StartupNotify=true
 EOL
 echo -e "   ${GREEN}SUCCESS${NC} Desktop entry created"
 
-# Step 7: Create autostart entry
-echo -e "${YELLOW}Step 7: Creating autostart configuration...${NC}"
-cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/etc/skel/.config/autostart/monitor-nexus-rfid.desktop <<EOL
-[Desktop Entry]
-Type=Application
-Exec=/usr/local/bin/monitor_nexus_rfid.sh
-Hidden=false
-NoDisplay=false
-X-GNOME-Autostart-enabled=true
-Name=Monitor Nexus RFID Reader
-Comment=Ensures NexusRFIDReader keeps running
-EOL
-echo -e "   ${GREEN}SUCCESS${NC} Autostart configuration created"
-
-# Step 8: Create control file
-echo -e "${YELLOW}Step 8: Creating package control file...${NC}"
+# Step 9: Create control file
+echo -e "${YELLOW}Step 9: Creating package control file...${NC}"
 cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/DEBIAN/control <<EOL
 Package: ${PACKAGE_NAME}
 Version: ${PACKAGE_VERSION}
@@ -257,8 +293,8 @@ Description: ${DESCRIPTION}
 EOL
 echo -e "   ${GREEN}SUCCESS${NC} Control file created"
 
-# Step 9: Create postinst script
-echo -e "${YELLOW}Step 9: Creating post-installation script...${NC}"
+# Step 10: Create post-installation script
+echo -e "${YELLOW}Step 10: Creating post-installation script...${NC}"
 cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/DEBIAN/postinst <<'EOL'
 #!/bin/bash
 
@@ -293,16 +329,30 @@ chown root:root /var/log/nexus-rfid-monitor.log
 mkdir -p /var/run
 chmod 755 /var/run
 
-# Copy autostart configurations to existing users' directories
-for user_dir in /home/*; do
-    if [ -d "$user_dir" -a -w "$user_dir" ]; then
-        user_autostart_dir="$user_dir/.config/autostart"
-        mkdir -p "$user_autostart_dir"
-        cp /etc/skel/.config/autostart/monitor-nexus-rfid.desktop "$user_autostart_dir/"
-        chown $(basename "$user_dir"):$(basename "$user_dir") "$user_autostart_dir/monitor-nexus-rfid.desktop"
-        echo "Configured autostart for user: $(basename "$user_dir")"
+# Determine default user for GUI execution and configure environment file
+CONFIG_FILE=/etc/default/nexusrfid
+if [ ! -f "$CONFIG_FILE" ] || ! grep -Eq '^[^#[:space:]]' "$CONFIG_FILE"; then
+    DEFAULT_USER=$(awk -F: '$3 >= 1000 && $1 != "nobody" {print $1; exit}' /etc/passwd)
+    if [ -n "$DEFAULT_USER" ]; then
+        DEFAULT_HOME=$(getent passwd "$DEFAULT_USER" | cut -d: -f6)
+        DEFAULT_UID=$(id -u "$DEFAULT_USER")
+        DEFAULT_GID=$(id -g "$DEFAULT_USER")
+        cat > "$CONFIG_FILE" <<EOF
+# Auto-generated by NexusRFIDReader post-install script
+NEXUSRFID_USER=${DEFAULT_USER}
+NEXUSRFID_HOME=${DEFAULT_HOME}
+NEXUSRFID_DISPLAY=:0
+NEXUSRFID_XAUTHORITY=${DEFAULT_HOME}/.Xauthority
+NEXUSRFID_RUNTIME_DIR=/tmp/nexusrfid-runtime
+NEXUSRFID_UID=${DEFAULT_UID}
+NEXUSRFID_GID=${DEFAULT_GID}
+EOF
+        chmod 0644 "$CONFIG_FILE"
+        echo "Configured /etc/default/nexusrfid for user ${DEFAULT_USER}"
+    else
+        echo "WARNING: No suitable non-root user found for NexusRFID GUI launch. Please edit /etc/default/nexusrfid manually."
     fi
-done
+fi
 
 # Update desktop database
 if command -v update-desktop-database &> /dev/null; then
@@ -321,9 +371,11 @@ if command -v systemctl &> /dev/null; then
     systemctl daemon-reload
     systemctl enable nexusrfid-dhcp.service
     systemctl start nexusrfid-dhcp.service || true
-    echo "Enabled nexusrfid-dhcp systemd service"
+    systemctl enable nexusrfid-monitor.service
+    systemctl start nexusrfid-monitor.service || true
+    echo "Enabled NexusRFID systemd services (dhcp, monitor)"
 else
-    echo "systemctl not available; please enable nexusrfid-dhcp.service manually if needed."
+    echo "systemctl not available; please enable nexusrfid services manually if needed."
 fi
 
 echo "NexusRFIDReader installation completed successfully!"
@@ -335,8 +387,8 @@ EOL
 chmod 0755 ${PACKAGE_NAME}-${PACKAGE_VERSION}/DEBIAN/postinst
 echo -e "   ${GREEN}SUCCESS${NC} Post-installation script created"
 
-# Step 10: Create prerm script for clean removal
-echo -e "${YELLOW}Step 10: Creating pre-removal script...${NC}"
+# Step 11: Create pre-removal script
+echo -e "${YELLOW}Step 11: Creating pre-removal script...${NC}"
 cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/DEBIAN/prerm <<'EOL'
 #!/bin/bash
 
@@ -358,9 +410,11 @@ pkill -9 -f "monitor_nexus_rfid.sh" || true
 # Clean up lock file
 rm -f /var/run/nexus-rfid-monitor.lock
 
-# Disable and stop DHCP systemd service
+# Disable and stop systemd services
 if command -v systemctl &> /dev/null; then
+    systemctl stop nexusrfid-monitor.service || true
     systemctl stop nexusrfid-dhcp.service || true
+    systemctl disable nexusrfid-monitor.service || true
     systemctl disable nexusrfid-dhcp.service || true
     systemctl daemon-reload
 fi
@@ -371,13 +425,13 @@ EOL
 chmod 0755 ${PACKAGE_NAME}-${PACKAGE_VERSION}/DEBIAN/prerm
 echo -e "   ${GREEN}SUCCESS${NC} Pre-removal script created"
 
-# Step 11: Build the .deb package
-echo -e "${YELLOW}Step 11: Building the .deb package...${NC}"
+# Step 12: Build the .deb package
+echo -e "${YELLOW}Step 12: Building the .deb package...${NC}"
 dpkg-deb --build ${PACKAGE_NAME}-${PACKAGE_VERSION}
 echo -e "   ${GREEN}SUCCESS${NC} Package built successfully"
 
-# Step 12: Clean up build directory
-echo -e "${YELLOW}Step 12: Cleaning up build files...${NC}"
+# Step 13: Clean up build directory
+echo -e "${YELLOW}Step 13: Cleaning up build files...${NC}"
 rm -rf ${PACKAGE_NAME}-${PACKAGE_VERSION}
 echo -e "   ${GREEN}SUCCESS${NC} Build files cleaned up"
 
@@ -393,7 +447,7 @@ echo -e "${CYAN}Installation Instructions:${NC}"
 echo -e "   ${YELLOW}1.${NC} Install the package:"
 echo -e "      ${WHITE}sudo apt install ./${PACKAGE_NAME}-${PACKAGE_VERSION}.deb${NC}"
 echo ""
-echo -e "   ${YELLOW}2.${NC} Reboot to activate autostart:"
+echo -e "   ${YELLOW}2.${NC} Reboot to activate system services:"
 echo -e "      ${WHITE}sudo reboot${NC}"
 echo ""
 echo -e "   ${YELLOW}3.${NC} You can also find it in the Applications menu"
@@ -403,7 +457,7 @@ echo -e "   • Executable: /usr/local/bin/NexusRFIDReader"
 echo -e "   • Icon: /usr/share/icons/hicolor/512x512/apps/${PACKAGE_NAME}.ico"
 echo -e "   • Desktop Entry: /usr/share/applications/${PACKAGE_NAME}.desktop"
 echo -e "   • DHCP Service: /etc/systemd/system/nexusrfid-dhcp.service"
+echo -e "   • Monitor Service: /etc/systemd/system/nexusrfid-monitor.service"
 echo -e "   • Log File: /var/log/nexus-rfid-monitor.log"
-echo -e "   • Autostart: ~/.config/autostart/monitor-nexus-rfid.desktop"
 echo ""
 echo -e "${GREEN}Ready for deployment!${NC}"
