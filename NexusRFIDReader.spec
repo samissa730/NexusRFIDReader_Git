@@ -1,69 +1,89 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-"""
-PyInstaller build specification for the Nexus RFID Reader kiosk application.
+import os
+import sys
 
-This spec bundles the PySide6 UI, resource assets, and Python modules into a
-self-contained distribution. It purposefully excludes the Azure IoT helper
-tooling which is shipped separately for development flows.
-"""
+# Get the current directory
+current_dir = os.path.dirname(os.path.abspath(SPEC))
 
-import pathlib
-from PyInstaller.utils.hooks import collect_submodules
-
-project_root = pathlib.Path(__file__).resolve().parent
-
+# Define data files to include
 datas = [
-    (str(project_root / "ui"), "ui"),
-    (str(project_root / "font"), "font"),
+    # Include font files
+    (os.path.join(current_dir, 'font', '*'), 'font'),
+    # Include UI images
+    (os.path.join(current_dir, 'ui', 'img', '*'), 'ui/img'),
+    # Include compiled UI files
+    (os.path.join(current_dir, 'ui', 'pl_rc.py'), '.'),
+    # Include screens UI files
+    (os.path.join(current_dir, 'ui', 'screens', '*.py'), 'ui/screens'),
 ]
 
-binaries = []
-hiddenimports = collect_submodules("PySide6")
-
-block_cipher = None
+# Define hidden imports for PySide6 and other modules
+hiddenimports = [
+    'PySide6.QtCore',
+    'PySide6.QtGui', 
+    'PySide6.QtWidgets',
+    'PySide6.QtNetwork',
+    'PySide6.QtSerialPort',
+    'sllurp',
+    'pynmea2',
+    'geopy',
+    'geographiclib',
+    'schedule',
+    'ping3',
+    'numpy',
+    'serial',
+    'requests',
+    'urllib3',
+    'sqlite3',
+    'threading',
+    'time',
+    'json',
+    'platform',
+    'subprocess',
+    'glob',
+    'signal',
+    'traceback',
+    'functools',
+    'os',
+    'sys',
+    'pathlib',
+]
 
 a = Analysis(
-    ["main.py"],
-    pathex=[str(project_root)],
-    binaries=binaries,
+    ['main.py'],
+    pathex=[current_dir],
+    binaries=[],
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
+    hooksconfig={},
     runtime_hooks=[],
-    excludes=["Azure-IoT-Connection"],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
+    excludes=[],
     noarchive=False,
+    optimize=0,
 )
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+
+pyz = PYZ(a.pure)
 
 exe = EXE(
     pyz,
     a.scripts,
+    a.binaries,
+    a.datas,
     [],
-    exclude_binaries=True,
-    name="NexusRFIDReader",
+    name='NexusRFIDReader',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
+    upx_exclude=[],
+    runtime_tmpdir=None,
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=os.path.join(current_dir, 'ui', 'img', 'icon.ico'),
 )
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name="NexusRFIDReader",
-)
-
