@@ -1,405 +1,392 @@
-#!/usr/bin/env bash
-
-set -euo pipefail
-
-# Color palette for prettier logs
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-GREEN='\033[0;32m'
-PURPLE='\033[0;35m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m'
-
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
-
-PACKAGE_NAME="nexusrfidreader"
-APP_DIR_NAME="NexusRFIDReader"
-INSTALL_PREFIX="/opt/${APP_DIR_NAME}"
-VERSION="${VERSION:-1.0}"
-BUILD_ROOT="${PROJECT_ROOT}/build/package"
-DIST_DIR="${PROJECT_ROOT}"
-ARCH_MATRIX=("amd64:x64" "i386:x86")
-declare -a BUILT_FILES=()
-
-EXCLUDES=(
-  ".git"
-  ".mypy_cache"
-  ".pytest_cache"
-  "__pycache__"
-  "build"
-  "dist"
-  "tests"
-  "utils_Test"
-  "Azure-IoT-Connection"
-  "build"
-  "venv"
-  "UnitTests"
-  "pipelines"
-  "*.deb"
-  "*.pyc"
-  "*.pyo"
-  "*.orig"
-)
-
-usage() {
-  cat <<EOH
-Usage: $(basename "$0") [--version <semver>] [--arch amd64,i386] [--keep-build]
-
-Builds Debian packages (x64 and x86) for the Nexus RFID Reader application.
-
-Options:
-  --version <semver>   Override package version (default: ${VERSION})
-  --arch <list>        Comma-separated list of deb-arch[:label] entries (default: amd64:x64,i386:x86)
-  --keep-build         Retain intermediate build directory for inspection
-  -h, --help           Show this help text
-EOH
-}
-
-cleanup() {
-  if [ "${KEEP_BUILD:-0}" -eq 0 ] && [ -d "${BUILD_ROOT}" ]; then
-    rm -rf "${BUILD_ROOT}"
-  fi
-}
-
-trap cleanup EXIT
-
-log() {
-  printf '%b\n' "${CYAN}[create-pkg][INFO]${NC} $*"
-}
-
-err() {
-  printf '%b\n' "${RED}[create-pkg][ERROR]${NC} $*" >&2
-}
-
-log_step() {
-  printf '%b\n' "${BLUE}[create-pkg][STEP]${NC} $*"
-}
-
-log_success() {
-  printf '%b\n' "${GREEN}[create-pkg][SUCCESS]${NC} $*"
-}
-
-log_warn() {
-  printf '%b\n' "${YELLOW}[create-pkg][WARN]${NC} $*"
-}
-
-ensure_command() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    err "Required command '$1' not found on PATH."
-    exit 1
-  fi
-}
-
-parse_args() {
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --version)
-        VERSION="$2"
-        shift 2
-        ;;
-      --arch)
-        IFS=',' read -r -a ARCH_MATRIX <<<"$2"
-        shift 2
-        ;;
-      --keep-build)
-        KEEP_BUILD=1
-        shift
-        ;;
-      -h|--help)
-        usage
-        exit 0
-        ;;
-      *)
-        err "Unknown argument: $1"
-        usage
-        exit 1
-        ;;
-    esac
-  done
-}
-
-copy_project_payload() {
-  local src="$1"
-  local dest="$2"
-
-  rsync_args=(-a --delete --exclude=".git*")
-  for pattern in "${EXCLUDES[@]}"; do
-    rsync_args+=("--exclude=${pattern}")
-  done
-  rsync_args+=("${src}/" "${dest}/")
-
-  rsync "${rsync_args[@]}"
-}
-
-prepare_venv() {
-  local app_root="$1"
-  local python_bin="${PYTHON_BIN:-python3}"
-  local venv_dir="${app_root}/venv"
-
-  log "Creating virtual environment at ${venv_dir}"
-  "${python_bin}" -m venv --clear --copies "${venv_dir}"
-
-  log "Installing Python dependencies into venv"
-  "${venv_dir}/bin/pip" install --upgrade pip wheel setuptools
-  if [ -f "${app_root}/requirements.txt" ]; then
-    "${venv_dir}/bin/pip" install --no-cache-dir -r "${app_root}/requirements.txt"
-  else
-    err "requirements.txt not found in ${app_root}"
-    exit 1
-  fi
-
-  # Strip caches to keep package size down
-  find "${venv_dir}" -type d -name "__pycache__" -prune -exec rm -rf {} +
-}
-
-bundle_arp_scan() {
-  local app_root="$1"
-  local bindir="${app_root}/bin"
-
-  mkdir -p "${bindir}"
-  if command -v arp-scan >/dev/null 2>&1; then
-    install -m 0755 "$(command -v arp-scan)" "${bindir}/arp-scan"
-    log_success "Bundled arp-scan binary"
-  else
-    log_warn "arp-scan not found on build host; package will rely on system installation"
-  fi
-}
-
-write_control_file() {
-  local control_path="$1"
-  local deb_arch="$2"
-
-  cat >"${control_path}" <<EOF
-Package: ${PACKAGE_NAME}
-Version: ${VERSION}
-Section: misc
-Priority: optional
-Architecture: ${deb_arch}
-Maintainer: NexusRFID Packaging <support@nexusrfid.local>
-Depends: python3 (>= 3.9), systemd, sudo, dhcpcd5, network-manager, libpcap0.8
-Replaces: ${PACKAGE_NAME}
-Provides: ${PACKAGE_NAME}
-Conflicts: ${PACKAGE_NAME}
-Description: Nexus RFID Reader kiosk application
- This package installs the Nexus RFID Reader application, its Python
- virtual environment, supporting scripts, and systemd service so the
- device boots directly into the kiosk UI.
-EOF
-}
-
-write_postinst() {
-  local postinst_path="$1"
-
-  cat >"${postinst_path}" <<'EOF'
 #!/bin/bash
-set -e
 
-PACKAGE_ROOT="/opt/NexusRFIDReader"
-SERVICE_FILE="/etc/systemd/system/nexusrfid.service"
+# NexusRFIDReader Package Creation Script for Raspberry Pi
+# This script creates a .deb package for easy installation
 
-detect_target_user() {
-  if [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER}" != "root" ]; then
-    echo "${SUDO_USER}"
-    return
-  fi
+set -e  # Exit on any error
 
-  if command -v logname >/dev/null 2>&1; then
-    local ln_user
-    ln_user="$(logname 2>/dev/null || true)"
-    if [ -n "${ln_user}" ] && [ "${ln_user}" != "root" ]; then
-      echo "${ln_user}"
-      return
-    fi
-  fi
+# Colors for beautiful output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+WHITE='\033[1;37m'
+NC='\033[0m' # No Color
 
-  local uid_user
-  uid_user="$(getent passwd 1000 | cut -d: -f1)"
-  if [ -n "${uid_user}" ]; then
-    echo "${uid_user}"
-  else
-    echo "root"
-  fi
+# Define package variables
+PACKAGE_NAME=NexusRFIDReader
+PACKAGE_VERSION=1.0
+ARCHITECTURE=$(dpkg --print-architecture)
+DESCRIPTION="Nexus RFID Reader - Advanced RFID scanning and GPS tracking system"
+MAINTAINER="Nexus Systems"
+WEBSITE="https://nexusyms.com"
+
+echo -e "${CYAN}==============================================================${NC}"
+echo -e "${CYAN}        NexusRFIDReader Package Builder${NC}"
+echo -e "${CYAN}              For Raspberry Pi${NC}"
+echo -e "${CYAN}==============================================================${NC}"
+echo ""
+
+# Check if we're in the right directory
+if [ ! -f "main.py" ] || [ ! -f "NexusRFIDReader.spec" ]; then
+    echo -e "${RED}ERROR: Please run this script from the project root directory${NC}"
+    echo -e "${YELLOW}   Expected files: main.py, NexusRFIDReader.spec${NC}"
+    exit 1
+fi
+
+echo -e "${BLUE}Package Information:${NC}"
+echo -e "   ${WHITE}Name:${NC} $PACKAGE_NAME"
+echo -e "   ${WHITE}Version:${NC} $PACKAGE_VERSION"
+echo -e "   ${WHITE}Architecture:${NC} $ARCHITECTURE"
+echo -e "   ${WHITE}Description:${NC} $DESCRIPTION"
+echo ""
+
+# Step 1: Build PyInstaller executable
+echo -e "${YELLOW}Step 1: Building PyInstaller executable...${NC}"
+if command -v pyinstaller &> /dev/null; then
+    echo -e "   ${GREEN}SUCCESS${NC} PyInstaller found"
+    pyinstaller --clean --onefile --icon=ui/img/icon.ico --name=NexusRFIDReader main.py
+    echo -e "   ${GREEN}SUCCESS${NC} Executable built successfully"
+else
+    echo -e "   ${RED}ERROR: PyInstaller not found. Installing...${NC}"
+    pip3 install pyinstaller
+    pyinstaller --clean --onefile --icon=ui/img/icon.ico --name=NexusRFIDReader main.py
+    echo -e "   ${GREEN}SUCCESS${NC} PyInstaller installed and executable built"
+fi
+
+# Check if executable was created
+if [ ! -f "dist/NexusRFIDReader" ]; then
+    echo -e "${RED}ERROR: Executable not created successfully${NC}"
+    exit 1
+fi
+
+echo ""
+
+# Step 2: Create directory structure
+echo -e "${YELLOW}Step 2: Creating package directory structure...${NC}"
+mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/DEBIAN
+mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/local/bin
+mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/share/applications
+mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/share/icons/hicolor/512x512/apps
+mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/etc/skel/.config/autostart
+echo -e "   ${GREEN}SUCCESS${NC} Directory structure created"
+
+# Step 3: Copy files to package
+echo -e "${YELLOW}Step 3: Copying application files...${NC}"
+cp dist/NexusRFIDReader ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/local/bin/
+cp ui/img/icon.ico ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/share/icons/hicolor/512x512/apps/${PACKAGE_NAME}.ico
+echo -e "   ${GREEN}SUCCESS${NC} Application files copied"
+
+# Step 4: Create monitoring script
+echo -e "${YELLOW}Step 4: Creating application monitoring script...${NC}"
+cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/local/bin/monitor_nexus_rfid.sh <<'EOL'
+#!/bin/bash
+
+# NexusRFIDReader Monitoring Script
+# Ensures the application keeps running
+
+APP_NAME="NexusRFIDReader"
+APP_PATH="/usr/local/bin/NexusRFIDReader"
+LOG_FILE="/var/log/nexus-rfid-monitor.log"
+LOCK_FILE="/var/run/nexus-rfid-monitor.lock"
+APP_WORKDIR="/usr/local/bin"
+DHCLIENT_CMD="sudo dhclient usb0"
+DEFAULT_HOME_DIR="$(getent passwd $(logname 2>/dev/null || id -un) 2>/dev/null | cut -d: -f6)"
+USER_UID="$(id -u)"
+
+# Function to log messages
+log_message() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$LOG_FILE"
 }
 
-TARGET_USER="$(detect_target_user)"
-TARGET_UID="$(id -u "${TARGET_USER}" 2>/dev/null || echo 0)"
-TARGET_HOME="$(getent passwd "${TARGET_USER}" | cut -d: -f6)"
-TARGET_HOME="${TARGET_HOME:-/home/${TARGET_USER}}"
-RUNTIME_DIR="/run/user/${TARGET_UID}"
+# Function to ensure DHCP client runs for usb0
+run_dhclient() {
+    log_message "Running DHCP client for usb0 (command: $DHCLIENT_CMD)"
+    if command -v sudo >/dev/null 2>&1; then
+        if $DHCLIENT_CMD >> "$LOG_FILE" 2>&1; then
+            log_message "Successfully executed $DHCLIENT_CMD"
+        else
+            log_message "Failed to execute $DHCLIENT_CMD"
+        fi
+    elif command -v dhclient >/dev/null 2>&1; then
+        if dhclient usb0 >> "$LOG_FILE" 2>&1; then
+            log_message "Successfully executed dhclient usb0 without sudo"
+        else
+            log_message "Failed to execute dhclient usb0"
+        fi
+    else
+        log_message "dhclient not available on system"
+    fi
+}
 
-mkdir -p "${TARGET_HOME}/.nexusrfid" "${TARGET_HOME}/.local/share/applications"
-chown -R "${TARGET_USER}:${TARGET_USER}" "${TARGET_HOME}/.nexusrfid"
-
-if [ ! -d "${RUNTIME_DIR}" ]; then
-  install -d -m 700 -o "${TARGET_USER}" -g "${TARGET_USER}" "${RUNTIME_DIR}"
+# Check if another instance is already running
+if [ -f "$LOCK_FILE" ]; then
+    PID=$(cat "$LOCK_FILE")
+    if ps -p "$PID" > /dev/null 2>&1; then
+        log_message "Monitor already running with PID $PID"
+        exit 0
+    else
+        rm -f "$LOCK_FILE"
+    fi
 fi
 
-find "${PACKAGE_ROOT}" -type d -exec chmod 755 {} +
-if [ -d "${PACKAGE_ROOT}/scripts" ]; then
-  find "${PACKAGE_ROOT}/scripts" -type f -name "*.sh" -exec chmod 755 {} +
-fi
-if [ -d "${PACKAGE_ROOT}/bin" ]; then
-  find "${PACKAGE_ROOT}/bin" -type f -exec chmod 755 {} +
-fi
-chown -R "${TARGET_USER}:${TARGET_USER}" "${PACKAGE_ROOT}"
+# Create lock file
+echo $$ > "$LOCK_FILE"
 
-# Install desktop entry for manual launch (optional)
-install -d -m 755 "${TARGET_HOME}/.local/share/applications"
-cat > "${TARGET_HOME}/.local/share/applications/nexus-rfid.desktop" <<DESKTOP
+# Cleanup function
+cleanup() {
+    rm -f "$LOCK_FILE"
+    exit 0
+}
+
+# Set up signal handlers
+trap cleanup SIGTERM SIGINT
+
+log_message "Starting NexusRFIDReader monitor (PID: $$)"
+
+# Run DHCP client once immediately after startup
+run_dhclient
+
+# Ensure UI environment variables are set for application display
+if [ -z "$DEFAULT_HOME_DIR" ]; then
+    DEFAULT_HOME_DIR="$HOME"
+fi
+export DISPLAY=${DISPLAY:-:0}
+export HOME=${HOME:-${DEFAULT_HOME_DIR:-/home/pi}}
+export XAUTHORITY=${XAUTHORITY:-${HOME}/.Xauthority}
+if [ -z "$XDG_RUNTIME_DIR" ]; then
+    if [ -d "/run/user/$USER_UID" ]; then
+        export XDG_RUNTIME_DIR="/run/user/$USER_UID"
+    else
+        export XDG_RUNTIME_DIR="/tmp"
+    fi
+fi
+
+while true; do
+    # Check if any NexusRFIDReader processes are running
+    RUNNING_COUNT=$(pgrep -c "$APP_NAME" 2>/dev/null || echo "0")
+    
+    if [ "$RUNNING_COUNT" -eq 0 ]; then
+        log_message "$APP_NAME is not running. Starting..."
+        run_dhclient
+        # Change to application directory before starting
+        cd "$APP_WORKDIR"
+        $APP_PATH &
+        sleep 3
+        
+        # Verify it started
+        NEW_COUNT=$(pgrep -c "$APP_NAME" 2>/dev/null || echo "0")
+        if [ "$NEW_COUNT" -gt 0 ]; then
+            log_message "$APP_NAME started successfully"
+        else
+            log_message "Failed to start $APP_NAME"
+        fi
+    elif [ "$RUNNING_COUNT" -gt 1 ]; then
+        log_message "WARNING: Multiple $APP_NAME processes detected ($RUNNING_COUNT)"
+        # Kill all processes and restart
+        pkill -f "$APP_NAME"
+        sleep 2
+        log_message "Killed all $APP_NAME processes, will restart on next cycle"
+    else
+        log_message "$APP_NAME is running normally (1 process)"
+    fi
+    
+    sleep 15
+done
+EOL
+
+chmod +x ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/local/bin/monitor_nexus_rfid.sh
+echo -e "   ${GREEN}SUCCESS${NC} Monitoring script created"
+
+# Step 5: Create .desktop file for application menu
+echo -e "${YELLOW}Step 5: Creating desktop application entry...${NC}"
+cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/share/applications/${PACKAGE_NAME}.desktop <<EOL
 [Desktop Entry]
+Version=1.0
 Name=Nexus RFID Reader
-Comment=Nexus RFID Reader Application
-Exec=${PACKAGE_ROOT}/scripts/run_app.sh
-Icon=${PACKAGE_ROOT}/ui/img/icon.ico
+Comment=Advanced RFID scanning and GPS tracking system
+Exec=/usr/local/bin/NexusRFIDReader
+Icon=${PACKAGE_NAME}
 Terminal=false
 Type=Application
-Categories=Utility;
-DESKTOP
-chown "${TARGET_USER}:${TARGET_USER}" "${TARGET_HOME}/.local/share/applications/nexus-rfid.desktop"
-chmod 644 "${TARGET_HOME}/.local/share/applications/nexus-rfid.desktop"
+Categories=Utility;Office;
+Keywords=RFID;GPS;Inventory;Tracking;
+StartupNotify=true
+EOL
+echo -e "   ${GREEN}SUCCESS${NC} Desktop entry created"
 
-# Install arp-scan symlink if binary bundled
-if [ -x "${PACKAGE_ROOT}/bin/arp-scan" ]; then
-  install -d -m 755 /usr/local/bin
-  ln -sf "${PACKAGE_ROOT}/bin/arp-scan" /usr/local/bin/arp-scan
-fi
+# Step 6: Create autostart entry
+echo -e "${YELLOW}Step 6: Creating autostart configuration...${NC}"
+cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/etc/skel/.config/autostart/monitor-nexus-rfid.desktop <<EOL
+[Desktop Entry]
+Type=Application
+Exec=/usr/local/bin/monitor_nexus_rfid.sh
+Hidden=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true
+Name=Monitor Nexus RFID Reader
+Comment=Ensures NexusRFIDReader keeps running
+EOL
+echo -e "   ${GREEN}SUCCESS${NC} Autostart configuration created"
 
-# Install/refresh systemd service
-if [ -x "${PACKAGE_ROOT}/scripts/install_service.sh" ]; then
-  SUDO_USER="${TARGET_USER}" HOME="${TARGET_HOME}" "${PACKAGE_ROOT}/scripts/install_service.sh"
-else
-  echo "install_service.sh missing in package payload" >&2
-  exit 1
-fi
+# Step 7: Create control file
+echo -e "${YELLOW}Step 7: Creating package control file...${NC}"
+cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/DEBIAN/control <<EOL
+Package: ${PACKAGE_NAME}
+Version: ${PACKAGE_VERSION}
+Section: utils
+Priority: optional
+Architecture: ${ARCHITECTURE}
+Maintainer: ${MAINTAINER} <support@nexusyms.com>
+Homepage: ${WEBSITE}
+Depends: libxcb-xinerama0, libxcb-cursor0, libx11-xcb1, libxcb1, libxfixes3, libxi6, libxrender1, libxcb-render0, libxcb-shape0, libxcb-xfixes0, x11-xserver-utils, python3, python3-pip, arp-scan, isc-dhcp-client
+Description: ${DESCRIPTION}
+ This application provides advanced RFID scanning capabilities with GPS tracking,
+ real-time data processing, and cloud synchronization. It's designed for inventory
+ management and asset tracking in industrial environments.
+ .
+ Features:
+  * Real-time RFID tag scanning
+  * GPS location tracking
+  * SQLite database storage
+  * Cloud API integration
+  * Configurable filtering options
+  * Automatic data synchronization
+  * User-friendly GUI interface
+EOL
+echo -e "   ${GREEN}SUCCESS${NC} Control file created"
 
-# Patch generated service file with runtime-specific paths
-if [ -f "${SERVICE_FILE}" ]; then
-  sed -i "s|^Environment=HOME=.*|Environment=HOME=${TARGET_HOME}|g" "${SERVICE_FILE}"
-  sed -i "s|^Environment=XAUTHORITY=.*|Environment=XAUTHORITY=${TARGET_HOME}/.Xauthority|g" "${SERVICE_FILE}"
-  sed -i "s|^Environment=XDG_RUNTIME_DIR=.*|Environment=XDG_RUNTIME_DIR=${RUNTIME_DIR}|g" "${SERVICE_FILE}"
-  sed -i "s|^Environment=DBUS_SESSION_BUS_ADDRESS=.*|Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=${RUNTIME_DIR}/bus|g" "${SERVICE_FILE}"
-
-  systemctl daemon-reload
-  systemctl restart nexusrfid.service || systemctl start nexusrfid.service
-else
-  echo "Systemd service file not found at ${SERVICE_FILE}" >&2
-fi
-
-exit 0
-EOF
-
-  chmod 755 "${postinst_path}"
-}
-
-write_prerm() {
-  local prerm_path="$1"
-  cat >"${prerm_path}" <<'EOF'
+# Step 8: Create postinst script
+echo -e "${YELLOW}Step 8: Creating post-installation script...${NC}"
+cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/DEBIAN/postinst <<'EOL'
 #!/bin/bash
+
 set -e
 
-SERVICE="nexusrfid.service"
+echo "Setting up NexusRFIDReader environment..."
 
-if systemctl list-unit-files | grep -q "^${SERVICE}"; then
-  systemctl stop "${SERVICE}" || true
-  systemctl disable "${SERVICE}" || true
+# Ensure arp-scan is installed
+if ! dpkg -s arp-scan >/dev/null 2>&1; then
+    echo "Installing arp-scan dependency..."
+    if command -v apt-get >/dev/null 2>&1; then
+        apt-get update
+        apt-get install -y arp-scan
+    else
+        echo "apt-get not found. Please install arp-scan manually." >&2
+        exit 1
+    fi
 fi
 
-exit 0
-EOF
-  chmod 755 "${prerm_path}"
-}
+# Create log directory
+LOG_DIR=/var/log
+if [ ! -d "$LOG_DIR" ]; then
+    mkdir -p "$LOG_DIR"
+fi
 
-write_postrm() {
-  local postrm_path="$1"
-  cat >"${postrm_path}" <<'EOF'
+# Set up log file for monitoring script
+touch /var/log/nexus-rfid-monitor.log
+chmod 644 /var/log/nexus-rfid-monitor.log
+chown root:root /var/log/nexus-rfid-monitor.log
+
+# Create run directory for lock files
+mkdir -p /var/run
+chmod 755 /var/run
+
+# Copy autostart configurations to existing users' directories
+for user_dir in /home/*; do
+    if [ -d "$user_dir" -a -w "$user_dir" ]; then
+        user_autostart_dir="$user_dir/.config/autostart"
+        mkdir -p "$user_autostart_dir"
+        cp /etc/skel/.config/autostart/monitor-nexus-rfid.desktop "$user_autostart_dir/"
+        chown $(basename "$user_dir"):$(basename "$user_dir") "$user_autostart_dir/monitor-nexus-rfid.desktop"
+        echo "Configured autostart for user: $(basename "$user_dir")"
+    fi
+done
+
+# Update desktop database
+if command -v update-desktop-database &> /dev/null; then
+    update-desktop-database /usr/share/applications
+    echo "Updated desktop database"
+fi
+
+# Update icon cache
+if command -v gtk-update-icon-cache &> /dev/null; then
+    gtk-update-icon-cache -f -t /usr/share/icons/hicolor
+    echo "Updated icon cache"
+fi
+
+echo "NexusRFIDReader installation completed successfully!"
+echo "You can also start it manually from the Applications menu."
+
+EOL
+
+# Make the postinst script executable
+chmod 0755 ${PACKAGE_NAME}-${PACKAGE_VERSION}/DEBIAN/postinst
+echo -e "   ${GREEN}SUCCESS${NC} Post-installation script created"
+
+# Step 9: Create prerm script for clean removal
+echo -e "${YELLOW}Step 9: Creating pre-removal script...${NC}"
+cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/DEBIAN/prerm <<'EOL'
 #!/bin/bash
-set -e
 
-SERVICE_FILE="/etc/systemd/system/nexusrfid.service"
+echo "Stopping NexusRFIDReader processes..."
 
-if [ "$1" = "purge" ]; then
-  rm -f /usr/local/bin/arp-scan
-  rm -f "${SERVICE_FILE}"
-  systemctl daemon-reload || true
-fi
+# Stop monitoring script first
+pkill -f "monitor_nexus_rfid.sh" || true
 
-exit 0
-EOF
-  chmod 755 "${postrm_path}"
-}
+# Stop all NexusRFIDReader processes
+pkill -f "NexusRFIDReader" || true
 
-build_deb() {
-  local deb_arch="$1"
-  local label="$2"
+# Wait a moment for graceful shutdown
+sleep 2
 
-  local stage_dir="${BUILD_ROOT}/stage_${label}"
-  local control_dir="${stage_dir}/DEBIAN"
-  local payload_dir="${stage_dir}${INSTALL_PREFIX}"
+# Force kill if still running
+pkill -9 -f "NexusRFIDReader" || true
+pkill -9 -f "monitor_nexus_rfid.sh" || true
 
-  rm -rf "${stage_dir}"
-  mkdir -p "${control_dir}" "${payload_dir}"
+# Clean up lock file
+rm -f /var/run/nexus-rfid-monitor.lock
 
-  log_step "Staging project for architecture ${deb_arch}"
-  copy_project_payload "${PROJECT_ROOT}" "${payload_dir}"
+echo "NexusRFIDReader processes stopped."
+EOL
 
-  prepare_venv "${payload_dir}"
-  bundle_arp_scan "${payload_dir}"
+chmod 0755 ${PACKAGE_NAME}-${PACKAGE_VERSION}/DEBIAN/prerm
+echo -e "   ${GREEN}SUCCESS${NC} Pre-removal script created"
 
-  write_control_file "${control_dir}/control" "${deb_arch}"
-  write_postinst "${control_dir}/postinst"
-  write_prerm "${control_dir}/prerm"
-  write_postrm "${control_dir}/postrm"
+# Step 10: Build the .deb package
+echo -e "${YELLOW}Step 10: Building the .deb package...${NC}"
+dpkg-deb --build ${PACKAGE_NAME}-${PACKAGE_VERSION}
+echo -e "   ${GREEN}SUCCESS${NC} Package built successfully"
 
-  find "${stage_dir}" -type d -exec chmod 755 {} +
-  find "${stage_dir}" -type f -name "*.sh" -exec chmod 755 {} +
-  find "${payload_dir}" -type f -name "*.py" -exec chmod 644 {} +
+# Step 11: Clean up build directory
+echo -e "${YELLOW}Step 11: Cleaning up build files...${NC}"
+rm -rf ${PACKAGE_NAME}-${PACKAGE_VERSION}
+echo -e "   ${GREEN}SUCCESS${NC} Build files cleaned up"
 
-  local output_file="${DIST_DIR}/${APP_DIR_NAME}-${VERSION}_${label}.deb"
-  log_step "Building package ${output_file}"
-  dpkg-deb --build --root-owner-group "${stage_dir}" "${output_file}"
-  log_success "Created ${output_file}"
-  BUILT_FILES+=("${output_file}")
-}
-
-main() {
-  parse_args "$@"
-
-  ensure_command python3
-  ensure_command dpkg-deb
-  ensure_command rsync
-  ensure_command sed
-
-  mkdir -p "${BUILD_ROOT}"
-
-  printf '%b\n' "${PURPLE}============================================================${NC}"
-  printf '%b\n' "${PURPLE}[create-pkg] Nexus RFID Reader Package Builder${NC}"
-  printf '%b\n' "${PURPLE}============================================================${NC}"
-  log "Building NexusRFIDReader packages (version ${VERSION})"
-
-  for entry in "${ARCH_MATRIX[@]}"; do
-    local arch="${entry%%:*}"
-    local label="${entry##*:}"
-    build_deb "${arch}" "${label}"
-  done
-
-  if [ "${#BUILT_FILES[@]}" -gt 0 ]; then
-    local default_alias="${DIST_DIR}/${APP_DIR_NAME}-${VERSION}.deb"
-    log_step "Creating convenience copy ${default_alias}"
-    cp -f "${BUILT_FILES[0]}" "${default_alias}"
-    BUILT_FILES+=("${default_alias}")
-  fi
-
-  log "Packages created in ${DIST_DIR}:"
-  ls -1 "${DIST_DIR}"/${APP_DIR_NAME}-${VERSION}_*.deb 2>/dev/null || true
-  if [ -e "${DIST_DIR}/${APP_DIR_NAME}-${VERSION}.deb" ]; then
-    log_success "Default package copy: ${APP_DIR_NAME}-${VERSION}.deb"
-  fi
-
-  log_success "Packaging complete."
-  printf '%b\n' "${PURPLE}============================================================${NC}"
-}
-
-main "$@"
-
+echo ""
+echo -e "${GREEN}==============================================================${NC}"
+echo -e "${GREEN}            PACKAGE CREATED SUCCESSFULLY!${NC}"
+echo -e "${GREEN}==============================================================${NC}"
+echo ""
+echo -e "${WHITE}Package File:${NC} ${PACKAGE_NAME}-${PACKAGE_VERSION}.deb"
+echo -e "${WHITE}Package Size:${NC} $(du -h ${PACKAGE_NAME}-${PACKAGE_VERSION}.deb | cut -f1)"
+echo ""
+echo -e "${CYAN}Installation Instructions:${NC}"
+echo -e "   ${YELLOW}1.${NC} Install the package:"
+echo -e "      ${WHITE}sudo apt install ./${PACKAGE_NAME}-${PACKAGE_VERSION}.deb${NC}"
+echo ""
+echo -e "   ${YELLOW}2.${NC} Reboot to activate autostart:"
+echo -e "      ${WHITE}sudo reboot${NC}"
+echo ""
+echo -e "   ${YELLOW}3.${NC} You can also find it in the Applications menu"
+echo ""
+echo -e "${PURPLE}Package Contents:${NC}"
+echo -e "   • Executable: /usr/local/bin/NexusRFIDReader"
+echo -e "   • Icon: /usr/share/icons/hicolor/512x512/apps/${PACKAGE_NAME}.ico"
+echo -e "   • Desktop Entry: /usr/share/applications/${PACKAGE_NAME}.desktop"
+echo -e "   • Log File: /var/log/nexus-rfid-monitor.log"
+echo -e "   • Autostart: ~/.config/autostart/monitor-nexus-rfid.desktop"
+echo ""
+echo -e "${GREEN}Ready for deployment!${NC}"
