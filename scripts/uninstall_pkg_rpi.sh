@@ -15,7 +15,8 @@ CYAN='\033[0;36m'
 WHITE='\033[1;37m'
 NC='\033[0m' # No Color
 
-PACKAGE_NAME=NexusRFIDReader
+PACKAGE_NAME=nexusrfidreader
+PACKAGE_EXECUTABLE="NexusRFIDReader"
 
 echo -e "${CYAN}==============================================================${NC}"
 echo -e "${CYAN}            NexusRFIDReader Uninstaller${NC}"
