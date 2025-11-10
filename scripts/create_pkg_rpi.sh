@@ -71,6 +71,7 @@ mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/local/bin
 mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/share/applications
 mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/share/icons/hicolor/512x512/apps
 mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/etc/skel/.config/autostart
+mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/etc/systemd/system
 echo -e "   ${GREEN}SUCCESS${NC} Directory structure created"
 
 # Step 3: Copy files to package
@@ -92,33 +93,12 @@ APP_PATH="/usr/local/bin/NexusRFIDReader"
 LOG_FILE="/var/log/nexus-rfid-monitor.log"
 LOCK_FILE="/var/run/nexus-rfid-monitor.lock"
 APP_WORKDIR="/usr/local/bin"
-DHCLIENT_CMD="sudo dhclient usb0"
 DEFAULT_HOME_DIR="$(getent passwd $(logname 2>/dev/null || id -un) 2>/dev/null | cut -d: -f6)"
 USER_UID="$(id -u)"
 
 # Function to log messages
 log_message() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$LOG_FILE"
-}
-
-# Function to ensure DHCP client runs for usb0
-run_dhclient() {
-    log_message "Running DHCP client for usb0 (command: $DHCLIENT_CMD)"
-    if command -v sudo >/dev/null 2>&1; then
-        if $DHCLIENT_CMD >> "$LOG_FILE" 2>&1; then
-            log_message "Successfully executed $DHCLIENT_CMD"
-        else
-            log_message "Failed to execute $DHCLIENT_CMD"
-        fi
-    elif command -v dhclient >/dev/null 2>&1; then
-        if dhclient usb0 >> "$LOG_FILE" 2>&1; then
-            log_message "Successfully executed dhclient usb0 without sudo"
-        else
-            log_message "Failed to execute dhclient usb0"
-        fi
-    else
-        log_message "dhclient not available on system"
-    fi
 }
 
 # Check if another instance is already running
@@ -146,9 +126,6 @@ trap cleanup SIGTERM SIGINT
 
 log_message "Starting NexusRFIDReader monitor (PID: $$)"
 
-# Run DHCP client once immediately after startup
-run_dhclient
-
 # Ensure UI environment variables are set for application display
 if [ -z "$DEFAULT_HOME_DIR" ]; then
     DEFAULT_HOME_DIR="$HOME"
@@ -170,7 +147,6 @@ while true; do
     
     if [ "$RUNNING_COUNT" -eq 0 ]; then
         log_message "$APP_NAME is not running. Starting..."
-        run_dhclient
         # Change to application directory before starting
         cd "$APP_WORKDIR"
         $APP_PATH &
@@ -200,8 +176,31 @@ EOL
 chmod +x ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/local/bin/monitor_nexus_rfid.sh
 echo -e "   ${GREEN}SUCCESS${NC} Monitoring script created"
 
-# Step 5: Create .desktop file for application menu
-echo -e "${YELLOW}Step 5: Creating desktop application entry...${NC}"
+# Step 5: Create systemd service for USB0 DHCP
+echo -e "${YELLOW}Step 5: Creating systemd service for USB0 DHCP...${NC}"
+cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/etc/systemd/system/nexusrfid-dhcp.service <<'EOL'
+[Unit]
+Description=Obtain DHCP lease for NexusRFID USB0 interface
+DefaultDependencies=no
+After=local-fs.target
+Wants=network-pre.target
+Before=network-pre.target
+Before=network.target
+Before=multi-user.target
+Before=graphical.target
+
+[Service]
+Type=oneshot
+ExecStart=/sbin/dhclient usb0
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOL
+echo -e "   ${GREEN}SUCCESS${NC} Systemd service created"
+
+# Step 6: Create .desktop file for application menu
+echo -e "${YELLOW}Step 6: Creating desktop application entry...${NC}"
 cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/share/applications/${PACKAGE_NAME}.desktop <<EOL
 [Desktop Entry]
 Version=1.0
@@ -217,8 +216,8 @@ StartupNotify=true
 EOL
 echo -e "   ${GREEN}SUCCESS${NC} Desktop entry created"
 
-# Step 6: Create autostart entry
-echo -e "${YELLOW}Step 6: Creating autostart configuration...${NC}"
+# Step 7: Create autostart entry
+echo -e "${YELLOW}Step 7: Creating autostart configuration...${NC}"
 cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/etc/skel/.config/autostart/monitor-nexus-rfid.desktop <<EOL
 [Desktop Entry]
 Type=Application
@@ -231,8 +230,8 @@ Comment=Ensures NexusRFIDReader keeps running
 EOL
 echo -e "   ${GREEN}SUCCESS${NC} Autostart configuration created"
 
-# Step 7: Create control file
-echo -e "${YELLOW}Step 7: Creating package control file...${NC}"
+# Step 8: Create control file
+echo -e "${YELLOW}Step 8: Creating package control file...${NC}"
 cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/DEBIAN/control <<EOL
 Package: ${PACKAGE_NAME}
 Version: ${PACKAGE_VERSION}
@@ -258,8 +257,8 @@ Description: ${DESCRIPTION}
 EOL
 echo -e "   ${GREEN}SUCCESS${NC} Control file created"
 
-# Step 8: Create postinst script
-echo -e "${YELLOW}Step 8: Creating post-installation script...${NC}"
+# Step 9: Create postinst script
+echo -e "${YELLOW}Step 9: Creating post-installation script...${NC}"
 cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/DEBIAN/postinst <<'EOL'
 #!/bin/bash
 
@@ -317,6 +316,16 @@ if command -v gtk-update-icon-cache &> /dev/null; then
     echo "Updated icon cache"
 fi
 
+# Enable and start DHCP systemd service
+if command -v systemctl &> /dev/null; then
+    systemctl daemon-reload
+    systemctl enable nexusrfid-dhcp.service
+    systemctl start nexusrfid-dhcp.service || true
+    echo "Enabled nexusrfid-dhcp systemd service"
+else
+    echo "systemctl not available; please enable nexusrfid-dhcp.service manually if needed."
+fi
+
 echo "NexusRFIDReader installation completed successfully!"
 echo "You can also start it manually from the Applications menu."
 
@@ -326,8 +335,8 @@ EOL
 chmod 0755 ${PACKAGE_NAME}-${PACKAGE_VERSION}/DEBIAN/postinst
 echo -e "   ${GREEN}SUCCESS${NC} Post-installation script created"
 
-# Step 9: Create prerm script for clean removal
-echo -e "${YELLOW}Step 9: Creating pre-removal script...${NC}"
+# Step 10: Create prerm script for clean removal
+echo -e "${YELLOW}Step 10: Creating pre-removal script...${NC}"
 cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/DEBIAN/prerm <<'EOL'
 #!/bin/bash
 
@@ -349,19 +358,26 @@ pkill -9 -f "monitor_nexus_rfid.sh" || true
 # Clean up lock file
 rm -f /var/run/nexus-rfid-monitor.lock
 
+# Disable and stop DHCP systemd service
+if command -v systemctl &> /dev/null; then
+    systemctl stop nexusrfid-dhcp.service || true
+    systemctl disable nexusrfid-dhcp.service || true
+    systemctl daemon-reload
+fi
+
 echo "NexusRFIDReader processes stopped."
 EOL
 
 chmod 0755 ${PACKAGE_NAME}-${PACKAGE_VERSION}/DEBIAN/prerm
 echo -e "   ${GREEN}SUCCESS${NC} Pre-removal script created"
 
-# Step 10: Build the .deb package
-echo -e "${YELLOW}Step 10: Building the .deb package...${NC}"
+# Step 11: Build the .deb package
+echo -e "${YELLOW}Step 11: Building the .deb package...${NC}"
 dpkg-deb --build ${PACKAGE_NAME}-${PACKAGE_VERSION}
 echo -e "   ${GREEN}SUCCESS${NC} Package built successfully"
 
-# Step 11: Clean up build directory
-echo -e "${YELLOW}Step 11: Cleaning up build files...${NC}"
+# Step 12: Clean up build directory
+echo -e "${YELLOW}Step 12: Cleaning up build files...${NC}"
 rm -rf ${PACKAGE_NAME}-${PACKAGE_VERSION}
 echo -e "   ${GREEN}SUCCESS${NC} Build files cleaned up"
 
@@ -386,6 +402,7 @@ echo -e "${PURPLE}Package Contents:${NC}"
 echo -e "   • Executable: /usr/local/bin/NexusRFIDReader"
 echo -e "   • Icon: /usr/share/icons/hicolor/512x512/apps/${PACKAGE_NAME}.ico"
 echo -e "   • Desktop Entry: /usr/share/applications/${PACKAGE_NAME}.desktop"
+echo -e "   • DHCP Service: /etc/systemd/system/nexusrfid-dhcp.service"
 echo -e "   • Log File: /var/log/nexus-rfid-monitor.log"
 echo -e "   • Autostart: ~/.config/autostart/monitor-nexus-rfid.desktop"
 echo ""
