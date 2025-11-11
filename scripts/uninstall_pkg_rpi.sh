@@ -15,8 +15,9 @@ CYAN='\033[0;36m'
 WHITE='\033[1;37m'
 NC='\033[0m' # No Color
 
-PACKAGE_NAME=nexusrfidreader
+PACKAGE_NAME=NexusRFIDReader
 PACKAGE_EXECUTABLE="NexusRFIDReader"
+SERVICE_NAME="nexusrfid_production.service"
 
 echo -e "${CYAN}==============================================================${NC}"
 echo -e "${CYAN}            NexusRFIDReader Uninstaller${NC}"
@@ -42,39 +43,56 @@ fi
 
 echo ""
 
-# Step 1: Stop all running processes
-echo -e "${YELLOW}Step 1: Stopping NexusRFIDReader processes...${NC}"
-echo -e "   ${WHITE}Stopping application processes...${NC}"
-pkill -f "NexusRFIDReader" || echo -e "   ${BLUE}No running NexusRFIDReader processes found${NC}"
+# Step 1: Stop and disable systemd service
+echo -e "${YELLOW}Step 1: Stopping systemd service...${NC}"
+if systemctl is-active --quiet "${SERVICE_NAME}" 2>/dev/null; then
+    systemctl stop "${SERVICE_NAME}"
+    echo -e "   ${GREEN}SUCCESS${NC} Service stopped"
+else
+    echo -e "   ${BLUE}Service was not running${NC}"
+fi
 
-echo -e "   ${WHITE}Stopping monitoring processes...${NC}"
-pkill -f "monitor_nexus_rfid.sh" || echo -e "   ${BLUE}No running monitoring processes found${NC}"
+if systemctl is-enabled --quiet "${SERVICE_NAME}" 2>/dev/null; then
+    systemctl disable "${SERVICE_NAME}"
+    echo -e "   ${GREEN}SUCCESS${NC} Service disabled"
+else
+    echo -e "   ${BLUE}Service was not enabled${NC}"
+fi
 
 # Wait a moment for processes to stop
 sleep 2
 
-# Force kill if still running
-pkill -9 -f "NexusRFIDReader" 2>/dev/null || true
-pkill -9 -f "monitor_nexus_rfid.sh" 2>/dev/null || true
+# Force kill any remaining processes as fallback
+pkill -f "NexusRFIDReader" 2>/dev/null || true
 
-# Clean up lock file
-rm -f /var/run/nexus-rfid-monitor.lock
+echo -e "   ${GREEN}SUCCESS${NC} Service stopped and disabled"
 
-echo -e "   ${GREEN}SUCCESS${NC} All processes stopped"
-
-# Step 2: Remove the package using dpkg
-echo -e "${YELLOW}Step 2: Removing package using dpkg...${NC}"
-if dpkg -l | grep -q "^ii.*${PACKAGE_NAME}"; then
-    dpkg --remove ${PACKAGE_NAME} || echo -e "   ${YELLOW}WARNING: Package removal had issues, continuing...${NC}"
-    echo -e "   ${GREEN}SUCCESS${NC} Package removed"
+# Step 2: Remove and purge the package
+echo -e "${YELLOW}Step 2: Removing package and configuration files...${NC}"
+if dpkg -l | grep -q "^ii.*${PACKAGE_NAME}\|^rc.*${PACKAGE_NAME}"; then
+    # Package is installed or partially removed, purge it
+    apt-get purge -y ${PACKAGE_NAME} 2>/dev/null || {
+        echo -e "   ${YELLOW}WARNING: Package removal had issues, continuing with manual cleanup...${NC}"
+        # Try dpkg remove as fallback
+        dpkg --remove ${PACKAGE_NAME} 2>/dev/null || true
+    }
+    echo -e "   ${GREEN}SUCCESS${NC} Package removed and purged"
 else
-    echo -e "   ${BLUE}Package not found in dpkg database${NC}"
+    echo -e "   ${BLUE}Package not found in dpkg database, continuing with manual cleanup...${NC}"
 fi
 
-# Step 3: Purge configuration files
-echo -e "${YELLOW}Step 3: Purging configuration files...${NC}"
-apt-get purge -y ${PACKAGE_NAME} 2>/dev/null || echo -e "   ${BLUE}No configuration files to purge${NC}"
-echo -e "   ${GREEN}SUCCESS${NC} Configuration files purged"
+# Step 3: Remove systemd service file
+echo -e "${YELLOW}Step 3: Removing systemd service file...${NC}"
+SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}"
+if [ -f "$SERVICE_FILE" ]; then
+    rm -f "$SERVICE_FILE"
+    echo -e "   ${GREEN}SUCCESS${NC} Removed service file: $SERVICE_FILE"
+    # Reload systemd daemon
+    systemctl daemon-reload 2>/dev/null || true
+    echo -e "   ${GREEN}SUCCESS${NC} Systemd daemon reloaded"
+else
+    echo -e "   ${BLUE}Service file not found: $SERVICE_FILE${NC}"
+fi
 
 # Step 4: Remove application files
 echo -e "${YELLOW}Step 4: Removing application files...${NC}"
@@ -85,26 +103,34 @@ if [ -f "/usr/local/bin/NexusRFIDReader" ]; then
     echo -e "   ${GREEN}SUCCESS${NC} Removed executable: /usr/local/bin/NexusRFIDReader"
 fi
 
-# Remove monitoring script
-if [ -f "/usr/local/bin/monitor_nexus_rfid.sh" ]; then
-    rm -f /usr/local/bin/monitor_nexus_rfid.sh
-    echo -e "   ${GREEN}SUCCESS${NC} Removed monitoring script: /usr/local/bin/monitor_nexus_rfid.sh"
-fi
-
 # Remove desktop entry
 if [ -f "/usr/share/applications/${PACKAGE_NAME}.desktop" ]; then
     rm -f /usr/share/applications/${PACKAGE_NAME}.desktop
     echo -e "   ${GREEN}SUCCESS${NC} Removed desktop entry: /usr/share/applications/${PACKAGE_NAME}.desktop"
+else
+    echo -e "   ${BLUE}Desktop entry not found${NC}"
 fi
 
 # Remove icon
 if [ -f "/usr/share/icons/hicolor/512x512/apps/${PACKAGE_NAME}.ico" ]; then
     rm -f /usr/share/icons/hicolor/512x512/apps/${PACKAGE_NAME}.ico
     echo -e "   ${GREEN}SUCCESS${NC} Removed icon: /usr/share/icons/hicolor/512x512/apps/${PACKAGE_NAME}.ico"
+else
+    echo -e "   ${BLUE}Icon not found${NC}"
 fi
 
-# Step 5: Remove data directories
-echo -e "${YELLOW}Step 5: Removing data directories...${NC}"
+# Step 5: Remove sudoers configuration
+echo -e "${YELLOW}Step 5: Removing sudoers configuration...${NC}"
+SUDOERS_FILE="/etc/sudoers.d/nexusrfid"
+if [ -f "$SUDOERS_FILE" ]; then
+    rm -f "$SUDOERS_FILE"
+    echo -e "   ${GREEN}SUCCESS${NC} Removed sudoers file: $SUDOERS_FILE"
+else
+    echo -e "   ${BLUE}Sudoers file not found${NC}"
+fi
+
+# Step 6: Remove data directories
+echo -e "${YELLOW}Step 6: Removing data directories...${NC}"
 
 # Remove main data directory
 RFID_DATA_DIR=/var/lib/nexusrfid
@@ -123,43 +149,8 @@ else
     echo -e "   ${BLUE}No data directory found${NC}"
 fi
 
-# Step 6: Clean up autostart entries
-echo -e "${YELLOW}Step 6: Removing autostart entries...${NC}"
-AUTOSTART_REMOVED=0
-for user_dir in /home/*; do
-    if [ -d "$user_dir" ]; then
-        user_autostart_dir="$user_dir/.config/autostart"
-        autostart_file="$user_autostart_dir/monitor-nexus-rfid.desktop"
-        if [ -f "$autostart_file" ]; then
-            rm -f "$autostart_file"
-            echo -e "   ${GREEN}SUCCESS${NC} Removed autostart for user: $(basename "$user_dir")"
-            AUTOSTART_REMOVED=1
-        fi
-    fi
-done
-
-if [ $AUTOSTART_REMOVED -eq 0 ]; then
-    echo -e "   ${BLUE}No autostart entries found${NC}"
-fi
-
-# Step 7: Remove log files
-echo -e "${YELLOW}Step 7: Cleaning up log files...${NC}"
-if [ -f "/var/log/nexus-rfid-monitor.log" ]; then
-    echo -e "   ${WHITE}Found log file: /var/log/nexus-rfid-monitor.log${NC}"
-    read -p "   Remove log file? (y/N): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        rm -f /var/log/nexus-rfid-monitor.log
-        echo -e "   ${GREEN}SUCCESS${NC} Removed log file: /var/log/nexus-rfid-monitor.log"
-    else
-        echo -e "   ${BLUE}Log file preserved: /var/log/nexus-rfid-monitor.log${NC}"
-    fi
-else
-    echo -e "   ${BLUE}No log file found${NC}"
-fi
-
-# Step 8: Update system databases
-echo -e "${YELLOW}Step 8: Updating system databases...${NC}"
+# Step 7: Update system databases
+echo -e "${YELLOW}Step 7: Updating system databases...${NC}"
 
 # Update desktop database
 if command -v update-desktop-database &> /dev/null; then
@@ -173,21 +164,22 @@ if command -v gtk-update-icon-cache &> /dev/null; then
     echo -e "   ${GREEN}SUCCESS${NC} Updated icon cache"
 fi
 
-# Step 9: Clean up package cache
-echo -e "${YELLOW}Step 9: Cleaning up package cache...${NC}"
+# Step 8: Clean up package cache
+echo -e "${YELLOW}Step 8: Cleaning up package cache...${NC}"
 apt-get autoremove -y 2>/dev/null || true
 apt-get autoclean 2>/dev/null || true
 echo -e "   ${GREEN}SUCCESS${NC} Package cache cleaned"
 
-# Step 10: Final verification
-echo -e "${YELLOW}Step 10: Final verification...${NC}"
+# Step 9: Final verification
+echo -e "${YELLOW}Step 9: Final verification...${NC}"
 REMAINING_FILES=0
 
 # Check for remaining files
 if [ -f "/usr/local/bin/NexusRFIDReader" ] || \
-   [ -f "/usr/local/bin/monitor_nexus_rfid.sh" ] || \
+   [ -f "/etc/systemd/system/${SERVICE_NAME}" ] || \
    [ -f "/usr/share/applications/${PACKAGE_NAME}.desktop" ] || \
-   [ -f "/usr/share/icons/hicolor/512x512/apps/${PACKAGE_NAME}.ico" ]; then
+   [ -f "/usr/share/icons/hicolor/512x512/apps/${PACKAGE_NAME}.ico" ] || \
+   [ -f "/etc/sudoers.d/nexusrfid" ]; then
     REMAINING_FILES=1
 fi
 
@@ -195,6 +187,12 @@ if [ $REMAINING_FILES -eq 0 ]; then
     echo -e "   ${GREEN}SUCCESS${NC} All application files removed successfully"
 else
     echo -e "   ${YELLOW}WARNING: Some files may still remain${NC}"
+    echo -e "   ${WHITE}Remaining files:${NC}"
+    [ -f "/usr/local/bin/NexusRFIDReader" ] && echo -e "      • /usr/local/bin/NexusRFIDReader"
+    [ -f "/etc/systemd/system/${SERVICE_NAME}" ] && echo -e "      • /etc/systemd/system/${SERVICE_NAME}"
+    [ -f "/usr/share/applications/${PACKAGE_NAME}.desktop" ] && echo -e "      • /usr/share/applications/${PACKAGE_NAME}.desktop"
+    [ -f "/usr/share/icons/hicolor/512x512/apps/${PACKAGE_NAME}.ico" ] && echo -e "      • /usr/share/icons/hicolor/512x512/apps/${PACKAGE_NAME}.ico"
+    [ -f "/etc/sudoers.d/nexusrfid" ] && echo -e "      • /etc/sudoers.d/nexusrfid"
 fi
 
 echo ""
@@ -203,19 +201,24 @@ echo -e "${GREEN}            UNINSTALLATION COMPLETED!${NC}"
 echo -e "${GREEN}==============================================================${NC}"
 echo ""
 echo -e "${CYAN}Summary of removed components:${NC}"
+echo -e "   • Systemd service (${SERVICE_NAME})"
 echo -e "   • Application executable"
-echo -e "   • Monitoring script"
 echo -e "   • Desktop entry"
 echo -e "   • Application icon"
-echo -e "   • Autostart configurations"
+echo -e "   • Sudoers configuration"
 echo -e "   • Package database entries"
 echo ""
 echo -e "${PURPLE}Preserved components (if you chose to keep them):${NC}"
 echo -e "   • Data directory: /var/lib/nexusrfid"
-echo -e "   • Log file: /var/log/nexus-rfid-monitor.log"
+echo ""
+echo -e "${BLUE}Service Management:${NC}"
+echo -e "   • The systemd service has been stopped and disabled"
+echo -e "   • Service file has been removed from /etc/systemd/system/"
+echo -e "   • Systemd daemon has been reloaded"
 echo ""
 echo -e "${BLUE}Note:${NC}"
-echo -e "   • You may need to log out and log back in for all changes to take effect"
-echo -e "   • If you want to reinstall, run the installation script again"
+echo -e "   • You may need to reboot for all changes to take full effect"
+echo -e "   • If you want to reinstall, install the package again:"
+echo -e "     ${WHITE}sudo apt install ./NexusRFIDReader-1.0.deb${NC}"
 echo ""
 echo -e "${GREEN}NexusRFIDReader has been completely removed!${NC}"

@@ -70,7 +70,7 @@ mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/DEBIAN
 mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/local/bin
 mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/share/applications
 mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/share/icons/hicolor/512x512/apps
-mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/etc/skel/.config/autostart
+mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/etc/systemd/system
 mkdir -p ${PACKAGE_NAME}-${PACKAGE_VERSION}/var/lib/nexusrfid
 echo -e "   ${GREEN}SUCCESS${NC} Directory structure created"
 
@@ -80,83 +80,33 @@ cp dist/NexusRFIDReader ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/local/bin/
 cp ui/img/icon.ico ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/share/icons/hicolor/512x512/apps/${PACKAGE_NAME}.ico
 echo -e "   ${GREEN}SUCCESS${NC} Application files copied"
 
-# Step 4: Create monitoring script
-echo -e "${YELLOW}Step 4: Creating application monitoring script...${NC}"
-cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/local/bin/monitor_nexus_rfid.sh <<'EOL'
-#!/bin/bash
+# Step 4: Create systemd service file (with placeholders to be replaced in postinst)
+echo -e "${YELLOW}Step 4: Creating systemd service file...${NC}"
+cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/etc/systemd/system/nexusrfid_production.service <<'EOL'
+[Unit]
+Description=Nexus RFID Application
+After=graphical.target
+Wants=graphical.target
 
-# NexusRFIDReader Monitoring Script
-# Ensures the application keeps running
+[Service]
+Type=simple
+ExecStartPre=/bin/bash -c '/usr/bin/sudo /sbin/dhclient usb0 || true'
+ExecStartPre=/bin/sleep 5
+ExecStart=/usr/local/bin/NexusRFIDReader
+Restart=always
+RestartSec=5
+User=__SERVICE_USER__
+Environment=PYTHONUNBUFFERED=1
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=__XAUTHORITY_PATH__
+Environment=HOME=__HOME_DIR__
+Environment=XDG_RUNTIME_DIR=__XDG_RUNTIME_DIR__
+Environment=DBUS_SESSION_BUS_ADDRESS=__DBUS_SESSION_BUS_ADDRESS__
 
-APP_NAME="NexusRFIDReader"
-APP_PATH="/usr/local/bin/NexusRFIDReader"
-LOG_FILE="/var/log/nexus-rfid-monitor.log"
-LOCK_FILE="/var/run/nexus-rfid-monitor.lock"
-
-# Function to log messages
-log_message() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$LOG_FILE"
-}
-
-# Check if another instance is already running
-if [ -f "$LOCK_FILE" ]; then
-    PID=$(cat "$LOCK_FILE")
-    if ps -p "$PID" > /dev/null 2>&1; then
-        log_message "Monitor already running with PID $PID"
-        exit 0
-    else
-        rm -f "$LOCK_FILE"
-    fi
-fi
-
-# Create lock file
-echo $$ > "$LOCK_FILE"
-
-# Cleanup function
-cleanup() {
-    rm -f "$LOCK_FILE"
-    exit 0
-}
-
-# Set up signal handlers
-trap cleanup SIGTERM SIGINT
-
-log_message "Starting NexusRFIDReader monitor (PID: $$)"
-
-while true; do
-    # Check if any NexusRFIDReader processes are running
-    RUNNING_COUNT=$(pgrep -c "$APP_NAME" 2>/dev/null || echo "0")
-    
-    if [ "$RUNNING_COUNT" -eq 0 ]; then
-        log_message "$APP_NAME is not running. Starting..."
-        # Change to data directory to ensure proper file creation
-        cd /var/lib/nexusrfid
-        $APP_PATH &
-        sleep 3
-        
-        # Verify it started
-        NEW_COUNT=$(pgrep -c "$APP_NAME" 2>/dev/null || echo "0")
-        if [ "$NEW_COUNT" -gt 0 ]; then
-            log_message "$APP_NAME started successfully"
-        else
-            log_message "Failed to start $APP_NAME"
-        fi
-    elif [ "$RUNNING_COUNT" -gt 1 ]; then
-        log_message "WARNING: Multiple $APP_NAME processes detected ($RUNNING_COUNT)"
-        # Kill all processes and restart
-        pkill -f "$APP_NAME"
-        sleep 2
-        log_message "Killed all $APP_NAME processes, will restart on next cycle"
-    else
-        log_message "$APP_NAME is running normally (1 process)"
-    fi
-    
-    sleep 15
-done
+[Install]
+WantedBy=graphical.target
 EOL
-
-chmod +x ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/local/bin/monitor_nexus_rfid.sh
-echo -e "   ${GREEN}SUCCESS${NC} Monitoring script created"
+echo -e "   ${GREEN}SUCCESS${NC} Systemd service file created (will be configured during installation)"
 
 # Step 5: Create .desktop file for application menu
 echo -e "${YELLOW}Step 5: Creating desktop application entry...${NC}"
@@ -175,22 +125,8 @@ StartupNotify=true
 EOL
 echo -e "   ${GREEN}SUCCESS${NC} Desktop entry created"
 
-# Step 6: Create autostart entry
-echo -e "${YELLOW}Step 6: Creating autostart configuration...${NC}"
-cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/etc/skel/.config/autostart/monitor-nexus-rfid.desktop <<EOL
-[Desktop Entry]
-Type=Application
-Exec=/usr/local/bin/monitor_nexus_rfid.sh
-Hidden=false
-NoDisplay=false
-X-GNOME-Autostart-enabled=true
-Name=Monitor Nexus RFID Reader
-Comment=Ensures NexusRFIDReader keeps running
-EOL
-echo -e "   ${GREEN}SUCCESS${NC} Autostart configuration created"
-
-# Step 7: Create control file
-echo -e "${YELLOW}Step 7: Creating package control file...${NC}"
+# Step 6: Create control file
+echo -e "${YELLOW}Step 6: Creating package control file...${NC}"
 cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/DEBIAN/control <<EOL
 Package: ${PACKAGE_NAME}
 Version: ${PACKAGE_VERSION}
@@ -199,7 +135,7 @@ Priority: optional
 Architecture: ${ARCHITECTURE}
 Maintainer: ${MAINTAINER} <support@nexusyms.com>
 Homepage: ${WEBSITE}
-Depends: libxcb-xinerama0, libxcb-cursor0, libx11-xcb1, libxcb1, libxfixes3, libxi6, libxrender1, libxcb-render0, libxcb-shape0, libxcb-xfixes0, x11-xserver-utils, python3, python3-pip
+Depends: libxcb-xinerama0, libxcb-cursor0, libx11-xcb1, libxcb1, libxfixes3, libxi6, libxrender1, libxcb-render0, libxcb-shape0, libxcb-xfixes0, x11-xserver-utils, python3, python3-pip, systemd, sudo, isc-dhcp-client, sed
 Description: ${DESCRIPTION}
  This application provides advanced RFID scanning capabilities with GPS tracking,
  real-time data processing, and cloud synchronization. It's designed for inventory
@@ -213,11 +149,12 @@ Description: ${DESCRIPTION}
   * Configurable filtering options
   * Automatic data synchronization
   * User-friendly GUI interface
+  * Systemd service for automatic startup and monitoring
 EOL
 echo -e "   ${GREEN}SUCCESS${NC} Control file created"
 
-# Step 8: Create postinst script
-echo -e "${YELLOW}Step 8: Creating post-installation script...${NC}"
+# Step 7: Create postinst script
+echo -e "${YELLOW}Step 7: Creating post-installation script...${NC}"
 cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/DEBIAN/postinst <<'EOL'
 #!/bin/bash
 
@@ -225,43 +162,150 @@ set -e
 
 echo "Setting up NexusRFIDReader environment..."
 
+# Determine the user to run the service
+# Priority: 1. User who ran sudo (if available), 2. First user in /home, 3. User 'pi' (common on RPI), 4. Fallback to first non-root user
+SERVICE_USER=""
+
+# Try to get the user who ran sudo (if installing interactively)
+if [ -n "${SUDO_USER:-}" ]; then
+    SERVICE_USER="$SUDO_USER"
+    echo "Detected installation user: $SERVICE_USER"
+elif [ -n "${USER:-}" ] && [ "$USER" != "root" ]; then
+    SERVICE_USER="$USER"
+    echo "Detected current user: $SERVICE_USER"
+else
+    # Find the first user with a home directory
+    # Prefer 'pi' user on Raspberry Pi, otherwise use first user in /home
+    if [ -d "/home/pi" ] && id "pi" &>/dev/null; then
+        SERVICE_USER="pi"
+        echo "Detected Raspberry Pi default user: pi"
+    else
+        # Get first user directory in /home
+        for user_dir in /home/*; do
+            if [ -d "$user_dir" ]; then
+                user_name=$(basename "$user_dir")
+                if id "$user_name" &>/dev/null; then
+                    SERVICE_USER="$user_name"
+                    echo "Detected user from home directory: $SERVICE_USER"
+                    break
+                fi
+            fi
+        done
+    fi
+fi
+
+# Fallback: if still no user found, try to get the user who owns display :0
+if [ -z "$SERVICE_USER" ]; then
+    # Try to find user from X session
+    if command -v who &>/dev/null; then
+        DISPLAY_USER=$(who | awk '/\(:0\)/ {print $1; exit}')
+        if [ -n "$DISPLAY_USER" ] && id "$DISPLAY_USER" &>/dev/null; then
+            SERVICE_USER="$DISPLAY_USER"
+            echo "Detected user from X session: $SERVICE_USER"
+        fi
+    fi
+fi
+
+# Final fallback: use first non-root user from /etc/passwd
+if [ -z "$SERVICE_USER" ]; then
+    SERVICE_USER=$(getent passwd | awk -F: '$3 >= 1000 && $1 != "nobody" {print $1; exit}')
+    if [ -n "$SERVICE_USER" ]; then
+        echo "Using first non-root user: $SERVICE_USER"
+    fi
+fi
+
+# Validate user exists
+if [ -z "$SERVICE_USER" ] || ! id "$SERVICE_USER" &>/dev/null; then
+    echo "ERROR: Could not determine a valid user for the service."
+    echo "Please create a user account or specify one manually."
+    echo "You can edit /etc/systemd/system/nexusrfid_production.service after installation."
+    exit 1
+fi
+
+echo "Using user for service: $SERVICE_USER"
+
+# Get user information
+SERVICE_UID=$(id -u "$SERVICE_USER")
+SERVICE_HOME=$(eval echo ~"$SERVICE_USER")
+SERVICE_XAUTHORITY="${SERVICE_HOME}/.Xauthority"
+SERVICE_XDG_RUNTIME_DIR="/run/user/${SERVICE_UID}"
+SERVICE_DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/${SERVICE_UID}/bus"
+
+echo "User UID: $SERVICE_UID"
+echo "User home: $SERVICE_HOME"
+echo "XDG Runtime Dir: $SERVICE_XDG_RUNTIME_DIR"
+
+# Configure sudo for the service user to run dhclient without password
+# Allow both /sbin/dhclient and /usr/sbin/dhclient for compatibility
+SUDOERS_FILE="/etc/sudoers.d/nexusrfid"
+NEED_SUDO_CONFIG=true
+
+# Check if sudoers file exists and already has the configuration
+if [ -f "$SUDOERS_FILE" ]; then
+    if grep -q "^${SERVICE_USER}.*NOPASSWD.*dhclient" "$SUDOERS_FILE" 2>/dev/null; then
+        NEED_SUDO_CONFIG=false
+        echo "Sudo configuration for $SERVICE_USER already exists"
+    fi
+fi
+
+# Create or update sudoers file if needed
+if [ "$NEED_SUDO_CONFIG" = true ]; then
+    echo "Configuring sudo permissions for $SERVICE_USER user..."
+    {
+        echo "${SERVICE_USER} ALL=(ALL) NOPASSWD: /sbin/dhclient"
+        echo "${SERVICE_USER} ALL=(ALL) NOPASSWD: /usr/sbin/dhclient"
+    } > "$SUDOERS_FILE"
+    chmod 0440 "$SUDOERS_FILE"
+    echo "Sudo configuration added for dhclient"
+fi
+
 # Create data directory with proper permissions
 RFID_DATA_DIR=/var/lib/nexusrfid
 if [ ! -d "$RFID_DATA_DIR" ]; then
     mkdir -p "$RFID_DATA_DIR"
-    chmod 755 "$RFID_DATA_DIR"
     echo "Created data directory at $RFID_DATA_DIR"
 fi
 
-# Ensure proper ownership of data directory
-chown root:root "$RFID_DATA_DIR"
+# Set ownership to service user for data directory
+chown "${SERVICE_USER}:${SERVICE_USER}" "$RFID_DATA_DIR"
 chmod 755 "$RFID_DATA_DIR"
 
-# Create log directory
-LOG_DIR=/var/log
-if [ ! -d "$LOG_DIR" ]; then
-    mkdir -p "$LOG_DIR"
+# Ensure service user has X11 permissions
+if [ -d "$SERVICE_HOME" ]; then
+    # Ensure Xauthority file exists (will be created by X session if needed)
+    if [ ! -f "$SERVICE_XAUTHORITY" ]; then
+        touch "$SERVICE_XAUTHORITY" 2>/dev/null || true
+    fi
+    if [ -f "$SERVICE_XAUTHORITY" ]; then
+        chown "${SERVICE_USER}:${SERVICE_USER}" "$SERVICE_XAUTHORITY" 2>/dev/null || true
+        chmod 600 "$SERVICE_XAUTHORITY" 2>/dev/null || true
+    fi
+    
+    # Ensure proper permissions on home directory (for data files)
+    chown -R "${SERVICE_USER}:${SERVICE_USER}" "$SERVICE_HOME" 2>/dev/null || true
 fi
 
-# Set up log file for monitoring script
-touch /var/log/nexus-rfid-monitor.log
-chmod 644 /var/log/nexus-rfid-monitor.log
-chown root:root /var/log/nexus-rfid-monitor.log
+# Update the service file with actual user information
+SERVICE_FILE="/etc/systemd/system/nexusrfid_production.service"
+if [ -f "$SERVICE_FILE" ]; then
+    echo "Configuring service file with user information..."
+    sed -i "s|__SERVICE_USER__|${SERVICE_USER}|g" "$SERVICE_FILE"
+    sed -i "s|__XAUTHORITY_PATH__|${SERVICE_XAUTHORITY}|g" "$SERVICE_FILE"
+    sed -i "s|__HOME_DIR__|${SERVICE_HOME}|g" "$SERVICE_FILE"
+    sed -i "s|__XDG_RUNTIME_DIR__|${SERVICE_XDG_RUNTIME_DIR}|g" "$SERVICE_FILE"
+    sed -i "s|__DBUS_SESSION_BUS_ADDRESS__|${SERVICE_DBUS_SESSION_BUS_ADDRESS}|g" "$SERVICE_FILE"
+    echo "Service file configured successfully"
+else
+    echo "WARNING: Service file not found at $SERVICE_FILE"
+fi
 
-# Create run directory for lock files
-mkdir -p /var/run
-chmod 755 /var/run
+# Reload systemd daemon
+systemctl daemon-reload
+echo "Systemd daemon reloaded"
 
-# Copy autostart configurations to existing users' directories
-for user_dir in /home/*; do
-    if [ -d "$user_dir" -a -w "$user_dir" ]; then
-        user_autostart_dir="$user_dir/.config/autostart"
-        mkdir -p "$user_autostart_dir"
-        cp /etc/skel/.config/autostart/monitor-nexus-rfid.desktop "$user_autostart_dir/"
-        chown $(basename "$user_dir"):$(basename "$user_dir") "$user_autostart_dir/monitor-nexus-rfid.desktop"
-        echo "Configured autostart for user: $(basename "$user_dir")"
-    fi
-done
+# Enable the service
+systemctl enable nexusrfid_production.service
+echo "Service enabled to start on boot"
 
 # Update desktop database
 if command -v update-desktop-database &> /dev/null; then
@@ -275,9 +319,13 @@ if command -v gtk-update-icon-cache &> /dev/null; then
     echo "Updated icon cache"
 fi
 
+echo ""
 echo "NexusRFIDReader installation completed successfully!"
-echo "The application will start automatically on next login."
-echo "You can also start it manually from the Applications menu."
+echo "Service will run as user: $SERVICE_USER"
+echo "The service has been enabled and will start automatically on boot."
+echo "To start the service now, run: sudo systemctl start nexusrfid_production.service"
+echo "To check service status, run: sudo systemctl status nexusrfid_production.service"
+echo "You can also launch the application manually from the Applications menu."
 
 EOL
 
@@ -285,34 +333,57 @@ EOL
 chmod 0755 ${PACKAGE_NAME}-${PACKAGE_VERSION}/DEBIAN/postinst
 echo -e "   ${GREEN}SUCCESS${NC} Post-installation script created"
 
-# Step 9: Create prerm script for clean removal
-echo -e "${YELLOW}Step 9: Creating pre-removal script...${NC}"
+# Step 8: Create prerm script for clean removal
+echo -e "${YELLOW}Step 8: Creating pre-removal script...${NC}"
 cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/DEBIAN/prerm <<'EOL'
 #!/bin/bash
 
-echo "Stopping NexusRFIDReader processes..."
+echo "Stopping NexusRFIDReader service..."
 
-# Stop monitoring script first
-pkill -f "monitor_nexus_rfid.sh" || true
+# Stop and disable the systemd service
+if systemctl is-active --quiet nexusrfid_production.service 2>/dev/null; then
+    systemctl stop nexusrfid_production.service
+    echo "Service stopped"
+fi
 
-# Stop all NexusRFIDReader processes
+if systemctl is-enabled --quiet nexusrfid_production.service 2>/dev/null; then
+    systemctl disable nexusrfid_production.service
+    echo "Service disabled"
+fi
+
+# Reload systemd daemon
+systemctl daemon-reload
+
+# Kill any remaining processes as fallback
 pkill -f "NexusRFIDReader" || true
 
-# Wait a moment for graceful shutdown
-sleep 2
-
-# Force kill if still running
-pkill -9 -f "NexusRFIDReader" || true
-pkill -9 -f "monitor_nexus_rfid.sh" || true
-
-# Clean up lock file
-rm -f /var/run/nexus-rfid-monitor.lock
-
-echo "NexusRFIDReader processes stopped."
+echo "NexusRFIDReader service stopped and disabled."
 EOL
 
 chmod 0755 ${PACKAGE_NAME}-${PACKAGE_VERSION}/DEBIAN/prerm
 echo -e "   ${GREEN}SUCCESS${NC} Pre-removal script created"
+
+# Step 9: Create postrm script for cleanup after removal
+echo -e "${YELLOW}Step 9: Creating post-removal script...${NC}"
+cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/DEBIAN/postrm <<'EOL'
+#!/bin/bash
+
+# Clean up sudoers configuration if it exists
+# Note: We remove the sudoers file, but we can't determine which user it was for
+# since the service file may have been customized. Safe to remove as it only affected dhclient.
+if [ -f "/etc/sudoers.d/nexusrfid" ]; then
+    rm -f /etc/sudoers.d/nexusrfid
+    echo "Removed sudo configuration"
+fi
+
+# Reload systemd daemon
+systemctl daemon-reload 2>/dev/null || true
+
+echo "Cleanup completed."
+EOL
+
+chmod 0755 ${PACKAGE_NAME}-${PACKAGE_VERSION}/DEBIAN/postrm
+echo -e "   ${GREEN}SUCCESS${NC} Post-removal script created"
 
 # Step 10: Build the .deb package
 echo -e "${YELLOW}Step 10: Building the .deb package...${NC}"
@@ -336,18 +407,32 @@ echo -e "${CYAN}Installation Instructions:${NC}"
 echo -e "   ${YELLOW}1.${NC} Install the package:"
 echo -e "      ${WHITE}sudo apt install ./${PACKAGE_NAME}-${PACKAGE_VERSION}.deb${NC}"
 echo ""
-echo -e "   ${YELLOW}2.${NC} Reboot to activate autostart:"
+echo -e "   ${YELLOW}2.${NC} Start the service (optional, it will start on boot):"
+echo -e "      ${WHITE}sudo systemctl start nexusrfid_production.service${NC}"
+echo ""
+echo -e "   ${YELLOW}3.${NC} Check service status:"
+echo -e "      ${WHITE}sudo systemctl status nexusrfid_production.service${NC}"
+echo ""
+echo -e "   ${YELLOW}4.${NC} Reboot to activate automatic startup:"
 echo -e "      ${WHITE}sudo reboot${NC}"
 echo ""
-echo -e "   ${YELLOW}3.${NC} The application will start automatically on login"
-echo -e "   ${YELLOW}4.${NC} You can also find it in the Applications menu"
+echo -e "   ${YELLOW}5.${NC} The service will start automatically on boot"
+echo -e "   ${YELLOW}6.${NC} You can also find the application in the Applications menu"
 echo ""
 echo -e "${PURPLE}Package Contents:${NC}"
 echo -e "   • Executable: /usr/local/bin/NexusRFIDReader"
+echo -e "   • Systemd Service: /etc/systemd/system/nexusrfid_production.service"
 echo -e "   • Icon: /usr/share/icons/hicolor/512x512/apps/${PACKAGE_NAME}.ico"
 echo -e "   • Desktop Entry: /usr/share/applications/${PACKAGE_NAME}.desktop"
 echo -e "   • Data Directory: /var/lib/nexusrfid"
-echo -e "   • Log File: /var/log/nexus-rfid-monitor.log"
-echo -e "   • Autostart: ~/.config/autostart/monitor-nexus-rfid.desktop"
+echo ""
+echo -e "${PURPLE}Service Management:${NC}"
+echo -e "   • Start: ${WHITE}sudo systemctl start nexusrfid_production.service${NC}"
+echo -e "   • Stop: ${WHITE}sudo systemctl stop nexusrfid_production.service${NC}"
+echo -e "   • Restart: ${WHITE}sudo systemctl restart nexusrfid_production.service${NC}"
+echo -e "   • Status: ${WHITE}sudo systemctl status nexusrfid_production.service${NC}"
+echo -e "   • Enable: ${WHITE}sudo systemctl enable nexusrfid_production.service${NC}"
+echo -e "   • Disable: ${WHITE}sudo systemctl disable nexusrfid_production.service${NC}"
+echo -e "   • Logs: ${WHITE}sudo journalctl -u nexusrfid_production.service -f${NC}"
 echo ""
 echo -e "${GREEN}Ready for deployment!${NC}"
