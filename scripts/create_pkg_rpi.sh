@@ -307,6 +307,21 @@ echo "Systemd daemon reloaded"
 systemctl enable nexusrfid_production.service
 echo "Service enabled to start on boot"
 
+# Start the service immediately
+echo "Starting service..."
+if systemctl start nexusrfid_production.service; then
+    echo "Service started successfully"
+    # Wait a moment and verify it's running
+    sleep 2
+    if systemctl is-active --quiet nexusrfid_production.service; then
+        echo "Service is running"
+    else
+        echo "WARNING: Service may not have started properly. Check status with: systemctl status nexusrfid_production.service"
+    fi
+else
+    echo "WARNING: Failed to start service. Check status with: systemctl status nexusrfid_production.service"
+fi
+
 # Update desktop database
 if command -v update-desktop-database &> /dev/null; then
     update-desktop-database /usr/share/applications
@@ -322,9 +337,11 @@ fi
 echo ""
 echo "NexusRFIDReader installation completed successfully!"
 echo "Service will run as user: $SERVICE_USER"
-echo "The service has been enabled and will start automatically on boot."
-echo "To start the service now, run: sudo systemctl start nexusrfid_production.service"
+echo "The service has been enabled and started."
+echo "It will also start automatically on boot."
+echo ""
 echo "To check service status, run: sudo systemctl status nexusrfid_production.service"
+echo "To view service logs, run: sudo journalctl -u nexusrfid_production.service -f"
 echo "You can also launch the application manually from the Applications menu."
 
 EOL
