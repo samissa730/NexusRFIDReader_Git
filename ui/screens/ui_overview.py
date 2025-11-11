@@ -298,13 +298,16 @@ class Ui_OverviewScreen(object):
         if (self.tableWidget.rowCount() < 8):
             self.tableWidget.setRowCount(8)
         self.tableWidget.setObjectName(u"tableWidget")
+        font4 = QFont()
+        font4.setPointSize(6)
+        self.tableWidget.setFont(font4)
         self.tableWidget.setStyleSheet(u"\n"
 "        QHeaderView::section {  \n"
 "            background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1,   \n"
 "                                            stop:0 #777777, stop:1 #000000);\n"
 "            color: white;  \n"
-"            padding: 5px;\n"
-"            font: 16px bold;\n"
+"            padding: 3px;\n"
+"            font: 14px bold;\n"
 "            border: 1px solid #555;  \n"
 "        }  \n"
 "        QTableWidget::item {\n"
@@ -363,11 +366,11 @@ class Ui_OverviewScreen(object):
         self.horizontalLayout_10.setContentsMargins(0, 0, 0, 0)
         self.label_16 = QLabel(self.widget_10)
         self.label_16.setObjectName(u"label_16")
-        font4 = QFont()
-        font4.setFamilies([u"Gilroy"])
-        font4.setPointSize(13)
-        font4.setBold(True)
-        self.label_16.setFont(font4)
+        font5 = QFont()
+        font5.setFamilies([u"Gilroy"])
+        font5.setPointSize(13)
+        font5.setBold(True)
+        self.label_16.setFont(font5)
         self.label_16.setStyleSheet(u"color: #ffffff;")
         self.label_16.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
 
@@ -375,10 +378,10 @@ class Ui_OverviewScreen(object):
 
         self.truck_number = QLabel(self.widget_10)
         self.truck_number.setObjectName(u"truck_number")
-        font5 = QFont()
-        font5.setFamilies([u"Gilroy"])
-        font5.setPointSize(13)
-        self.truck_number.setFont(font5)
+        font6 = QFont()
+        font6.setFamilies([u"Gilroy"])
+        font6.setPointSize(13)
+        self.truck_number.setFont(font6)
         self.truck_number.setStyleSheet(u"color: #ffffff;")
 
         self.horizontalLayout_10.addWidget(self.truck_number)
@@ -394,7 +397,7 @@ class Ui_OverviewScreen(object):
         self.horizontalLayout_11.setContentsMargins(0, 0, 0, 0)
         self.label_17 = QLabel(self.widget_11)
         self.label_17.setObjectName(u"label_17")
-        self.label_17.setFont(font4)
+        self.label_17.setFont(font5)
         self.label_17.setStyleSheet(u"color: #ffffff;")
         self.label_17.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
 
@@ -402,7 +405,7 @@ class Ui_OverviewScreen(object):
 
         self.site_id = QLabel(self.widget_11)
         self.site_id.setObjectName(u"site_id")
-        self.site_id.setFont(font5)
+        self.site_id.setFont(font6)
         self.site_id.setStyleSheet(u"color: #ffffff;")
 
         self.horizontalLayout_11.addWidget(self.site_id)
@@ -449,7 +452,7 @@ class Ui_OverviewScreen(object):
         self.horizontalLayout_12.setContentsMargins(0, 0, 0, 0)
         self.label_21 = QLabel(self.widget_14)
         self.label_21.setObjectName(u"label_21")
-        self.label_21.setFont(font4)
+        self.label_21.setFont(font5)
         self.label_21.setStyleSheet(u"color: #ffffff;")
         self.label_21.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
 
@@ -457,7 +460,7 @@ class Ui_OverviewScreen(object):
 
         self.internet_status = QLabel(self.widget_14)
         self.internet_status.setObjectName(u"internet_status")
-        self.internet_status.setFont(font5)
+        self.internet_status.setFont(font6)
         self.internet_status.setStyleSheet(u"color: #ffffff;")
 
         self.horizontalLayout_12.addWidget(self.internet_status)

@@ -576,14 +576,19 @@ border-bottom: 2px solid #404040;</string>
      </item>
      <item>
       <widget class="QTableWidget" name="tableWidget">
+       <property name="font">
+        <font>
+         <pointsize>6</pointsize>
+        </font>
+       </property>
        <property name="styleSheet">
         <string notr="true">
         QHeaderView::section {  
             background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1,   
                                             stop:0 #777777, stop:1 #000000);
             color: white;  
-            padding: 5px;
-            font: 16px bold;
+            padding: 3px;
+            font: 14px bold;
             border: 1px solid #555;  
         }  
         QTableWidget::item {
@@ -704,7 +709,7 @@ border-bottom: 2px solid #404040;</string>
     border-left: 0px;
 }</string>
          </property>
-         <layout class="QVBoxLayout" name="verticalLayout_4" stretch="0,0">
+         <layout class="QVBoxLayout" name="verticalLayout_4" stretch="0,0,0">
           <property name="spacing">
            <number>2</number>
           </property>
