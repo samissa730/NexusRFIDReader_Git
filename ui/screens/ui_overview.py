@@ -299,7 +299,7 @@ class Ui_OverviewScreen(object):
             self.tableWidget.setRowCount(8)
         self.tableWidget.setObjectName(u"tableWidget")
         font4 = QFont()
-        font4.setPointSize(6)
+        font4.setPointSize(7)
         self.tableWidget.setFont(font4)
         self.tableWidget.setStyleSheet(u"\n"
 "        QHeaderView::section {  \n"

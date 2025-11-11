@@ -578,7 +578,7 @@ border-bottom: 2px solid #404040;</string>
       <widget class="QTableWidget" name="tableWidget">
        <property name="font">
         <font>
-         <pointsize>6</pointsize>
+         <pointsize>7</pointsize>
         </font>
        </property>
        <property name="styleSheet">
