@@ -15,8 +15,11 @@ CYAN='\033[0;36m'
 WHITE='\033[1;37m'
 NC='\033[0m' # No Color
 
-PACKAGE_NAME=NexusRFIDReader
+# Debian package name (must be lowercase)
+PACKAGE_NAME_DEB=nexusrfidreader
+# App artifact names/paths (mixed case as installed by create script)
 PACKAGE_EXECUTABLE="NexusRFIDReader"
+APP_NAME="NexusRFIDReader"
 SERVICE_NAME="nexusrfid_production.service"
 
 echo -e "${CYAN}==============================================================${NC}"
@@ -69,12 +72,12 @@ echo -e "   ${GREEN}SUCCESS${NC} Service stopped and disabled"
 
 # Step 2: Remove and purge the package
 echo -e "${YELLOW}Step 2: Removing package and configuration files...${NC}"
-if dpkg -l | grep -q "^ii.*${PACKAGE_NAME}\|^rc.*${PACKAGE_NAME}"; then
+if dpkg -l | grep -q "^ii.*${PACKAGE_NAME_DEB}\|^rc.*${PACKAGE_NAME_DEB}"; then
     # Package is installed or partially removed, purge it
-    apt-get purge -y ${PACKAGE_NAME} 2>/dev/null || {
+    apt-get purge -y ${PACKAGE_NAME_DEB} 2>/dev/null || {
         echo -e "   ${YELLOW}WARNING: Package removal had issues, continuing with manual cleanup...${NC}"
         # Try dpkg remove as fallback
-        dpkg --remove ${PACKAGE_NAME} 2>/dev/null || true
+        dpkg --remove ${PACKAGE_NAME_DEB} 2>/dev/null || true
     }
     echo -e "   ${GREEN}SUCCESS${NC} Package removed and purged"
 else
@@ -98,23 +101,23 @@ fi
 echo -e "${YELLOW}Step 4: Removing application files...${NC}"
 
 # Remove executable
-if [ -f "/usr/local/bin/NexusRFIDReader" ]; then
-    rm -f /usr/local/bin/NexusRFIDReader
-    echo -e "   ${GREEN}SUCCESS${NC} Removed executable: /usr/local/bin/NexusRFIDReader"
+if [ -f "/usr/local/bin/${PACKAGE_EXECUTABLE}" ]; then
+    rm -f "/usr/local/bin/${PACKAGE_EXECUTABLE}"
+    echo -e "   ${GREEN}SUCCESS${NC} Removed executable: /usr/local/bin/${PACKAGE_EXECUTABLE}"
 fi
 
 # Remove desktop entry
-if [ -f "/usr/share/applications/${PACKAGE_NAME}.desktop" ]; then
-    rm -f /usr/share/applications/${PACKAGE_NAME}.desktop
-    echo -e "   ${GREEN}SUCCESS${NC} Removed desktop entry: /usr/share/applications/${PACKAGE_NAME}.desktop"
+if [ -f "/usr/share/applications/${APP_NAME}.desktop" ]; then
+    rm -f "/usr/share/applications/${APP_NAME}.desktop"
+    echo -e "   ${GREEN}SUCCESS${NC} Removed desktop entry: /usr/share/applications/${APP_NAME}.desktop"
 else
     echo -e "   ${BLUE}Desktop entry not found${NC}"
 fi
 
 # Remove icon
-if [ -f "/usr/share/icons/hicolor/512x512/apps/${PACKAGE_NAME}.ico" ]; then
-    rm -f /usr/share/icons/hicolor/512x512/apps/${PACKAGE_NAME}.ico
-    echo -e "   ${GREEN}SUCCESS${NC} Removed icon: /usr/share/icons/hicolor/512x512/apps/${PACKAGE_NAME}.ico"
+if [ -f "/usr/share/icons/hicolor/512x512/apps/${APP_NAME}.ico" ]; then
+    rm -f "/usr/share/icons/hicolor/512x512/apps/${APP_NAME}.ico"
+    echo -e "   ${GREEN}SUCCESS${NC} Removed icon: /usr/share/icons/hicolor/512x512/apps/${APP_NAME}.ico"
 else
     echo -e "   ${BLUE}Icon not found${NC}"
 fi
@@ -175,10 +178,10 @@ echo -e "${YELLOW}Step 9: Final verification...${NC}"
 REMAINING_FILES=0
 
 # Check for remaining files
-if [ -f "/usr/local/bin/NexusRFIDReader" ] || \
+if [ -f "/usr/local/bin/${PACKAGE_EXECUTABLE}" ] || \
    [ -f "/etc/systemd/system/${SERVICE_NAME}" ] || \
-   [ -f "/usr/share/applications/${PACKAGE_NAME}.desktop" ] || \
-   [ -f "/usr/share/icons/hicolor/512x512/apps/${PACKAGE_NAME}.ico" ] || \
+   [ -f "/usr/share/applications/${APP_NAME}.desktop" ] || \
+   [ -f "/usr/share/icons/hicolor/512x512/apps/${APP_NAME}.ico" ] || \
    [ -f "/etc/sudoers.d/nexusrfid" ]; then
     REMAINING_FILES=1
 fi
@@ -188,10 +191,10 @@ if [ $REMAINING_FILES -eq 0 ]; then
 else
     echo -e "   ${YELLOW}WARNING: Some files may still remain${NC}"
     echo -e "   ${WHITE}Remaining files:${NC}"
-    [ -f "/usr/local/bin/NexusRFIDReader" ] && echo -e "      • /usr/local/bin/NexusRFIDReader"
+    [ -f "/usr/local/bin/${PACKAGE_EXECUTABLE}" ] && echo -e "      • /usr/local/bin/${PACKAGE_EXECUTABLE}"
     [ -f "/etc/systemd/system/${SERVICE_NAME}" ] && echo -e "      • /etc/systemd/system/${SERVICE_NAME}"
-    [ -f "/usr/share/applications/${PACKAGE_NAME}.desktop" ] && echo -e "      • /usr/share/applications/${PACKAGE_NAME}.desktop"
-    [ -f "/usr/share/icons/hicolor/512x512/apps/${PACKAGE_NAME}.ico" ] && echo -e "      • /usr/share/icons/hicolor/512x512/apps/${PACKAGE_NAME}.ico"
+    [ -f "/usr/share/applications/${APP_NAME}.desktop" ] && echo -e "      • /usr/share/applications/${APP_NAME}.desktop"
+    [ -f "/usr/share/icons/hicolor/512x512/apps/${APP_NAME}.ico" ] && echo -e "      • /usr/share/icons/hicolor/512x512/apps/${APP_NAME}.ico"
     [ -f "/etc/sudoers.d/nexusrfid" ] && echo -e "      • /etc/sudoers.d/nexusrfid"
 fi
 
