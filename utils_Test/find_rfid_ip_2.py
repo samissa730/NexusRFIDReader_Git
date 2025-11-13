@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 """
-arp_scan_wrapper.py
+find_rfid_ip_2.py
 
 Run `arp-scan` via sudo, parse output and optionally save as CSV or JSON.
 
 Usage examples:
   # run like your original command
-  sudo python3 arp_scan_wrapper.py --iface eth0 --subnet 169.254.0.0/16
+  sudo python3 find_rfid_ip_2.py --iface eth0 --subnet 169.254.0.0/16
 
   # run from a non-root shell (script will call sudo internally and ask for password)
-  python3 arp_scan_wrapper.py --iface eth0 --subnet 169.254.0.0/16
+  python3 find_rfid_ip_2.py --iface eth0 --subnet 169.254.0.0/16
 
   # dump to json
-  sudo python3 arp_scan_wrapper.py -i eth0 -s 169.254.0.0/16 --json out.json
+  sudo python3 find_rfid_ip_2.py -i eth0 -s 169.254.0.0/16 --json out.json
 
   # dump to csv
-  sudo python3 arp_scan_wrapper.py -i eth0 -s 169.254.0.0/16 --csv out.csv
+  sudo python3 find_rfid_ip_2.py -i eth0 -s 169.254.0.0/16 --csv out.csv
 
 Notes:
  - Requires `arp-scan` installed on the machine.

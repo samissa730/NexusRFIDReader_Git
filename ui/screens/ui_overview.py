@@ -79,7 +79,11 @@ class Ui_OverviewScreen(object):
         self.verticalLayout_1.setContentsMargins(0, 4, 0, 4)
         self.label = QLabel(self.widget_4)
         self.label.setObjectName(u"label")
-        self.label.setFont(font)
+        font2 = QFont()
+        font2.setFamilies([u"Gilroy"])
+        font2.setPointSize(12)
+        font2.setBold(True)
+        self.label.setFont(font2)
         self.label.setStyleSheet(u"color: #ffffff;\n"
 "border-bottom: 2px solid #404040;")
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -95,11 +99,11 @@ class Ui_OverviewScreen(object):
         self.horizontalLayout_5.setContentsMargins(0, 0, 0, 0)
         self.label_3 = QLabel(self.widget_1)
         self.label_3.setObjectName(u"label_3")
-        font2 = QFont()
-        font2.setFamilies([u"Gilroy"])
-        font2.setPointSize(11)
-        font2.setBold(True)
-        self.label_3.setFont(font2)
+        font3 = QFont()
+        font3.setFamilies([u"Gilroy"])
+        font3.setPointSize(10)
+        font3.setBold(True)
+        self.label_3.setFont(font3)
         self.label_3.setStyleSheet(u"color: #ffffff;")
         self.label_3.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
 
@@ -107,10 +111,10 @@ class Ui_OverviewScreen(object):
 
         self.rfid_connection_status = QLabel(self.widget_1)
         self.rfid_connection_status.setObjectName(u"rfid_connection_status")
-        font3 = QFont()
-        font3.setFamilies([u"Gilroy"])
-        font3.setPointSize(10)
-        self.rfid_connection_status.setFont(font3)
+        font4 = QFont()
+        font4.setFamilies([u"Gilroy"])
+        font4.setPointSize(9)
+        self.rfid_connection_status.setFont(font4)
         self.rfid_connection_status.setStyleSheet(u"color: #ffffff;")
 
         self.horizontalLayout_5.addWidget(self.rfid_connection_status)
@@ -127,7 +131,7 @@ class Ui_OverviewScreen(object):
         self.horizontalLayout_4.setContentsMargins(0, 0, 0, 0)
         self.label_5 = QLabel(self.widget_2)
         self.label_5.setObjectName(u"label_5")
-        self.label_5.setFont(font2)
+        self.label_5.setFont(font3)
         self.label_5.setStyleSheet(u"color: #ffffff;")
         self.label_5.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
 
@@ -135,7 +139,7 @@ class Ui_OverviewScreen(object):
 
         self.last_rfid_read = QLabel(self.widget_2)
         self.last_rfid_read.setObjectName(u"last_rfid_read")
-        self.last_rfid_read.setFont(font3)
+        self.last_rfid_read.setFont(font4)
         self.last_rfid_read.setStyleSheet(u"color: #ffffff;")
 
         self.horizontalLayout_4.addWidget(self.last_rfid_read)
@@ -152,7 +156,7 @@ class Ui_OverviewScreen(object):
         self.horizontalLayout_3.setContentsMargins(0, 0, 0, 0)
         self.label_7 = QLabel(self.widget_3)
         self.label_7.setObjectName(u"label_7")
-        self.label_7.setFont(font2)
+        self.label_7.setFont(font3)
         self.label_7.setStyleSheet(u"color: #ffffff;")
         self.label_7.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
 
@@ -160,7 +164,7 @@ class Ui_OverviewScreen(object):
 
         self.last_rfid_time = QLabel(self.widget_3)
         self.last_rfid_time.setObjectName(u"last_rfid_time")
-        self.last_rfid_time.setFont(font3)
+        self.last_rfid_time.setFont(font4)
         self.last_rfid_time.setStyleSheet(u"color: #ffffff;")
 
         self.horizontalLayout_3.addWidget(self.last_rfid_time)
@@ -193,7 +197,7 @@ class Ui_OverviewScreen(object):
         self.verticalLayout_3.setContentsMargins(0, 4, 0, 4)
         self.label_2 = QLabel(self.widget_5)
         self.label_2.setObjectName(u"label_2")
-        self.label_2.setFont(font)
+        self.label_2.setFont(font2)
         self.label_2.setStyleSheet(u"color: #ffffff;\n"
 "border-bottom: 2px solid #404040;")
         self.label_2.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -208,7 +212,7 @@ class Ui_OverviewScreen(object):
         self.horizontalLayout_8.setContentsMargins(0, 0, 0, 0)
         self.label_9 = QLabel(self.widget_6)
         self.label_9.setObjectName(u"label_9")
-        self.label_9.setFont(font2)
+        self.label_9.setFont(font3)
         self.label_9.setStyleSheet(u"color: #ffffff;")
         self.label_9.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
 
@@ -216,7 +220,7 @@ class Ui_OverviewScreen(object):
 
         self.gps_connection_status = QLabel(self.widget_6)
         self.gps_connection_status.setObjectName(u"gps_connection_status")
-        self.gps_connection_status.setFont(font3)
+        self.gps_connection_status.setFont(font4)
         self.gps_connection_status.setStyleSheet(u"color: #ffffff;")
 
         self.horizontalLayout_8.addWidget(self.gps_connection_status)
@@ -232,7 +236,7 @@ class Ui_OverviewScreen(object):
         self.horizontalLayout_7.setContentsMargins(0, 0, 0, 0)
         self.label_11 = QLabel(self.widget_7)
         self.label_11.setObjectName(u"label_11")
-        self.label_11.setFont(font2)
+        self.label_11.setFont(font3)
         self.label_11.setStyleSheet(u"color: #ffffff;")
         self.label_11.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
 
@@ -240,7 +244,7 @@ class Ui_OverviewScreen(object):
 
         self.last_gps_read = QLabel(self.widget_7)
         self.last_gps_read.setObjectName(u"last_gps_read")
-        self.last_gps_read.setFont(font3)
+        self.last_gps_read.setFont(font4)
         self.last_gps_read.setStyleSheet(u"color: #ffffff;")
 
         self.horizontalLayout_7.addWidget(self.last_gps_read)
@@ -256,7 +260,7 @@ class Ui_OverviewScreen(object):
         self.horizontalLayout_6.setContentsMargins(0, 0, 0, 0)
         self.label_13 = QLabel(self.widget_8)
         self.label_13.setObjectName(u"label_13")
-        self.label_13.setFont(font2)
+        self.label_13.setFont(font3)
         self.label_13.setStyleSheet(u"color: #ffffff;")
         self.label_13.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
 
@@ -264,7 +268,7 @@ class Ui_OverviewScreen(object):
 
         self.last_gps_time = QLabel(self.widget_8)
         self.last_gps_time.setObjectName(u"last_gps_time")
-        self.last_gps_time.setFont(font3)
+        self.last_gps_time.setFont(font4)
         self.last_gps_time.setStyleSheet(u"color: #ffffff;")
 
         self.horizontalLayout_6.addWidget(self.last_gps_time)
@@ -298,9 +302,9 @@ class Ui_OverviewScreen(object):
         if (self.tableWidget.rowCount() < 8):
             self.tableWidget.setRowCount(8)
         self.tableWidget.setObjectName(u"tableWidget")
-        font4 = QFont()
-        font4.setPointSize(7)
-        self.tableWidget.setFont(font4)
+        font5 = QFont()
+        font5.setPointSize(7)
+        self.tableWidget.setFont(font5)
         self.tableWidget.setStyleSheet(u"\n"
 "        QHeaderView::section {  \n"
 "            background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1,   \n"
@@ -352,7 +356,7 @@ class Ui_OverviewScreen(object):
         self.verticalLayout_4.setContentsMargins(0, 4, 0, 4)
         self.label_15 = QLabel(self.widget_9)
         self.label_15.setObjectName(u"label_15")
-        self.label_15.setFont(font)
+        self.label_15.setFont(font2)
         self.label_15.setStyleSheet(u"color: #ffffff;")
         self.label_15.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -366,11 +370,7 @@ class Ui_OverviewScreen(object):
         self.horizontalLayout_10.setContentsMargins(0, 0, 0, 0)
         self.label_16 = QLabel(self.widget_10)
         self.label_16.setObjectName(u"label_16")
-        font5 = QFont()
-        font5.setFamilies([u"Gilroy"])
-        font5.setPointSize(13)
-        font5.setBold(True)
-        self.label_16.setFont(font5)
+        self.label_16.setFont(font3)
         self.label_16.setStyleSheet(u"color: #ffffff;")
         self.label_16.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
 
@@ -378,10 +378,7 @@ class Ui_OverviewScreen(object):
 
         self.truck_number = QLabel(self.widget_10)
         self.truck_number.setObjectName(u"truck_number")
-        font6 = QFont()
-        font6.setFamilies([u"Gilroy"])
-        font6.setPointSize(13)
-        self.truck_number.setFont(font6)
+        self.truck_number.setFont(font4)
         self.truck_number.setStyleSheet(u"color: #ffffff;")
 
         self.horizontalLayout_10.addWidget(self.truck_number)
@@ -397,7 +394,7 @@ class Ui_OverviewScreen(object):
         self.horizontalLayout_11.setContentsMargins(0, 0, 0, 0)
         self.label_17 = QLabel(self.widget_11)
         self.label_17.setObjectName(u"label_17")
-        self.label_17.setFont(font5)
+        self.label_17.setFont(font3)
         self.label_17.setStyleSheet(u"color: #ffffff;")
         self.label_17.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
 
@@ -405,7 +402,7 @@ class Ui_OverviewScreen(object):
 
         self.site_id = QLabel(self.widget_11)
         self.site_id.setObjectName(u"site_id")
-        self.site_id.setFont(font6)
+        self.site_id.setFont(font4)
         self.site_id.setStyleSheet(u"color: #ffffff;")
 
         self.horizontalLayout_11.addWidget(self.site_id)
@@ -438,7 +435,7 @@ class Ui_OverviewScreen(object):
         self.verticalLayout_5.setContentsMargins(0, 4, 0, 4)
         self.label_20 = QLabel(self.widget_12)
         self.label_20.setObjectName(u"label_20")
-        self.label_20.setFont(font)
+        self.label_20.setFont(font2)
         self.label_20.setStyleSheet(u"color: #ffffff;")
         self.label_20.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -452,7 +449,7 @@ class Ui_OverviewScreen(object):
         self.horizontalLayout_12.setContentsMargins(0, 0, 0, 0)
         self.label_21 = QLabel(self.widget_14)
         self.label_21.setObjectName(u"label_21")
-        self.label_21.setFont(font5)
+        self.label_21.setFont(font3)
         self.label_21.setStyleSheet(u"color: #ffffff;")
         self.label_21.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
 
@@ -460,7 +457,7 @@ class Ui_OverviewScreen(object):
 
         self.internet_status = QLabel(self.widget_14)
         self.internet_status.setObjectName(u"internet_status")
-        self.internet_status.setFont(font6)
+        self.internet_status.setFont(font4)
         self.internet_status.setStyleSheet(u"color: #ffffff;")
 
         self.horizontalLayout_12.addWidget(self.internet_status)
