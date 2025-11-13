@@ -1,8 +1,16 @@
 """
 Standalone GPS connection and reading test with detailed logging.
+This script follows the same GPS detection logic as the main application.
+
 Run: python3 utils_Test/gps_test.py --port COM3 --baud 115200
      python3 utils_Test/gps_test.py --auto-detect
      python3 utils_Test/gps_test.py --port /dev/ttyUSB0 --baud 9600
+
+GPS Detection Logic (matches app):
+1. Enable GPS on startup (sends AT+QGPS=1 to /dev/ttyUSB2)
+2. Pre-configure GPS (sends AT+QGPS=1 to all ports to enable GPS)
+3. Find GPS port by scanning ports at detected baud rate
+4. If not found, try other baud rates
 
 This script connects to a GPS device via serial port, reads NMEA sentences,
 and logs all GPS data with detailed information.
@@ -10,6 +18,7 @@ and logs all GPS data with detailed information.
 
 import argparse
 import logging
+import platform
 import signal
 import sys
 import time
@@ -94,39 +103,124 @@ def list_serial_ports(logger: logging.Logger) -> list:
     return port_list
 
 
+def enable_gps_at_command(logger: logging.Logger) -> bool:
+    """Send AT+QGPS=1 command to ttyUSB2 to enable GPS (matches app logic)"""
+    try:
+        with serial.Serial('/dev/ttyUSB2', baudrate=115200, timeout=1, rtscts=True, dsrdtr=True) as ser:
+            ser.write('AT+QGPS=1\r'.encode())
+            logger.info("Sent AT+QGPS=1 command to /dev/ttyUSB2")
+            ser.close()
+            time.sleep(2)  # Give GPS time to initialize
+            return True
+    except (OSError, serial.SerialException) as e:
+        logger.debug(f"Failed to send AT+QGPS=1 command to /dev/ttyUSB2: {e}")
+        return False
+
+
+def pre_config_gps(logger: logging.Logger, default_baud_rate: int = 115200, default_baud_rate_don: int = 9600) -> int:
+    """
+    Pre-configure GPS by sending AT+QGPS=1 to all ports (matches app logic).
+    Returns the baud rate to use for GPS scanning.
+    """
+    serial_ports = [port.device for port in serial.tools.list_ports.comports()]
+    logger.debug(f"Available ports: {serial_ports}")
+    
+    if platform.system() == 'Windows':
+        logger.debug("Windows detected, returning default baud rate")
+        return default_baud_rate
+    
+    # Try probe baud rate (default: 115200)
+    try_rate = default_baud_rate
+    
+    logger.info("Attempting to enable GPS on all ports with AT+QGPS=1 command...")
+    for port in serial_ports:
+        try:
+            with serial.Serial(port, baudrate=try_rate, timeout=1, rtscts=True, dsrdtr=True) as serw:
+                serw.write('AT+QGPS=1\r'.encode())
+                logger.debug(f"Sent AT+QGPS=1 to {port}")
+                serw.close()
+                time.sleep(2)  # Give GPS time to initialize
+                logger.info(f"✓ Successfully sent AT+QGPS=1 to {port}")
+                return try_rate
+        except (OSError, serial.SerialException) as e:
+            logger.debug(f"Failed to send AT command to {port}: {e}")
+            pass
+    
+    logger.debug("No port responded to AT command, using default baud rate")
+    return default_baud_rate_don
+
+
+def find_gps_port(baud_rate: int, logger: logging.Logger) -> Optional[str]:
+    """
+    Find GPS port by scanning all ports at given baud rate (matches app logic).
+    Tries 5 attempts per port to catch GPS data.
+    """
+    serial_ports = [port.device for port in serial.tools.list_ports.comports()]
+    logger.debug(f"Scanning ports at {baud_rate} baud: {serial_ports}")
+    
+    # Try each port multiple times to ensure we catch GPS data
+    for port in serial_ports:
+        logger.info(f"Testing port: {port}")
+        try:
+            with serial.Serial(port, baudrate=baud_rate, timeout=1, rtscts=True, dsrdtr=True) as ser:
+                # Try multiple reads to catch GPS data (5 attempts like app)
+                for attempt in range(5):
+                    buffer = ser.in_waiting
+                    if buffer < 80:
+                        time.sleep(0.2)  # Wait a bit longer for data
+                    line = ser.readline().decode('utf-8', errors='ignore').strip()
+                    if line:
+                        logger.debug(f"  Attempt {attempt + 1}: {line[:60]}...")
+                        if line.startswith('$G'):
+                            logger.info(f"✓ GPS found on port: {port}")
+                            return port
+                logger.debug(f"  No GPS data found on {port} after 5 attempts")
+        except (OSError, serial.SerialException) as e:
+            logger.debug(f"  Port {port} error: {e}")
+            pass
+    
+    logger.warning("No GPS port found")
+    return None
+
+
 def auto_detect_gps_port(baud_rates: list, logger: logging.Logger, timeout: float = 2.0) -> Optional[Tuple[str, int]]:
-    """Auto-detect GPS port by scanning available ports and baud rates"""
-    ports = serial.tools.list_ports.comports()
+    """
+    Auto-detect GPS port following the same logic as the application:
+    1. Pre-configure GPS to get the baud rate (sends AT+QGPS=1 to all ports)
+    2. Find GPS port at that baud rate
+    3. If not found, try other baud rates
+    
+    Note: enable_gps_at_command() is called separately in main() on startup
+    (matching the app's behavior where it's called once during initialization)
+    """
     logger.info("=" * 60)
-    logger.info("Auto-detecting GPS port...")
+    logger.info("Auto-detecting GPS port (following app logic)...")
     logger.info("=" * 60)
     
-    for port in ports:
-        logger.info(f"Testing port: {port.device}")
-        for baud_rate in baud_rates:
-            logger.debug(f"  Trying baud rate: {baud_rate}")
-            try:
-                with serial.Serial(
-                    port=port.device,
-                    baudrate=baud_rate,
-                    timeout=timeout,
-                    write_timeout=1
-                ) as ser:
-                    # Try to read GPS sentences
-                    for attempt in range(10):
-                        if ser.in_waiting < 80:
-                            time.sleep(0.2)
-                        line = ser.readline().decode('utf-8', errors='ignore').strip()
-                        if line:
-                            logger.debug(f"    Attempt {attempt + 1}: {line[:60]}...")
-                            if line.startswith('$G'):
-                                logger.info(f"✓ GPS found on {port.device} at {baud_rate} baud")
-                                return port.device, baud_rate
-            except (serial.SerialException, OSError) as e:
-                logger.debug(f"    Failed at {baud_rate} baud: {e}")
-                continue
+    # Step 1: Pre-configure GPS (try AT+QGPS=1 on all ports)
+    logger.info("Step 1: Pre-configuring GPS (sending AT+QGPS=1 to all ports)...")
+    detected_baud = pre_config_gps(logger, default_baud_rate=baud_rates[0] if baud_rates else 115200)
+    logger.info(f"Detected baud rate from pre-config: {detected_baud}")
     
-    logger.warning("No GPS device detected on any port")
+    # Step 2: Try to find GPS port at the detected baud rate first
+    logger.info(f"Step 2: Searching for GPS at {detected_baud} baud...")
+    port = find_gps_port(detected_baud, logger)
+    if port:
+        logger.info(f"✓ GPS found on {port} at {detected_baud} baud")
+        return port, detected_baud
+    
+    # Step 3: If not found, try other baud rates
+    logger.info("Step 3: GPS not found at detected baud rate, trying other baud rates...")
+    for baud_rate in baud_rates:
+        if baud_rate == detected_baud:
+            continue  # Already tried this one
+        logger.info(f"Trying baud rate: {baud_rate}")
+        port = find_gps_port(baud_rate, logger)
+        if port:
+            logger.info(f"✓ GPS found on {port} at {baud_rate} baud")
+            return port, baud_rate
+    
+    logger.warning("No GPS device detected on any port at any baud rate")
     return None
 
 
@@ -441,6 +535,10 @@ def main():
     if args.list_ports:
         list_serial_ports(logger)
         return
+    
+    # Enable GPS on startup (like the app does)
+    logger.info("Attempting to enable GPS on startup...")
+    enable_gps_at_command(logger)
     
     # Determine port and baud rate
     port = None
