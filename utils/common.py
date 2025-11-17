@@ -89,34 +89,168 @@ def get_mac_address():
 
 
 def enable_gps_at_command():
-    """Send AT+QGPS=1 command to ttyUSB2 to enable GPS"""
+    """
+    Send AT+QGPS=1 command to ttyUSB2 to enable GPS.
+    Works the same way as gps_enable.py script - mimics minicom action.
+    """
+    port = '/dev/ttyUSB2'
+    baud_rate = 115200
+    command = 'AT+QGPS=1'
+    wait_time = 2.0
+    
     try:
-        with serial.Serial('/dev/ttyUSB2', baudrate=115200, timeout=1, rtscts=True, dsrdtr=True) as ser:
-            ser.write('AT+QGPS=1\r'.encode())
-            logger.info("Sent AT+QGPS=1 command to ttyUSB2")
-            ser.close()
-            time.sleep(2)  # Give GPS time to initialize
-            return True
-    except (OSError, serial.SerialException) as e:
-        logger.warning(f"Failed to send AT+QGPS=1 command to ttyUSB2: {e}")
+        logger.info(f"Opening serial connection to {port} at {baud_rate} baud...")
+        ser = serial.Serial(
+            port=port,
+            baudrate=baud_rate,
+            timeout=1,
+            write_timeout=1,
+            rtscts=True,
+            dsrdtr=True
+        )
+        logger.info(f"✓ Connected to {port}")
+        
+        # Clear any existing data in buffer (like gps_enable.py)
+        ser.reset_input_buffer()
+        ser.reset_output_buffer()
+        
+        # Prepare command (add carriage return like minicom)
+        at_command = command if command.endswith('\r') else command + '\r'
+        command_bytes = at_command.encode('utf-8')
+        
+        # Send command
+        logger.info(f"Sending command: {command}")
+        ser.write(command_bytes)
+        logger.info(f"✓ Command sent: {command_bytes}")
+        
+        # Wait for GPS to initialize
+        if wait_time > 0:
+            logger.debug(f"Waiting {wait_time} seconds for GPS to initialize...")
+            time.sleep(wait_time)
+        
+        # Read response (optional, but helpful for debugging)
+        logger.debug("Reading response...")
+        response_lines = []
+        start_time = time.time()
+        timeout = 2.0  # 2 second timeout for reading
+        
+        while (time.time() - start_time) < timeout:
+            if ser.in_waiting > 0:
+                line = ser.readline().decode('utf-8', errors='ignore').strip()
+                if line:
+                    response_lines.append(line)
+                    logger.debug(f"  Response: {line}")
+            else:
+                time.sleep(0.1)
+        
+        if response_lines:
+            logger.info(f"✓ Received {len(response_lines)} response line(s)")
+        else:
+            logger.debug("No response received (this may be normal)")
+        
+        # Close connection
+        ser.close()
+        logger.info(f"✓ Connection closed")
+        logger.info("GPS enable command completed successfully")
+        
+        return True
+        
+    except serial.SerialException as e:
+        logger.warning(f"Failed to send AT+QGPS=1 command to {port}: {e}")
+        return False
+    except PermissionError as e:
+        logger.warning(f"Permission denied accessing {port}: {e}")
+        return False
+    except (OSError, Exception) as e:
+        logger.warning(f"Failed to send AT+QGPS=1 command to {port}: {e}")
         return False
 
 def pre_config_gps():
+    """
+    Pre-configure GPS by sending AT+QGPS=1 to all available ports.
+    Works the same way as enable_gps_at_command() for each port.
+    Returns the baud rate to use for GPS scanning.
+    """
     serial_ports = [port.device for port in serial.tools.list_ports.comports()]
-    logger.debug(f"Available ports:{serial_ports}")
+    logger.debug(f"Available ports: {serial_ports}")
+    
     if platform.system() == 'Windows':
         return settings.GPS_CONFIG.get('baud_rate', settings.BAUD_RATE_DON) or settings.BAUD_RATE_DON
+    
+    # Get probe baud rate (default: 115200)
     try_rate = settings.GPS_CONFIG.get('probe_baud_rate', settings.GPS_CONFIG.get('baud_rate', settings.BAUD_RATE_DON)) if isinstance(settings.GPS_CONFIG, dict) else settings.BAUD_RATE_DON
+    command = 'AT+QGPS=1'
+    wait_time = 2.0
+    
+    logger.info("Attempting to enable GPS on all ports with AT+QGPS=1 command...")
     for port in serial_ports:
         try:
-            with serial.Serial(port, baudrate=try_rate, timeout=1, rtscts=True, dsrdtr=True) as serw:
-                serw.write('AT+QGPS=1\r'.encode())
-                logger.debug(f"AT-{port}")
-                serw.close()
-                time.sleep(2)
-                return try_rate
-        except (OSError, serial.SerialException):
+            logger.debug(f"Trying port: {port} at {try_rate} baud...")
+            ser = serial.Serial(
+                port=port,
+                baudrate=try_rate,
+                timeout=1,
+                write_timeout=1,
+                rtscts=True,
+                dsrdtr=True
+            )
+            logger.debug(f"✓ Connected to {port}")
+            
+            # Clear any existing data in buffer (like enable_gps_at_command)
+            ser.reset_input_buffer()
+            ser.reset_output_buffer()
+            
+            # Prepare command (add carriage return like minicom)
+            at_command = command if command.endswith('\r') else command + '\r'
+            command_bytes = at_command.encode('utf-8')
+            
+            # Send command
+            logger.debug(f"Sending command: {command} to {port}")
+            ser.write(command_bytes)
+            logger.debug(f"✓ Command sent to {port}: {command_bytes}")
+            
+            # Wait for GPS to initialize
+            if wait_time > 0:
+                logger.debug(f"Waiting {wait_time} seconds for GPS to initialize...")
+                time.sleep(wait_time)
+            
+            # Read response (optional, but helpful for debugging)
+            response_lines = []
+            start_time = time.time()
+            timeout = 1.0  # 1 second timeout for reading (shorter than enable_gps_at_command)
+            
+            while (time.time() - start_time) < timeout:
+                if ser.in_waiting > 0:
+                    line = ser.readline().decode('utf-8', errors='ignore').strip()
+                    if line:
+                        response_lines.append(line)
+                        logger.debug(f"  Response from {port}: {line}")
+                else:
+                    time.sleep(0.1)
+            
+            if response_lines:
+                logger.debug(f"✓ Received {len(response_lines)} response line(s) from {port}")
+            else:
+                logger.debug(f"No response from {port} (this may be normal)")
+            
+            # Close connection
+            ser.close()
+            logger.info(f"✓ Successfully sent AT+QGPS=1 to {port}")
+            logger.debug(f"✓ Connection closed for {port}")
+            
+            return try_rate
+            
+        except serial.SerialException as e:
+            logger.debug(f"Port {port} serial error: {e}")
             pass
+        except PermissionError as e:
+            logger.debug(f"Permission denied accessing {port}: {e}")
+            pass
+        except (OSError, Exception) as e:
+            logger.debug(f"Port {port} error: {e}")
+            pass
+    
+    logger.debug("No port responded to AT command, using default baud rate")
     return settings.GPS_CONFIG.get('baud_rate', settings.BAUD_RATE_DON) or settings.BAUD_RATE_DON
 
 
