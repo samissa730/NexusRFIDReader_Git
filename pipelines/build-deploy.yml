@@ -57,6 +57,7 @@ parameters:
 stages:
   - stage: BuildProject
     displayName: 'Build and Package Stage'
+    condition: succeeded()
     jobs:
       - job: MultiPlatformBuild
         displayName: 'Multi-Platform Build Job'
@@ -115,17 +116,22 @@ stages:
           - task: PowerShell@2
             displayName: 'Run Tests (Windows)'
             condition: and(succeeded(), eq(variables['osName'], 'Windows'))
-            continueOnError: true
             inputs:
               targetType: 'inline'
               script: |
                 try {
                   if (Test-Path "tests") {
                     python -m pytest tests/ --junitxml="$(Agent.TempDirectory)/test-results.xml"
-                    if ($LASTEXITCODE -ne 0) { Write-Host "Tests completed with issues" }
+                    if ($LASTEXITCODE -ne 0) {
+                      Write-Host "##vso[task.logissue type=error]Tests failed with exit code $LASTEXITCODE"
+                      exit $LASTEXITCODE
+                    }
                   } elseif (Test-Path "UnitTests") {
                     python -m pytest UnitTests/ --junitxml="$(Agent.TempDirectory)/test-results.xml"
-                    if ($LASTEXITCODE -ne 0) { Write-Host "Tests completed with issues" }
+                    if ($LASTEXITCODE -ne 0) {
+                      Write-Host "##vso[task.logissue type=error]Tests failed with exit code $LASTEXITCODE"
+                      exit $LASTEXITCODE
+                    }
                   } else {
                     Write-Host "No tests directory found, creating empty test results"
                     New-Item -ItemType Directory -Path "$(Agent.TempDirectory)" -Force
@@ -133,19 +139,28 @@ stages:
                     Set-Content -Path "$(Agent.TempDirectory)/test-results.xml" -Value $xmlContent
                   }
                 } catch {
-                  Write-Host "Test execution failed: $($_.Exception.Message)"
+                  Write-Host "##vso[task.logissue type=error]Test execution failed: $($_.Exception.Message)"
                   Write-Host "Creating empty test results"
                   New-Item -ItemType Directory -Path "$(Agent.TempDirectory)" -Force
                   $xmlContent = '<?xml version="1.0" encoding="UTF-8"?><testsuites><testsuite name="NoTests" tests="0" failures="0" errors="0" skipped="0"></testsuite></testsuites>'
                   Set-Content -Path "$(Agent.TempDirectory)/test-results.xml" -Value $xmlContent
+                  exit 1
                 }
           
           # Run tests - Linux/Mac Bash
           - bash: |
               if [ -d "tests" ]; then
-                python -m pytest tests/ --junitxml=$(Agent.TempDirectory)/test-results.xml || echo "Tests completed with issues"
+                python -m pytest tests/ --junitxml=$(Agent.TempDirectory)/test-results.xml
+                if [ $? -ne 0 ]; then
+                  echo "##vso[task.logissue type=error]Tests failed with exit code $?"
+                  exit $?
+                fi
               elif [ -d "UnitTests" ]; then
-                python -m pytest UnitTests/ --junitxml=$(Agent.TempDirectory)/test-results.xml || echo "Tests completed with issues"
+                python -m pytest UnitTests/ --junitxml=$(Agent.TempDirectory)/test-results.xml
+                if [ $? -ne 0 ]; then
+                  echo "##vso[task.logissue type=error]Tests failed with exit code $?"
+                  exit $?
+                fi
               else
                 echo "No tests directory found, creating empty test results"
                 mkdir -p $(Agent.TempDirectory)
@@ -153,7 +168,6 @@ stages:
               fi
             displayName: 'Run Tests (Linux)'
             condition: and(succeeded(), ne(variables['osName'], 'Windows'))
-            continueOnError: true
 
           # Publish test results
           - task: PublishTestResults@2
@@ -347,84 +361,93 @@ stages:
                     path: '$(Pipeline.Workspace)/RaspberryPi'
 
                 - task: DownloadPipelineArtifact@2
-                  displayName: 'Download Packages'
+                  displayName: 'Download Windows Package'
                   inputs:
                     artifact: '$(projectName)-Windows-$(Build.BuildNumber)'
                     path: '$(Pipeline.Workspace)/packages'
 
                 - task: DownloadPipelineArtifact@2
+                  displayName: 'Download Linux package'
                   inputs:
                     artifact: '$(projectName)-Linux-$(Build.BuildNumber)'
                     path: '$(Pipeline.Workspace)/packages'
 
                 - task: DownloadPipelineArtifact@2
+                  displayName: 'Download RaspberryPi package'
                   inputs:
                     artifact: '$(projectName)-RaspberryPi-$(Build.BuildNumber)'
                     path: '$(Pipeline.Workspace)/packages'
 
-                - task: AzureFileCopy@6
-                  displayName: 'Upload Windows to DEV'
-                  inputs:
-                    SourcePath: '$(Pipeline.Workspace)/Windows/$(projectName).exe'
-                    azureSubscription: ${{ format(variables.workLoadServiceConnection, 'dev') }}
-                    Destination: 'AzureBlob'
-                    storage: ${{ format(variables.storageAccountName, 'dev') }}
-                    ContainerName: '$(containerName)'
-                    BlobPrefix: 'builds/$(Build.BuildNumber)/Windows/'
-
-                - task: AzureFileCopy@6
-                  displayName: 'Upload Windows Package to DEV'
-                  inputs:
-                    SourcePath: '$(Pipeline.Workspace)/packages/$(projectName)-Windows-$(Build.BuildNumber).zip'
-                    azureSubscription: ${{ format(variables.workLoadServiceConnection, 'dev') }}
-                    Destination: 'AzureBlob'
-                    storage: ${{ format(variables.storageAccountName, 'dev') }}
-                    ContainerName: '$(containerName)'
-                    BlobPrefix: 'releases/$(Build.BuildNumber)/'
-
                 - task: AzureCLI@2
-                  displayName: 'Upload Linux/RaspberryPi to DEV'
+                  displayName: 'Upload to storage account'
                   inputs:
                     azureSubscription: ${{ format(variables.workLoadServiceConnection, 'dev') }}
-                    scriptType: 'bash'
-                    scriptLocation: 'inlineScript'
+                    scriptType: bash
+                    scriptLocation: inlineScript
                     inlineScript: |
-                      S="${{ format(variables.storageAccountName, 'dev') }}"
-                      C="$(containerName)"
-                      B="$(Build.BuildNumber)"
-                      P="$(projectName)"
+                      set -euo pipefail
+                      SA="${{ format(variables.storageAccountName, 'dev') }}"
+                      CN="deviceupdates"
+                      SAS="$(rfidstoragesasRW)"
+                      BUILD="$(Build.BuildNumber)"
                       
-                      az storage blob upload --file "$(Pipeline.Workspace)/Linux/$P" --name "builds/$B/Linux/$P" \
-                        --container-name "$C" --account-name "$S" --auth-mode login --overwrite
-                      az storage blob upload --file "$(Pipeline.Workspace)/packages/$P-Linux-$B.zip" --name "releases/$B/$P-Linux-$B.zip" \
-                        --container-name "$C" --account-name "$S" --auth-mode login --overwrite
-                      az storage blob upload --file "$(Pipeline.Workspace)/RaspberryPi/$P" --name "builds/$B/RaspberryPi/$P" \
-                        --container-name "$C" --account-name "$S" --auth-mode login --overwrite
-                      az storage blob upload --file "$(Pipeline.Workspace)/packages/$P-RaspberryPi-$B.zip" --name "releases/$B/$P-RaspberryPi-$B.zip" \
-                        --container-name "$C" --account-name "$S" --auth-mode login --overwrite
-
-                - task: AzureCLI@2
-                  displayName: 'Verify DEV Uploads'
-                  inputs:
-                    azureSubscription: ${{ format(variables.workLoadServiceConnection, 'dev') }}
-                    scriptType: 'bash'
-                    scriptLocation: 'inlineScript'
-                    inlineScript: |
-                      S="${{ format(variables.storageAccountName, 'dev') }}"
-                      C="$(containerName)"
-                      for B in "builds/$(Build.BuildNumber)/Windows/$(projectName).exe" \
-                               "builds/$(Build.BuildNumber)/Linux/$(projectName)" \
-                               "builds/$(Build.BuildNumber)/RaspberryPi/$(projectName)"; do
-                        az storage blob exists --account-name "$S" --container-name "$C" --name "$B" --auth-mode login --output tsv | grep -q "True" && echo "✅ $B" || (echo "❌ $B"; exit 1)
-                      done
+                      # Upload executables to builds/{build_number}/{osName}/
+                      az storage blob upload-batch \
+                        --account-name "$SA" \
+                        --destination "$CN" \
+                        --destination-path "builds/$BUILD/Windows" \
+                        --source "$(Pipeline.Workspace)/Windows" \
+                        --sas-token "$SAS" \
+                        --overwrite
+                      
+                      az storage blob upload-batch \
+                        --account-name "$SA" \
+                        --destination "$CN" \
+                        --destination-path "builds/$BUILD/Linux" \
+                        --source "$(Pipeline.Workspace)/Linux" \
+                        --sas-token "$SAS" \
+                        --overwrite
+                      
+                      az storage blob upload-batch \
+                        --account-name "$SA" \
+                        --destination "$CN" \
+                        --destination-path "builds/$BUILD/RaspberryPi" \
+                        --source "$(Pipeline.Workspace)/RaspberryPi" \
+                        --sas-token "$SAS" \
+                        --overwrite
+                      
+                      # Upload release packages to releases/{build_number}/
+                      P="$(projectName)"
+                      az storage blob upload \
+                        --account-name "$SA" \
+                        --container-name "$CN" \
+                        --name "releases/$BUILD/$P-Windows-$BUILD.zip" \
+                        --file "$(Pipeline.Workspace)/packages/$P-Windows-$BUILD.zip" \
+                        --sas-token "$SAS" \
+                        --overwrite
+                      
+                      az storage blob upload \
+                        --account-name "$SA" \
+                        --container-name "$CN" \
+                        --name "releases/$BUILD/$P-Linux-$BUILD.zip" \
+                        --file "$(Pipeline.Workspace)/packages/$P-Linux-$BUILD.zip" \
+                        --sas-token "$SAS" \
+                        --overwrite
+                      
+                      az storage blob upload \
+                        --account-name "$SA" \
+                        --container-name "$CN" \
+                        --name "releases/$BUILD/$P-RaspberryPi-$BUILD.zip" \
+                        --file "$(Pipeline.Workspace)/packages/$P-RaspberryPi-$BUILD.zip" \
+                        --sas-token "$SAS" \
+                        --overwrite
 
   # Deploy to TEST
   - stage: DeployTest
     displayName: Deploy to TEST
     lockBehavior: runLatest
     dependsOn:
-      - BuildProject
-      - PostBuild
+      - DeployDev
     condition: succeeded()
     jobs:
       - deployment: DeployToBlobStorage
@@ -440,84 +463,113 @@ stages:
             deploy:
               steps:
                 - checkout: none
+
                 - task: DownloadPipelineArtifact@2
-                  displayName: 'Download Artifacts'
+                  displayName: 'Download Windows Artifacts'
                   inputs:
                     artifact: '$(projectName)-Windows-artifacts'
                     path: '$(Pipeline.Workspace)/Windows'
+
                 - task: DownloadPipelineArtifact@2
+                  displayName: 'Download Linux Artifacts'
                   inputs:
                     artifact: '$(projectName)-Linux-artifacts'
                     path: '$(Pipeline.Workspace)/Linux'
+
                 - task: DownloadPipelineArtifact@2
+                  displayName: 'Download RaspberryPi Artifacts'
                   inputs:
                     artifact: '$(projectName)-RaspberryPi-artifacts'
                     path: '$(Pipeline.Workspace)/RaspberryPi'
+
                 - task: DownloadPipelineArtifact@2
+                  displayName: 'Download Windows Package'
                   inputs:
                     artifact: '$(projectName)-Windows-$(Build.BuildNumber)'
                     path: '$(Pipeline.Workspace)/packages'
+
                 - task: DownloadPipelineArtifact@2
+                  displayName: 'Download Linux package'
                   inputs:
                     artifact: '$(projectName)-Linux-$(Build.BuildNumber)'
                     path: '$(Pipeline.Workspace)/packages'
+
                 - task: DownloadPipelineArtifact@2
+                  displayName: 'Download RaspberryPi package'
                   inputs:
                     artifact: '$(projectName)-RaspberryPi-$(Build.BuildNumber)'
                     path: '$(Pipeline.Workspace)/packages'
-                - task: AzureFileCopy@6
-                  displayName: 'Upload Windows to TEST'
-                  inputs:
-                    SourcePath: '$(Pipeline.Workspace)/Windows/$(projectName).exe'
-                    azureSubscription: ${{ format(variables.workLoadServiceConnection, 'test') }}
-                    Destination: 'AzureBlob'
-                    storage: ${{ format(variables.storageAccountName, 'test') }}
-                    ContainerName: '$(containerName)'
-                    BlobPrefix: 'builds/$(Build.BuildNumber)/Windows/'
-                - task: AzureFileCopy@6
-                  displayName: 'Upload Windows Package to TEST'
-                  inputs:
-                    SourcePath: '$(Pipeline.Workspace)/packages/$(projectName)-Windows-$(Build.BuildNumber).zip'
-                    azureSubscription: ${{ format(variables.workLoadServiceConnection, 'test') }}
-                    Destination: 'AzureBlob'
-                    storage: ${{ format(variables.storageAccountName, 'test') }}
-                    ContainerName: '$(containerName)'
-                    BlobPrefix: 'releases/$(Build.BuildNumber)/'
+
                 - task: AzureCLI@2
-                  displayName: 'Upload Linux/RaspberryPi to TEST'
+                  displayName: 'Upload to storage account'
                   inputs:
                     azureSubscription: ${{ format(variables.workLoadServiceConnection, 'test') }}
-                    scriptType: 'bash'
-                    scriptLocation: 'inlineScript'
+                    scriptType: bash
+                    scriptLocation: inlineScript
                     inlineScript: |
-                      S="${{ format(variables.storageAccountName, 'test') }}"
-                      C="$(containerName)"
-                      B="$(Build.BuildNumber)"
+                      set -euo pipefail
+                      SA="${{ format(variables.storageAccountName, 'test') }}"
+                      CN="deviceupdates"
+                      SAS="$(rfidstoragesasRW)"
+                      BUILD="$(Build.BuildNumber)"
+                      
+                      # Upload executables to builds/{build_number}/{osName}/
+                      az storage blob upload-batch \
+                        --account-name "$SA" \
+                        --destination "$CN" \
+                        --destination-path "builds/$BUILD/Windows" \
+                        --source "$(Pipeline.Workspace)/Windows" \
+                        --sas-token "$SAS" \
+                        --overwrite
+                      
+                      az storage blob upload-batch \
+                        --account-name "$SA" \
+                        --destination "$CN" \
+                        --destination-path "builds/$BUILD/Linux" \
+                        --source "$(Pipeline.Workspace)/Linux" \
+                        --sas-token "$SAS" \
+                        --overwrite
+                      
+                      az storage blob upload-batch \
+                        --account-name "$SA" \
+                        --destination "$CN" \
+                        --destination-path "builds/$BUILD/RaspberryPi" \
+                        --source "$(Pipeline.Workspace)/RaspberryPi" \
+                        --sas-token "$SAS" \
+                        --overwrite
+                      
+                      # Upload release packages to releases/{build_number}/
                       P="$(projectName)"
-                      az storage blob upload --file "$(Pipeline.Workspace)/Linux/$P" --name "builds/$B/Linux/$P" --container-name "$C" --account-name "$S" --auth-mode login --overwrite
-                      az storage blob upload --file "$(Pipeline.Workspace)/packages/$P-Linux-$B.zip" --name "releases/$B/$P-Linux-$B.zip" --container-name "$C" --account-name "$S" --auth-mode login --overwrite
-                      az storage blob upload --file "$(Pipeline.Workspace)/RaspberryPi/$P" --name "builds/$B/RaspberryPi/$P" --container-name "$C" --account-name "$S" --auth-mode login --overwrite
-                      az storage blob upload --file "$(Pipeline.Workspace)/packages/$P-RaspberryPi-$B.zip" --name "releases/$B/$P-RaspberryPi-$B.zip" --container-name "$C" --account-name "$S" --auth-mode login --overwrite
-                - task: AzureCLI@2
-                  displayName: 'Verify TEST Uploads'
-                  inputs:
-                    azureSubscription: ${{ format(variables.workLoadServiceConnection, 'test') }}
-                    scriptType: 'bash'
-                    scriptLocation: 'inlineScript'
-                    inlineScript: |
-                      S="${{ format(variables.storageAccountName, 'test') }}"
-                      C="$(containerName)"
-                      for B in "builds/$(Build.BuildNumber)/Windows/$(projectName).exe" "builds/$(Build.BuildNumber)/Linux/$(projectName)" "builds/$(Build.BuildNumber)/RaspberryPi/$(projectName)"; do
-                        az storage blob exists --account-name "$S" --container-name "$C" --name "$B" --auth-mode login --output tsv | grep -q "True" && echo "✅ $B" || (echo "❌ $B"; exit 1)
-                      done
+                      az storage blob upload \
+                        --account-name "$SA" \
+                        --container-name "$CN" \
+                        --name "releases/$BUILD/$P-Windows-$BUILD.zip" \
+                        --file "$(Pipeline.Workspace)/packages/$P-Windows-$BUILD.zip" \
+                        --sas-token "$SAS" \
+                        --overwrite
+                      
+                      az storage blob upload \
+                        --account-name "$SA" \
+                        --container-name "$CN" \
+                        --name "releases/$BUILD/$P-Linux-$BUILD.zip" \
+                        --file "$(Pipeline.Workspace)/packages/$P-Linux-$BUILD.zip" \
+                        --sas-token "$SAS" \
+                        --overwrite
+                      
+                      az storage blob upload \
+                        --account-name "$SA" \
+                        --container-name "$CN" \
+                        --name "releases/$BUILD/$P-RaspberryPi-$BUILD.zip" \
+                        --file "$(Pipeline.Workspace)/packages/$P-RaspberryPi-$BUILD.zip" \
+                        --sas-token "$SAS" \
+                        --overwrite
 
   # Deploy to PROD
   - stage: DeployProd
     displayName: Deploy to PROD
     lockBehavior: runLatest
     dependsOn:
-      - BuildProject
-      - PostBuild
+      - DeployTest
     condition: succeeded()
     jobs:
       - deployment: DeployToBlobStorage
@@ -532,73 +584,103 @@ stages:
             deploy:
               steps:
                 - checkout: none
+
                 - task: DownloadPipelineArtifact@2
-                  displayName: 'Download Artifacts'
+                  displayName: 'Download Windows Artifacts'
                   inputs:
                     artifact: '$(projectName)-Windows-artifacts'
                     path: '$(Pipeline.Workspace)/Windows'
+
                 - task: DownloadPipelineArtifact@2
+                  displayName: 'Download Linux Artifacts'
                   inputs:
                     artifact: '$(projectName)-Linux-artifacts'
                     path: '$(Pipeline.Workspace)/Linux'
+
                 - task: DownloadPipelineArtifact@2
+                  displayName: 'Download RaspberryPi Artifacts'
                   inputs:
                     artifact: '$(projectName)-RaspberryPi-artifacts'
                     path: '$(Pipeline.Workspace)/RaspberryPi'
+
                 - task: DownloadPipelineArtifact@2
+                  displayName: 'Download Windows Package'
                   inputs:
                     artifact: '$(projectName)-Windows-$(Build.BuildNumber)'
                     path: '$(Pipeline.Workspace)/packages'
+
                 - task: DownloadPipelineArtifact@2
+                  displayName: 'Download Linux package'
                   inputs:
                     artifact: '$(projectName)-Linux-$(Build.BuildNumber)'
                     path: '$(Pipeline.Workspace)/packages'
+
                 - task: DownloadPipelineArtifact@2
+                  displayName: 'Download RaspberryPi package'
                   inputs:
                     artifact: '$(projectName)-RaspberryPi-$(Build.BuildNumber)'
                     path: '$(Pipeline.Workspace)/packages'
-                - task: AzureFileCopy@6
-                  displayName: 'Upload Windows to PROD'
-                  inputs:
-                    SourcePath: '$(Pipeline.Workspace)/Windows/$(projectName).exe'
-                    azureSubscription: ${{ format(variables.workLoadServiceConnection, 'prod') }}
-                    Destination: 'AzureBlob'
-                    storage: ${{ format(variables.storageAccountName, 'prod') }}
-                    ContainerName: '$(containerName)'
-                    BlobPrefix: 'builds/$(Build.BuildNumber)/Windows/'
-                - task: AzureFileCopy@6
-                  displayName: 'Upload Windows Package to PROD'
-                  inputs:
-                    SourcePath: '$(Pipeline.Workspace)/packages/$(projectName)-Windows-$(Build.BuildNumber).zip'
-                    azureSubscription: ${{ format(variables.workLoadServiceConnection, 'prod') }}
-                    Destination: 'AzureBlob'
-                    storage: ${{ format(variables.storageAccountName, 'prod') }}
-                    ContainerName: '$(containerName)'
-                    BlobPrefix: 'releases/$(Build.BuildNumber)/'
+
                 - task: AzureCLI@2
-                  displayName: 'Upload Linux/RaspberryPi to PROD'
+                  displayName: 'Upload to storage account'
                   inputs:
                     azureSubscription: ${{ format(variables.workLoadServiceConnection, 'prod') }}
-                    scriptType: 'bash'
-                    scriptLocation: 'inlineScript'
+                    scriptType: bash
+                    scriptLocation: inlineScript
                     inlineScript: |
-                      S="${{ format(variables.storageAccountName, 'prod') }}"
-                      C="$(containerName)"
-                      B="$(Build.BuildNumber)"
+                      set -euo pipefail
+                      SA="${{ format(variables.storageAccountName, 'prod') }}"
+                      CN="deviceupdates"
+                      SAS="$(rfidstoragesasRW)"
+                      BUILD="$(Build.BuildNumber)"
+                      
+                      # Upload executables to builds/{build_number}/{osName}/
+                      az storage blob upload-batch \
+                        --account-name "$SA" \
+                        --destination "$CN" \
+                        --destination-path "builds/$BUILD/Windows" \
+                        --source "$(Pipeline.Workspace)/Windows" \
+                        --sas-token "$SAS" \
+                        --overwrite
+                      
+                      az storage blob upload-batch \
+                        --account-name "$SA" \
+                        --destination "$CN" \
+                        --destination-path "builds/$BUILD/Linux" \
+                        --source "$(Pipeline.Workspace)/Linux" \
+                        --sas-token "$SAS" \
+                        --overwrite
+                      
+                      az storage blob upload-batch \
+                        --account-name "$SA" \
+                        --destination "$CN" \
+                        --destination-path "builds/$BUILD/RaspberryPi" \
+                        --source "$(Pipeline.Workspace)/RaspberryPi" \
+                        --sas-token "$SAS" \
+                        --overwrite
+                      
+                      # Upload release packages to releases/{build_number}/
                       P="$(projectName)"
-                      az storage blob upload --file "$(Pipeline.Workspace)/Linux/$P" --name "builds/$B/Linux/$P" --container-name "$C" --account-name "$S" --auth-mode login --overwrite
-                      az storage blob upload --file "$(Pipeline.Workspace)/packages/$P-Linux-$B.zip" --name "releases/$B/$P-Linux-$B.zip" --container-name "$C" --account-name "$S" --auth-mode login --overwrite
-                      az storage blob upload --file "$(Pipeline.Workspace)/RaspberryPi/$P" --name "builds/$B/RaspberryPi/$P" --container-name "$C" --account-name "$S" --auth-mode login --overwrite
-                      az storage blob upload --file "$(Pipeline.Workspace)/packages/$P-RaspberryPi-$B.zip" --name "releases/$B/$P-RaspberryPi-$B.zip" --container-name "$C" --account-name "$S" --auth-mode login --overwrite
-                - task: AzureCLI@2
-                  displayName: 'Verify PROD Uploads'
-                  inputs:
-                    azureSubscription: ${{ format(variables.workLoadServiceConnection, 'prod') }}
-                    scriptType: 'bash'
-                    scriptLocation: 'inlineScript'
-                    inlineScript: |
-                      S="${{ format(variables.storageAccountName, 'prod') }}"
-                      C="$(containerName)"
-                      for B in "builds/$(Build.BuildNumber)/Windows/$(projectName).exe" "builds/$(Build.BuildNumber)/Linux/$(projectName)" "builds/$(Build.BuildNumber)/RaspberryPi/$(projectName)"; do
-                        az storage blob exists --account-name "$S" --container-name "$C" --name "$B" --auth-mode login --output tsv | grep -q "True" && echo "✅ $B" || (echo "❌ $B"; exit 1)
-                      done
+                      az storage blob upload \
+                        --account-name "$SA" \
+                        --container-name "$CN" \
+                        --name "releases/$BUILD/$P-Windows-$BUILD.zip" \
+                        --file "$(Pipeline.Workspace)/packages/$P-Windows-$BUILD.zip" \
+                        --sas-token "$SAS" \
+                        --overwrite
+                      
+                      az storage blob upload \
+                        --account-name "$SA" \
+                        --container-name "$CN" \
+                        --name "releases/$BUILD/$P-Linux-$BUILD.zip" \
+                        --file "$(Pipeline.Workspace)/packages/$P-Linux-$BUILD.zip" \
+                        --sas-token "$SAS" \
+                        --overwrite
+                      
+                      az storage blob upload \
+                        --account-name "$SA" \
+                        --container-name "$CN" \
+                        --name "releases/$BUILD/$P-RaspberryPi-$BUILD.zip" \
+                        --file "$(Pipeline.Workspace)/packages/$P-RaspberryPi-$BUILD.zip" \
+                        --sas-token "$SAS" \
+                        --overwrite
