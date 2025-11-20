@@ -124,8 +124,8 @@ class ApiClient:
         return False
 
     def _headers(self):
-        # Check if token needs refresh
-        if not self.token or time.time() >= self.token_expires_at:
+        # Check if token needs refresh (refresh 2 minutes early to avoid blocking during upload)
+        if not self.token or time.time() >= (self.token_expires_at - 120):
             if not self.refresh_token():
                 logger.warning("Failed to refresh token, proceeding without authentication")
         
@@ -189,12 +189,25 @@ class ApiClient:
     def upload_records(self, payload):
         if not self.record_url:
             return False
+        
+        # Calculate record count and payload size for logging
+        record_count = len(payload) if isinstance(payload, list) else 1
+        payload_size = len(json.dumps(payload).encode('utf-8'))
+        
+        # Use longer timeout for large payloads: base 15s + 2s per 50 records, max 60s
+        # This accounts for slow upload speeds on networks
+        timeout_seconds = min(60, max(15, 15 + (record_count // 50) * 2))
+        
+        logger.debug(f"Uploading {record_count} record(s), payload size: {payload_size / 1024:.2f} KB, timeout: {timeout_seconds}s")
+        
         http = self._session()
         try:
-            # Calculate record count correctly (payload is an array, not a dict)
-            record_count = len(payload) if isinstance(payload, list) else 1
-            
-            response = http.post(self.record_url, headers=self._headers(), json=payload, timeout=10)
+            response = http.post(
+                self.record_url, 
+                headers=self._headers(), 
+                json=payload, 
+                timeout=timeout_seconds
+            )
             response.raise_for_status()
             data = response.json()
             
@@ -209,6 +222,9 @@ class ApiClient:
             else:
                 logger.warning(f"Record upload failed: isSuccess={data.get('isSuccess')}, status={data.get('status')}, errors={data.get('errors', [])}, validationErrors={data.get('validationErrors', [])}")
             return success
+        except requests.exceptions.Timeout as e:
+            # Specific handling for timeout errors with payload details
+            logger.error(f"Uploading records failed: Timeout after {timeout_seconds}s - {record_count} record(s), payload size: {payload_size / 1024:.2f} KB - {str(e)}")
         except requests.exceptions.HTTPError as e:
             # HTTP error (4xx, 5xx)
             try:
@@ -218,7 +234,7 @@ class ApiClient:
                 logger.error(f"Uploading records failed: HTTP error - {str(e)}")
         except requests.exceptions.RequestException as e:
             # Network errors, timeouts, etc.
-            logger.error(f"Uploading records failed: Request error - {str(e)}")
+            logger.error(f"Uploading records failed: Request error - {record_count} record(s), payload size: {payload_size / 1024:.2f} KB - {str(e)}")
         except json.JSONDecodeError as e:
             # Invalid JSON response
             logger.error(f"Uploading records failed: Invalid JSON response - {str(e)}")

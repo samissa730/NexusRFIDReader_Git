@@ -224,7 +224,7 @@ def pre_config_gps():
                     line = ser.readline().decode('utf-8', errors='ignore').strip()
                     if line:
                         response_lines.append(line)
-                        logger.debug(f"  Response from {port}: {line}")
+                        # logger.debug(f"  Response from {port}: {line}")
                 else:
                     time.sleep(0.1)
             
