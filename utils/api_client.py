@@ -152,7 +152,7 @@ class ApiClient:
         }
         http = self._session()
         try:
-            response = http.post(self.health_url, headers=self._headers(), json=payload, timeout=4)
+            response = http.post(self.health_url, headers=self._headers(), json=payload, timeout=10)
             response.raise_for_status()
             data = response.json()
             # Check for new API response format
@@ -163,9 +163,25 @@ class ApiClient:
             success = data.get('metadata', {}).get('code') == '200'
             if success:
                 logger.debug(f"Health data uploaded successfully (legacy format): {payload['userName']} - RFID: {payload['rfidStatus']}, GPS: {payload['gpsStatus']}")
+            else:
+                logger.warning(f"Health upload failed: isSuccess={data.get('isSuccess')}, status={data.get('status')}, errors={data.get('errors', [])}")
             return success
-        except Exception:
-            logger.error("Uploading health data failed")
+        except requests.exceptions.HTTPError as e:
+            # HTTP error (4xx, 5xx)
+            try:
+                error_body = e.response.text if e.response else "No response body"
+                logger.error(f"Uploading health data failed: HTTP {e.response.status_code if e.response else 'Unknown'} - {error_body}")
+            except:
+                logger.error(f"Uploading health data failed: HTTP error - {str(e)}")
+        except requests.exceptions.RequestException as e:
+            # Network errors, timeouts, etc.
+            logger.error(f"Uploading health data failed: Request error - {str(e)}")
+        except json.JSONDecodeError as e:
+            # Invalid JSON response
+            logger.error(f"Uploading health data failed: Invalid JSON response - {str(e)}")
+        except Exception as e:
+            # Any other unexpected error
+            logger.error(f"Uploading health data failed: Unexpected error - {type(e).__name__}: {str(e)}")
         finally:
             http.close()
         return False
@@ -175,22 +191,40 @@ class ApiClient:
             return False
         http = self._session()
         try:
-            response = http.post(self.record_url, headers=self._headers(), json=payload, timeout=4)
+            # Calculate record count correctly (payload is an array, not a dict)
+            record_count = len(payload) if isinstance(payload, list) else 1
+            
+            response = http.post(self.record_url, headers=self._headers(), json=payload, timeout=10)
             response.raise_for_status()
             data = response.json()
+            
             # Check for new API response format
             if data.get('isSuccess') == True and data.get('status') == 'Ok':
-                record_count = len(payload.get('records', [])) if isinstance(payload, dict) else 1
                 logger.debug(f"Records uploaded successfully: {record_count} record(s) for user {self.user_name}")
                 return True
             # Fallback to old format
             success = data.get('metadata', {}).get('code') == '200'
             if success:
-                record_count = len(payload.get('records', [])) if isinstance(payload, dict) else 1
                 logger.debug(f"Records uploaded successfully (legacy format): {record_count} record(s) for user {self.user_name}")
+            else:
+                logger.warning(f"Record upload failed: isSuccess={data.get('isSuccess')}, status={data.get('status')}, errors={data.get('errors', [])}, validationErrors={data.get('validationErrors', [])}")
             return success
-        except Exception:
-            logger.error("Uploading records failed")
+        except requests.exceptions.HTTPError as e:
+            # HTTP error (4xx, 5xx)
+            try:
+                error_body = e.response.text if e.response else "No response body"
+                logger.error(f"Uploading records failed: HTTP {e.response.status_code if e.response else 'Unknown'} - {error_body}")
+            except:
+                logger.error(f"Uploading records failed: HTTP error - {str(e)}")
+        except requests.exceptions.RequestException as e:
+            # Network errors, timeouts, etc.
+            logger.error(f"Uploading records failed: Request error - {str(e)}")
+        except json.JSONDecodeError as e:
+            # Invalid JSON response
+            logger.error(f"Uploading records failed: Invalid JSON response - {str(e)}")
+        except Exception as e:
+            # Any other unexpected error
+            logger.error(f"Uploading records failed: Unexpected error - {type(e).__name__}: {str(e)}")
         finally:
             http.close()
         return False
