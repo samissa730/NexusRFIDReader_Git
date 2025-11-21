@@ -62,7 +62,7 @@ def get_default_config():
             "token": "",
             "user_name": "NexusUser",
             "spotter_id": "120",
-            "site_id": "site_1",
+            "site_id": "019a9e1e-81ff-75ab-99fc-4115bb92fec6",
             "record_interval_ms": 7000,
             "health_interval_ms": 15000,
         },
@@ -72,9 +72,9 @@ def get_default_config():
         },
         "filter_config": {
             "speed": {
-                "enabled": False,
+                "enabled": True,
                 "min": 0,
-                "max": 200,
+                "max": 15,
             },
             "rssi": {
                 "enabled": False,
