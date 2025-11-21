@@ -198,27 +198,40 @@ class RFID(QThread):
             try:
                 new_host = None
                 
-                # First, try default RFID hosts
+                # First, try default RFID hosts by attempting actual connection
                 logger.info(f"Trying default RFID hosts: {DEFAULT_RFID_HOSTS}")
                 for default_host in DEFAULT_RFID_HOSTS:
                     if self._b_stop.is_set():
                         break
                     
-                    logger.info(f"Checking default host: {default_host}")
+                    logger.info(f"Attempting to connect to default host: {default_host}")
                     try:
-                        response_time = ping(default_host, timeout=3)
-                        if response_time is not None:
-                            logger.info(f"Default host {default_host} is reachable (ping: {response_time}s)")
-                            new_host = default_host
-                            break
-                        else:
-                            logger.debug(f"Default host {default_host} is not reachable")
+                        # Create a temporary reader to test connection
+                        test_config = LLRPReaderConfig({
+                            'report_every_n_tags': 1,
+                            'antennas': [1],
+                            'start_inventory': False  # Don't start inventory for testing
+                        })
+                        test_reader = LLRPReaderClient(default_host, self._cfg['port'], test_config)
+                        
+                        # Try to connect with a short timeout
+                        test_reader.connect()
+                        logger.info(f"Successfully connected to default host {default_host} - this is an RFID reader!")
+                        
+                        # Disconnect the test reader
+                        try:
+                            test_reader.disconnect()
+                        except Exception:
+                            pass
+                        
+                        new_host = default_host
+                        break
                     except Exception as e:
-                        logger.debug(f"Failed to ping default host {default_host}: {e}")
+                        logger.debug(f"Default host {default_host} connection failed: {e}")
                 
-                # If no default host responded, try arp-scan discovery
+                # If no default host connected, try arp-scan discovery
                 if not new_host:
-                    logger.info("All default hosts failed, running arp-scan discovery")
+                    logger.info("All default hosts failed to connect, running arp-scan discovery")
                     new_host = discover_rfid_readers(interface="eth0", subnet="169.254.0.0/16")
                 
                 if new_host:
