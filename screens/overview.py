@@ -497,6 +497,7 @@ class OverviewScreen(BaseScreen):
         if not data:
             return
         payload = []
+        uploaded_record_ids = []  # Track IDs of records to be uploaded
         device_id = get_processor_id()
         # Get site_id from API_CONFIG in settings (loaded from config.json)
         site_id = API_CONFIG.get('site_id', '')
@@ -523,9 +524,12 @@ class OverviewScreen(BaseScreen):
                 "isProcess": True  # isProcess (was isProcessed)
             }
             payload.append(record)
+            uploaded_record_ids.append(row[0])  # Track the record ID (first column)
         
-        if self.api.upload_records(payload):
-            # best-effort pruning, rely on DB cleanup intervals otherwise
+        if payload and self.api.upload_records(payload):
+            # Delete the successfully uploaded records
+            self.storage.delete_uploaded_records(uploaded_record_ids)
+            # Also do best-effort pruning for any old records
             self.storage.prune_old()
 
 

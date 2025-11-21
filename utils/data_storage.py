@@ -103,4 +103,24 @@ class DataStorage:
             if len(self.database) > self.max_records:
                 self.database = self.database[-self.max_records:]
 
+    def delete_uploaded_records(self, record_ids: List[int]):
+        """Delete specific records by their IDs after successful upload"""
+        if not record_ids:
+            return
+        
+        if self.use_db:
+            assert self.db_cursor and self.db_connection
+            # Delete records with the specified IDs
+            placeholders = ','.join('?' for _ in record_ids)
+            self.db_cursor.execute(f'DELETE FROM records WHERE id IN ({placeholders})', record_ids)
+            self.db_connection.commit()
+            logger.debug(f"Deleted {len(record_ids)} uploaded record(s) from database")
+        else:
+            # For in-memory storage, filter out records with matching IDs
+            initial_count = len(self.database)
+            self.database = [rec for rec in self.database if rec[0] not in record_ids]
+            deleted_count = initial_count - len(self.database)
+            if deleted_count > 0:
+                logger.debug(f"Deleted {deleted_count} uploaded record(s) from memory")
+
 
