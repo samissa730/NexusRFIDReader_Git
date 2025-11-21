@@ -6,7 +6,13 @@ is_rpi = platform.system() == "Linux" and os.path.exists("/proc/device-tree/mode
 is_win = platform.system() == "Windows"
 
 if is_rpi:
-    ROOT_DIR = os.path.expanduser("~/.nexusrfid")
+    # When running with sudo, use the original user's home directory
+    # Check if SUDO_USER environment variable exists (indicates sudo is being used)
+    if os.environ.get('SUDO_USER'):
+        sudo_user = os.environ.get('SUDO_USER')
+        ROOT_DIR = os.path.join('/home', sudo_user, '.nexusrfid')
+    else:
+        ROOT_DIR = os.path.expanduser("~/.nexusrfid")
 elif is_win:
     ROOT_DIR = os.path.expanduser("~/Documents/NexusRFID")
 
@@ -17,6 +23,9 @@ APP_DIR = os.path.dirname(os.path.realpath(__file__))
 CRASH_FILE = os.path.join(ROOT_DIR, "crash.dump")
 CONFIG_FILE = os.path.join(ROOT_DIR, "config.json")
 DATABASE_FILE = os.path.join(ROOT_DIR, "database.db")
+
+# Default RFID hosts to try before running arp-scan discovery
+DEFAULT_RFID_HOSTS = ["169.254.10.1", "169.254.1.1"]
 
 
 def get_default_config():
@@ -59,6 +68,7 @@ def get_default_config():
         },
         "database_config": {
             "use_db": True,
+            "max_records": 100,
         },
         "filter_config": {
             "speed": {

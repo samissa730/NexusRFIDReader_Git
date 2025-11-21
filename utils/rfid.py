@@ -5,7 +5,7 @@ from PySide6.QtCore import QThread, Signal
 from sllurp.llrp import LLRP_DEFAULT_PORT, LLRPReaderConfig, LLRPReaderClient
 from ping3 import ping
 
-from settings import RFID_CONFIG, update_rfid_host, reload_config
+from settings import RFID_CONFIG, DEFAULT_RFID_HOSTS, update_rfid_host, reload_config
 from utils.logger import logger
 from utils.rfid_discovery import discover_rfid_readers
 
@@ -196,8 +196,30 @@ class RFID(QThread):
         # Keep trying until we find a reader or connection is restored
         while not self._b_stop.is_set() and self.connectivity is False:
             try:
-                # Discover RFID readers on the network
-                new_host = discover_rfid_readers(interface="eth0", subnet="169.254.0.0/16")
+                new_host = None
+                
+                # First, try default RFID hosts
+                logger.info(f"Trying default RFID hosts: {DEFAULT_RFID_HOSTS}")
+                for default_host in DEFAULT_RFID_HOSTS:
+                    if self._b_stop.is_set():
+                        break
+                    
+                    logger.info(f"Checking default host: {default_host}")
+                    try:
+                        response_time = ping(default_host, timeout=3)
+                        if response_time is not None:
+                            logger.info(f"Default host {default_host} is reachable (ping: {response_time}s)")
+                            new_host = default_host
+                            break
+                        else:
+                            logger.debug(f"Default host {default_host} is not reachable")
+                    except Exception as e:
+                        logger.debug(f"Failed to ping default host {default_host}: {e}")
+                
+                # If no default host responded, try arp-scan discovery
+                if not new_host:
+                    logger.info("All default hosts failed, running arp-scan discovery")
+                    new_host = discover_rfid_readers(interface="eth0", subnet="169.254.0.0/16")
                 
                 if new_host:
                     if new_host != self.host:

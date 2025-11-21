@@ -9,8 +9,9 @@ from settings import DATABASE_FILE
 
 class DataStorage:
 
-    def __init__(self, use_db: bool):
+    def __init__(self, use_db: bool, max_records: int = 100):
         self.use_db = use_db
+        self.max_records = max_records
         self.database: List[list] = []
         self.db_connection: Optional[sqlite3.Connection] = None
         self.db_cursor: Optional[sqlite3.Cursor] = None
@@ -78,19 +79,28 @@ class DataStorage:
             return self.database
 
     def prune_old(self):
-        microsecond_timestamp = int(time.time() * 1_000_000)
+        """Delete records beyond the max_records limit, keeping only the newest records"""
         if self.use_db:
             assert self.db_cursor and self.db_connection
-            self.db_cursor.execute('''
-                DELETE FROM records
-                WHERE ABS(timestamp - ?) > 600000000
-            ''', [microsecond_timestamp])
-            self.db_connection.commit()
+            # Count total records
+            self.db_cursor.execute('SELECT COUNT(*) FROM records')
+            total_count = self.db_cursor.fetchone()[0]
+            
+            # If we exceed the limit, delete the oldest records
+            if total_count > self.max_records:
+                records_to_delete = total_count - self.max_records
+                self.db_cursor.execute('''
+                    DELETE FROM records
+                    WHERE id IN (
+                        SELECT id FROM records
+                        ORDER BY timestamp ASC
+                        LIMIT ?
+                    )
+                ''', [records_to_delete])
+                self.db_connection.commit()
         else:
-            i = 0
-            for i in range(len(self.database)):
-                if microsecond_timestamp - self.database[i][10] < 600_000_000:
-                    break
-            self.database = self.database[i:]
+            # For in-memory storage, keep only the last max_records
+            if len(self.database) > self.max_records:
+                self.database = self.database[-self.max_records:]
 
 

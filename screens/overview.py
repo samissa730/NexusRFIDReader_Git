@@ -67,7 +67,10 @@ class OverviewScreen(BaseScreen):
 
         # Init helpers and modules
         self.api = ApiClient()
-        self.storage = DataStorage(DATABASE_CONFIG.get('use_db', False))
+        self.storage = DataStorage(
+            use_db=DATABASE_CONFIG.get('use_db', False),
+            max_records=DATABASE_CONFIG.get('max_records', 100)
+        )
         
         # Set device ID using processor ID
         device_id = get_processor_id()

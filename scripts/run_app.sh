@@ -23,4 +23,4 @@ export XAUTHORITY=${XAUTHORITY:-${HOME_DIR}/.Xauthority}
 export HOME=${HOME:-${HOME_DIR}}
 export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/1000}
 
-exec python3 "${PROJECT_ROOT}/main.py"
+exec sudo python3 "${PROJECT_ROOT}/main.py"
