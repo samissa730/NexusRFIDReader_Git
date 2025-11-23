@@ -111,7 +111,6 @@ class TestApiClient(unittest.TestCase):
                 "longitude": -96.6927,
                 "speed": 15,
                 "deviceId": "1234-er45-65d5-86gh",
-                "barrier": "50",
                 "siteId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
                 "isProcessed": False,
                 "antenna": 1

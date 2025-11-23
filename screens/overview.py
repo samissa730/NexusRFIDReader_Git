@@ -519,7 +519,6 @@ class OverviewScreen(BaseScreen):
                 "longitude": longitude,  # longitude
                 "speed": speed,  # speed as integer
                 "deviceId": device_id,  # deviceId from get_processor_id()
-                "barrier": "90",  # updated barrier value
                 "antenna": int(row[2]) if row[2] else 1,  # antenna number
                 "isProcess": True  # isProcess (was isProcessed)
             }

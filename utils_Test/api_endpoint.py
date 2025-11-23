@@ -229,7 +229,6 @@ class ApiEndpointTester:
                 "longitude": -96.6927,
                 "speed": 15,
                 "deviceId": device_id,
-                "barrier": "90",
                 "antenna": 1,
                 "isProcess": True
             },
@@ -240,7 +239,6 @@ class ApiEndpointTester:
                 "longitude": -96.6928,
                 "speed": 12,
                 "deviceId": device_id,
-                "barrier": "90",
                 "antenna": 2,
                 "isProcess": True
             }
