@@ -512,6 +512,7 @@ class OverviewScreen(BaseScreen):
                 continue  # Skip this record
                 
             # adapt to new API format
+            heading = row[7] if row[7] else 0  # heading (bearing) from GPS
             record = {
                 "siteId": site_id,  # siteId from settings
                 "tagName": row[1],  # tagName (was rfidTag)
@@ -520,6 +521,7 @@ class OverviewScreen(BaseScreen):
                 "speed": speed,  # speed as integer
                 "deviceId": device_id,  # deviceId from get_processor_id()
                 "antenna": int(row[2]) if row[2] else 1,  # antenna number
+                "barrier": heading,  # heading (bearing) from GPS
                 "isProcess": True  # isProcess (was isProcessed)
             }
             payload.append(record)
