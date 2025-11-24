@@ -201,29 +201,14 @@ class OverviewScreen(BaseScreen):
                 return
             tag = self.rfid.tag_data[0]
             # logger.debug(f"Processing tag: EPC={tag.get('EPC-96', 'N/A')}, Antenna={tag.get('AntennaID', 'N/A')}, RSSI={tag.get('PeakRSSI', 'N/A')}")
-            
-            # Get tag timestamp for synchronization
-            tag_timestamp = tag.get('LastSeenTimestampUTC', int(time.time() * 1_000_000))
-            
-            # Get synchronized GPS data that matches the tag timestamp exactly
             lat, lon, speed, bearing = 0, 0, 0, 0
-            gps_timestamp = None
             if self.gps:
-                synchronized_gps = self.gps.get_synchronized_data(tag_timestamp)
-                if synchronized_gps is not None:
-                    # GPS data is synchronized with tag timestamp
-                    gps_data, sdata, gps_timestamp = synchronized_gps
-                    lat, lon = extract_from_gps(gps_data)
-                    if lat != 0 and lon != 0:
-                        self.last_lat = lat
-                        self.last_lon = lon
-                        self.last_utctime = gps_timestamp
-                    speed, bearing = sdata
-                    # logger.debug(f"Synchronized GPS-RFID: TAG={tag['EPC-96']} GPS_ts={gps_timestamp} RFID_ts={tag_timestamp} diff={abs(gps_timestamp-tag_timestamp)/1000:.1f}ms")
-                else:
-                    # GPS data not synchronized - timestamps don't match
-                    logger.warning(f"GPS-RFID timestamp mismatch for tag {tag.get('EPC-96', 'N/A')}: GPS data not synchronized")
-                    lat, lon, speed, bearing = 0, 0, 0, 0
+                lat, lon = extract_from_gps(self.gps.get_data())
+                if lat != 0 and lon != 0:
+                    self.last_lat = lat
+                    self.last_lon = lon
+                    self.last_utctime = int(time.time() * 1_000_000)
+                speed, bearing = self.gps.get_sdata()
             else:
                 lat, lon, speed, bearing = 0, 0, 0, 0
 
@@ -307,9 +292,13 @@ class OverviewScreen(BaseScreen):
             self.ui.last_rfid_read.setText(tag['EPC-96'])
             self.ui.last_rfid_time.setText(get_date_from_utc(tag['LastSeenTimestampUTC']))
             self.ui.last_gps_read.setText(f"{lat:.7f}, {lon:.7f}")
-            # Use synchronized GPS timestamp when available; otherwise use RFID timestamp
-            if gps_timestamp:
-                self.ui.last_gps_time.setText(get_date_from_utc(gps_timestamp))
+            # Use actual GPS timestamp when available; otherwise use RFID timestamp
+            if self.gps and self.gps.isRunning():
+                gps_timestamp = self.gps.get_data_timestamp()
+                if gps_timestamp:
+                    self.ui.last_gps_time.setText(get_date_from_utc(gps_timestamp))
+                else:
+                    self.ui.last_gps_time.setText(get_date_from_utc(tag['LastSeenTimestampUTC']))
             else:
                 self.ui.last_gps_time.setText(get_date_from_utc(tag['LastSeenTimestampUTC']))
             # logger.info(f"Tag processed and displayed: {tag['EPC-96']} at {get_date_from_utc(tag['LastSeenTimestampUTC'])}")
