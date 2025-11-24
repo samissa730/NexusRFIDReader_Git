@@ -261,9 +261,7 @@ class OverviewScreen(BaseScreen):
             current_lon = lon
             
             # Skip storage if all values match the last stored values
-            if (self.last_stored_rfid == current_rfid and 
-                self.last_stored_lat == current_lat and 
-                self.last_stored_lon == current_lon):
+            if (self.last_stored_rfid == current_rfid or ( self.last_stored_lat == current_lat and self.last_stored_lon == current_lon)):
                 # Values haven't changed, skip storage but still update UI
                 logger.debug(f"Skipping storage: same values as last stored (RFID: {current_rfid}, lat: {current_lat}, lon: {current_lon})")
             else:
