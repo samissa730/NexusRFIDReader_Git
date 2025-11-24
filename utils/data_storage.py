@@ -70,7 +70,7 @@ class DataStorage:
             assert self.db_cursor
             self.db_cursor.execute('''
                 SELECT id, rfidTag, antenna, RSSI, latitude, longitude, speed, heading,
-                locationCode, username, timestamp, tag1, value1, tag2, value2, tag3, value3, tag4, value4
+                locationCode, username, tag1, value1, tag2, value2, tag3, value3, tag4, value4
                 FROM records
                 ORDER BY timestamp ASC
             ''')
