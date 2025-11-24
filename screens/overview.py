@@ -111,7 +111,8 @@ class OverviewScreen(BaseScreen):
         self.ui.rfid_connection_status.setStyleSheet("""color: #ff0000;""")
         self.ui.rfid_connection_status.setText("Disconnected")
         
-        self.rfid = RFID(gps=None)  # GPS will be set later when available
+        # Initialize RFID with GPS getter function to always access current GPS instance
+        self.rfid = RFID(gps=None, gps_getter=lambda: self.gps)
         self.rfid.sig_msg.connect(self._on_rfid_status)
         self.rfid.start()
 
@@ -176,6 +177,7 @@ class OverviewScreen(BaseScreen):
             # Reset timeout tracking when GPS connects
             self.gps_connection_start_time = None
             self.gps_timeout_timer.stop()
+            # RFID accesses GPS through gps_getter function, so no manual update needed
         else:
             # External disconnected: update status and start GPS scan
             self._set_gps_status("Disconnected", False)
@@ -364,9 +366,7 @@ class OverviewScreen(BaseScreen):
         self.gps = GPS(port=port, baud_rate=baud)
         self.gps.sig_msg.connect(self._on_gps_status)
         self.gps.start()
-        # Update RFID with GPS reference
-        if self.rfid:
-            self.rfid.gps = self.gps
+        # RFID will access GPS through gps_getter function, so no need to update reference
         self._set_gps_status("External GPS Connected", True)
 
     def _upload_health(self):

@@ -43,7 +43,7 @@ class RFID(QThread):
 
     sig_msg = Signal(int)
 
-    def __init__(self, gps=None):
+    def __init__(self, gps=None, gps_getter=None):
         super().__init__()
         self._b_stop = threading.Event()
         self.tag_data = None
@@ -54,6 +54,7 @@ class RFID(QThread):
         self._set_reader(self.host, False)
         self._discovery_in_progress = False
         self.gps = gps
+        self.gps_getter = gps_getter  # Function to get current GPS instance
 
     def set_reader(self, host, status):
         self._set_reader(host, status)
@@ -102,11 +103,16 @@ class RFID(QThread):
         if tags:
             # logger.debug(f"RFID tags detected: {len(tags)} tags")
             converted_tags = _convert_to_unicode(tags)
-            # Get GPS data if available
+            # Get GPS data if available - use getter function if available, otherwise use direct reference
             lat, lon, speed, bearing = 0, 0, 0, 0
-            if self.gps:
-                lat, lon = extract_from_gps(self.gps.get_data())
-                speed, bearing = self.gps.get_sdata()
+            gps_instance = self.gps_getter() if self.gps_getter else self.gps
+            if gps_instance and hasattr(gps_instance, 'isRunning') and gps_instance.isRunning():
+                try:
+                    lat, lon = extract_from_gps(gps_instance.get_data())
+                    speed, bearing = gps_instance.get_sdata()
+                except Exception as e:
+                    logger.debug(f"Error reading GPS data: {e}")
+                    lat, lon, speed, bearing = 0, 0, 0, 0
             # Round to 7 decimals for consistency
             lat = round(lat, 7)
             lon = round(lon, 7)
