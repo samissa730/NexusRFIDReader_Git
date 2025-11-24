@@ -258,8 +258,11 @@ class OverviewScreen(BaseScreen):
                 self.storage.db_cursor.execute('''
                     SELECT * FROM records
                     WHERE rfidTag = ?
-                    AND ABS(timestamp - ?) < ?
-                ''', (tag['EPC-96'], tag['LastSeenTimestampUTC'], duplicate_window_microseconds))
+                    AND (
+                        ABS(timestamp - ?) < ?
+                        OR (latitude = ? AND longitude = ?)
+                    )
+                ''', (tag['EPC-96'], tag['LastSeenTimestampUTC'], duplicate_window_microseconds, lat, lon))
                 rows = self.storage.db_cursor.fetchall()
                 if not rows:
                     # Prepare record list with explicit id
