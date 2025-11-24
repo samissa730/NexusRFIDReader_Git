@@ -249,13 +249,15 @@ class OverviewScreen(BaseScreen):
 
             # Always store tag data locally, regardless of GPS validity
             if self.storage.use_db:
-                # Prevent duplicates within 10 seconds
+                # Prevent duplicates within configured time window
+                duplicate_window_seconds = DATABASE_CONFIG.get('duplicate_detection_seconds', 3)
+                duplicate_window_microseconds = duplicate_window_seconds * 1_000_000
                 assert self.storage.db_cursor
                 self.storage.db_cursor.execute('''
                     SELECT * FROM records
                     WHERE rfidTag = ?
-                    AND ABS(timestamp - ?) < 10000000
-                ''', (tag['EPC-96'], tag['LastSeenTimestampUTC']))
+                    AND ABS(timestamp - ?) < ?
+                ''', (tag['EPC-96'], tag['LastSeenTimestampUTC'], duplicate_window_microseconds))
                 rows = self.storage.db_cursor.fetchall()
                 if not rows:
                     # Prepare record list with explicit id

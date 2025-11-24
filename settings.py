@@ -69,6 +69,7 @@ def get_default_config():
         "database_config": {
             "use_db": True,
             "max_records": 100,
+            "duplicate_detection_seconds": 3,
         },
         "filter_config": {
             "speed": {
