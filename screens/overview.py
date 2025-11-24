@@ -504,6 +504,14 @@ class OverviewScreen(BaseScreen):
         # Get site_id from API_CONFIG in settings (loaded from config.json)
         site_id = API_CONFIG.get('site_id', '')
         
+        # Get duplicate detection configuration
+        duplicate_window_seconds = DATABASE_CONFIG.get('duplicate_detection_seconds', 3)
+        duplicate_window_microseconds = duplicate_window_seconds * 1_000_000
+        
+        # Track records already in payload for duplicate detection
+        # Store as list of tuples: (rfidTag, timestamp, latitude, longitude)
+        payload_records = []
+        
         for row in data:
             # Skip records with no GPS data (lat=0, lon=0, speed=0)
             latitude = row[4] if row[4] else 0
@@ -512,12 +520,34 @@ class OverviewScreen(BaseScreen):
             
             if latitude == 0 and longitude == 0 and speed == 0:
                 continue  # Skip this record
+            
+            # Get record data for duplicate checking
+            rfid_tag = row[1]  # rfidTag
+            timestamp = row[10] if len(row) > 10 and row[10] else 0  # timestamp (index 10)
+            
+            # Check for duplicates in payload
+            is_duplicate = False
+            for payload_tag, payload_timestamp, payload_lat, payload_lon in payload_records:
+                if payload_tag == rfid_tag:
+                    # Check if duplicate by time window or same location
+                    if timestamp and payload_timestamp:
+                        time_diff = abs(timestamp - payload_timestamp)
+                        if time_diff < duplicate_window_microseconds:
+                            is_duplicate = True
+                            break
+                    # Check if duplicate by same location
+                    if latitude == payload_lat and longitude == payload_lon:
+                        is_duplicate = True
+                        break
+            
+            if is_duplicate:
+                continue  # Skip duplicate record
                 
             # adapt to new API format
             heading = row[7] if row[7] else 0  # heading (bearing) from GPS
             record = {
                 "siteId": site_id,  # siteId from settings
-                "tagName": row[1],  # tagName (was rfidTag)
+                "tagName": rfid_tag,  # tagName (was rfidTag)
                 "latitude": latitude,  # latitude
                 "longitude": longitude,  # longitude
                 "speed": speed,  # speed as integer
@@ -528,6 +558,7 @@ class OverviewScreen(BaseScreen):
             }
             payload.append(record)
             uploaded_record_ids.append(row[0])  # Track the record ID (first column)
+            payload_records.append((rfid_tag, timestamp, latitude, longitude))  # Track for duplicate detection
         
         if payload and self.api.upload_records(payload):
             # Delete the successfully uploaded records
