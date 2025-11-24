@@ -85,6 +85,11 @@ class OverviewScreen(BaseScreen):
         self.last_lat = None
         self.last_lon = None
         self.last_utctime = None
+        
+        # Track last stored values for duplicate prevention
+        self.last_stored_rfid = None
+        self.last_stored_lat = None
+        self.last_stored_lon = None
 
         self.gps = None
         self.gps_scanner = None
@@ -250,36 +255,57 @@ class OverviewScreen(BaseScreen):
                         upload_flag = False
 
             # Always store tag data locally, regardless of GPS validity
-            if self.storage.use_db:
-                # Prevent duplicates within configured time window
-                duplicate_window_seconds = DATABASE_CONFIG.get('duplicate_detection_seconds', 3)
-                duplicate_window_microseconds = duplicate_window_seconds * 1_000_000
-                assert self.storage.db_cursor
-                self.storage.db_cursor.execute('''
-                    SELECT * FROM records
-                    WHERE rfidTag = ?
-                    AND (
-                        ABS(timestamp - ?) < ?
-                        OR (latitude = ? AND longitude = ?)
-                    )
-                ''', (tag['EPC-96'], tag['LastSeenTimestampUTC'], duplicate_window_microseconds, lat, lon))
-                rows = self.storage.db_cursor.fetchall()
-                if not rows:
-                    # Prepare record list with explicit id
-                    assert self.storage.db_cursor
-                    self.storage.db_cursor.execute('SELECT id FROM records ORDER BY id ASC')
-                    used_ids = self.storage.db_cursor.fetchall()
-                    rec = [
-                        calculate_next_id(used_ids), tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
-                        lat, lon, speed, bearing, "-", self.api.user_name, tag['LastSeenTimestampUTC'],
-                        "", "", "", "", "", "", "", ""
-                    ]
-                    self.storage.add_record(rec)
+            # Check if current values are different from last stored values
+            current_rfid = tag['EPC-96']
+            current_lat = lat
+            current_lon = lon
+            
+            # Skip storage if all values match the last stored values
+            if (self.last_stored_rfid == current_rfid and 
+                self.last_stored_lat == current_lat and 
+                self.last_stored_lon == current_lon):
+                # Values haven't changed, skip storage but still update UI
+                logger.debug(f"Skipping storage: same values as last stored (RFID: {current_rfid}, lat: {current_lat}, lon: {current_lon})")
             else:
-                new_data = [True, tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
+                # Values are different, proceed with storage
+                if self.storage.use_db:
+                    # Prevent duplicates within configured time window
+                    duplicate_window_seconds = DATABASE_CONFIG.get('duplicate_detection_seconds', 3)
+                    duplicate_window_microseconds = duplicate_window_seconds * 1_000_000
+                    assert self.storage.db_cursor
+                    self.storage.db_cursor.execute('''
+                        SELECT * FROM records
+                        WHERE rfidTag = ?
+                        AND (
+                            ABS(timestamp - ?) < ?
+                            OR (latitude = ? AND longitude = ?)
+                        )
+                    ''', (tag['EPC-96'], tag['LastSeenTimestampUTC'], duplicate_window_microseconds, lat, lon))
+                    rows = self.storage.db_cursor.fetchall()
+                    if not rows:
+                        # Prepare record list with explicit id
+                        assert self.storage.db_cursor
+                        self.storage.db_cursor.execute('SELECT id FROM records ORDER BY id ASC')
+                        used_ids = self.storage.db_cursor.fetchall()
+                        rec = [
+                            calculate_next_id(used_ids), tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
                             lat, lon, speed, bearing, "-", self.api.user_name, tag['LastSeenTimestampUTC'],
-                            "", "", "", "", "", "", "", ""]
-                self.storage.add_record(new_data)
+                            "", "", "", "", "", "", "", ""
+                        ]
+                        self.storage.add_record(rec)
+                        # Update last stored values after successful storage
+                        self.last_stored_rfid = current_rfid
+                        self.last_stored_lat = current_lat
+                        self.last_stored_lon = current_lon
+                else:
+                    new_data = [True, tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
+                                lat, lon, speed, bearing, "-", self.api.user_name, tag['LastSeenTimestampUTC'],
+                                "", "", "", "", "", "", "", ""]
+                    self.storage.add_record(new_data)
+                    # Update last stored values after successful storage
+                    self.last_stored_rfid = current_rfid
+                    self.last_stored_lat = current_lat
+                    self.last_stored_lon = current_lon
 
             # one-line debug for real-time processing
             # logger.debug(f"TAG {tag['EPC-96']} ant={tag['AntennaID']} rssi={tag['PeakRSSI']} pos=({lat:.7f},{lon:.7f}) speed={speed} heading={bearing}")
