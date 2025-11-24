@@ -24,6 +24,13 @@ class GPS(QThread):
         self._sdata = [0, 0]
         self._last_data_timestamp = None  # Track when GPS data was last received
         self.connectivity = current_status
+        # Thread-safe GPS data storage with timestamp
+        self._data_lock = threading.Lock()
+        self._gps_data_with_timestamp = {
+            'data': {},
+            'sdata': [0, 0],
+            'timestamp': None
+        }
 
     def _connect(self):
         try:
@@ -46,21 +53,37 @@ class GPS(QThread):
         if line.startswith('$GPRMC') or line.startswith('$GNRMC'):
             try:
                 msg = pynmea2.parse(line)
+                # Capture timestamp at the exact moment GPS data is parsed
+                current_timestamp = int(time.time() * 1_000_000)
+                
+                # Parse GPS data
+                data = {}
                 for field in msg.fields:
                     label, attr = field[:2]
                     value = getattr(msg, attr)
-                    self._data[attr] = value
+                    data[attr] = value
                 speed_knots = msg.spd_over_grnd if msg.spd_over_grnd is not None else 0
                 course_degrees = msg.true_course if msg.true_course is not None else 0
-                self._sdata = [speed_knots * 1.15078, course_degrees]
-                # Update timestamp when GPS data is successfully parsed
-                self._last_data_timestamp = int(time.time() * 1_000_000)
-                # logger.debug(f"GPS data parsed: lat={self._data.get('lat', 'N/A')}, lon={self._data.get('lon', 'N/A')}, speed={speed_knots}")
+                sdata = [speed_knots * 1.15078, course_degrees]
+                
+                # Update data atomically with timestamp
+                with self._data_lock:
+                    self._data = data
+                    self._sdata = sdata
+                    self._last_data_timestamp = current_timestamp
+                    # Store synchronized GPS data with timestamp
+                    self._gps_data_with_timestamp = {
+                        'data': data.copy(),
+                        'sdata': sdata.copy(),
+                        'timestamp': current_timestamp
+                    }
+                # logger.debug(f"GPS data parsed: lat={data.get('lat', 'N/A')}, lon={data.get('lon', 'N/A')}, speed={speed_knots}, timestamp={current_timestamp}")
                 pass
             except pynmea2.ParseError as e:
                 logger.debug(f"GPS parse error: {e}")
-                self._data = {}
-                self._sdata = [0, 0]
+                with self._data_lock:
+                    self._data = {}
+                    self._sdata = [0, 0]
         elif line.startswith('$G'):
             # Log other GPS sentences for debugging
             # logger.debug(f"GPS sentence: {line[:50]}...")
@@ -103,13 +126,44 @@ class GPS(QThread):
         return not self._b_stop.is_set()
 
     def get_data(self):
-        return self._data
+        with self._data_lock:
+            return self._data.copy()
 
     def get_sdata(self):
-        return self._sdata
+        with self._data_lock:
+            return self._sdata.copy()
 
     def get_data_timestamp(self):
         """Get the timestamp when GPS data was last received"""
-        return self._last_data_timestamp
+        with self._data_lock:
+            return self._last_data_timestamp
+
+    def get_synchronized_data(self, tag_timestamp):
+        """
+        Get GPS data that matches the tag timestamp exactly.
+        Returns (data, sdata, timestamp) tuple if GPS data timestamp matches tag timestamp,
+        or None if timestamps don't match (within 100ms tolerance).
+        """
+        with self._data_lock:
+            gps_timestamp = self._gps_data_with_timestamp['timestamp']
+            if gps_timestamp is None:
+                return None
+            
+            # Calculate time difference in microseconds
+            time_diff = abs(gps_timestamp - tag_timestamp)
+            # Allow maximum 100ms (100,000 microseconds) difference for synchronization
+            max_time_diff = 100_000  # 100ms in microseconds
+            
+            if time_diff <= max_time_diff:
+                # GPS data is synchronized with tag timestamp
+                return (
+                    self._gps_data_with_timestamp['data'].copy(),
+                    self._gps_data_with_timestamp['sdata'].copy(),
+                    gps_timestamp
+                )
+            else:
+                # GPS data is too old or too new - not synchronized
+                logger.debug(f"GPS-RFID timestamp mismatch: GPS={gps_timestamp}, RFID={tag_timestamp}, diff={time_diff/1000:.1f}ms")
+                return None
 
 
