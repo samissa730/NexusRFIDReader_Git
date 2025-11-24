@@ -8,6 +8,7 @@ from ping3 import ping
 from settings import RFID_CONFIG, DEFAULT_RFID_HOSTS, update_rfid_host, reload_config
 from utils.logger import logger
 from utils.rfid_discovery import discover_rfid_readers
+from utils.common import extract_from_gps
 
 
 def _parse_args_from_settings(rfid_cfg):
@@ -42,7 +43,7 @@ class RFID(QThread):
 
     sig_msg = Signal(int)
 
-    def __init__(self):
+    def __init__(self, gps=None):
         super().__init__()
         self._b_stop = threading.Event()
         self.tag_data = None
@@ -52,6 +53,7 @@ class RFID(QThread):
         self.host = self._cfg['host']
         self._set_reader(self.host, False)
         self._discovery_in_progress = False
+        self.gps = gps
 
     def set_reader(self, host, status):
         self._set_reader(host, status)
@@ -99,7 +101,24 @@ class RFID(QThread):
     def tag_seen_callback(self, reader, tags):
         if tags:
             # logger.debug(f"RFID tags detected: {len(tags)} tags")
-            self.tag_data = _convert_to_unicode(tags)
+            converted_tags = _convert_to_unicode(tags)
+            # Get GPS data if available
+            lat, lon, speed, bearing = 0, 0, 0, 0
+            if self.gps:
+                lat, lon = extract_from_gps(self.gps.get_data())
+                speed, bearing = self.gps.get_sdata()
+            # Round to 7 decimals for consistency
+            lat = round(lat, 7)
+            lon = round(lon, 7)
+            # Structure: [tag_dict, lat, lon, speed, bearing]
+            # For multiple tags, use the first one
+            if isinstance(converted_tags, list) and len(converted_tags) > 0:
+                tag_dict = converted_tags[0]
+            elif isinstance(converted_tags, dict):
+                tag_dict = converted_tags
+            else:
+                tag_dict = converted_tags
+            self.tag_data = [tag_dict, lat, lon, speed, bearing]
             # logger.debug(f"Tag data: {self.tag_data}")
             self.sig_msg.emit(3)
         else:

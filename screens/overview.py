@@ -111,7 +111,7 @@ class OverviewScreen(BaseScreen):
         self.ui.rfid_connection_status.setStyleSheet("""color: #ff0000;""")
         self.ui.rfid_connection_status.setText("Disconnected")
         
-        self.rfid = RFID()
+        self.rfid = RFID(gps=None)  # GPS will be set later when available
         self.rfid.sig_msg.connect(self._on_rfid_status)
         self.rfid.start()
 
@@ -196,25 +196,19 @@ class OverviewScreen(BaseScreen):
             logger.warning("RFID reader disconnected")
         elif status == 3:
             # logger.debug("RFID tag detected, processing...")
-            if not self.rfid.tag_data or len(self.rfid.tag_data) == 0:
+            if not self.rfid.tag_data or len(self.rfid.tag_data) < 5:
                 logger.warning("RFID tag detected but no tag data available")
                 return
             tag = self.rfid.tag_data[0]
+            lat = self.rfid.tag_data[1]
+            lon = self.rfid.tag_data[2]
+            speed = self.rfid.tag_data[3]
+            bearing = self.rfid.tag_data[4]
             # logger.debug(f"Processing tag: EPC={tag.get('EPC-96', 'N/A')}, Antenna={tag.get('AntennaID', 'N/A')}, RSSI={tag.get('PeakRSSI', 'N/A')}")
-            lat, lon, speed, bearing = 0, 0, 0, 0
-            if self.gps:
-                lat, lon = extract_from_gps(self.gps.get_data())
-                if lat != 0 and lon != 0:
-                    self.last_lat = lat
-                    self.last_lon = lon
-                    self.last_utctime = int(time.time() * 1_000_000)
-                speed, bearing = self.gps.get_sdata()
-            else:
-                lat, lon, speed, bearing = 0, 0, 0, 0
-
-            # round to 7 decimals for storage and display
-            lat = round(lat, 7)
-            lon = round(lon, 7)
+            if lat != 0 and lon != 0:
+                self.last_lat = lat
+                self.last_lon = lon
+                self.last_utctime = int(time.time() * 1_000_000)
 
             upload_flag = True
             
@@ -368,6 +362,9 @@ class OverviewScreen(BaseScreen):
         self.gps = GPS(port=port, baud_rate=baud)
         self.gps.sig_msg.connect(self._on_gps_status)
         self.gps.start()
+        # Update RFID with GPS reference
+        if self.rfid:
+            self.rfid.gps = self.gps
         self._set_gps_status("External GPS Connected", True)
 
     def _upload_health(self):
