@@ -62,8 +62,13 @@ class DataStorage:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', record_list)
             self.db_connection.commit()
+            # Immediately prune old records to maintain max_records limit
+            self.prune_old()
         else:
             self.database.append(record_list)
+            # Immediately prune old records to maintain max_records limit
+            if len(self.database) > self.max_records:
+                self.database = self.database[-self.max_records:]
 
     def fetch_all_records(self) -> List[Tuple]:
         if self.use_db:
