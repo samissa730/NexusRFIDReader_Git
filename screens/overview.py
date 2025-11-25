@@ -261,7 +261,8 @@ class OverviewScreen(BaseScreen):
             current_lon = lon
             
             # Skip storage if all values match the last stored values
-            if (self.last_stored_rfid == current_rfid or ( self.last_stored_lat == current_lat and self.last_stored_lon == current_lon)):
+            # if (self.last_stored_rfid == current_rfid or ( self.last_stored_lat == current_lat and self.last_stored_lon == current_lon)):
+            if (self.last_stored_lat == current_lat and self.last_stored_lon == current_lon):
                 # Values haven't changed, skip storage but still update UI
                 logger.debug(f"Skipping storage: same values as last stored (RFID: {current_rfid}, lat: {current_lat}, lon: {current_lon})")
             else:
@@ -422,7 +423,7 @@ class OverviewScreen(BaseScreen):
             response_time = ping("8.8.8.8", timeout=3)
             if response_time is not None:
                 self._set_internet_status("Connected", True)
-                logger.debug(f"Internet ping successful: {response_time:.2f}ms")
+                # logger.debug(f"Internet ping successful: {response_time:.2f}ms")
                 # Reset disconnection timer when connected
                 self.internet_disconnected_start = None
             else:
@@ -476,11 +477,11 @@ class OverviewScreen(BaseScreen):
         if self.config_reload_timer.isActive():
             self.config_reload_timer.stop()
         self.config_reload_timer.start(reload_interval_ms)
-        logger.debug(f"Config reload timer started with interval: {reload_interval_ms}ms ({settings.INTERNET_LIMIT_TIME * 3} seconds)")
+        # logger.debug(f"Config reload timer started with interval: {reload_interval_ms}ms ({settings.INTERNET_LIMIT_TIME * 3} seconds)")
 
     def _reload_config_and_update(self):
         """Reload configuration file and update all config values that depend on it"""
-        logger.info("Reloading configuration from config.json...")
+        # logger.info("Reloading configuration from config.json...")
         if reload_config():
             # Access updated values from settings module
             # Note: Dictionary configs (API_CONFIG, FILTER_CONFIG, etc.) are updated in-place
