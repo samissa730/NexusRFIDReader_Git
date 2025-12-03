@@ -264,7 +264,8 @@ class OverviewScreen(BaseScreen):
             # if (self.last_stored_rfid == current_rfid or ( self.last_stored_lat == current_lat and self.last_stored_lon == current_lon)):
             if (self.last_stored_lat == current_lat and self.last_stored_lon == current_lon):
                 # Values haven't changed, skip storage but still update UI
-                logger.debug(f"Skipping storage: same values as last stored (RFID: {current_rfid}, lat: {current_lat}, lon: {current_lon})")
+                # logger.debug(f"Skipping storage: same values as last stored (RFID: {current_rfid}, lat: {current_lat}, lon: {current_lon})")
+                pass
             else:
                 # Values are different, proceed with storage
                 if self.storage.use_db:
@@ -523,12 +524,15 @@ class OverviewScreen(BaseScreen):
         data = self.storage.fetch_all_records()
         if not data:
             return
-        payload = []
-        uploaded_record_ids = []  # Track IDs of records to be uploaded
+        
+        # Get max_upload_records from API_CONFIG
+        max_upload_records = API_CONFIG.get('max_upload_records', 10)
         device_id = get_processor_id()
         # Get site_id from API_CONFIG in settings (loaded from config.json)
         site_id = API_CONFIG.get('site_id', '')
         
+        # Filter out records with no GPS data first
+        valid_records = []
         for row in data:
             # Skip records with no GPS data (lat=0, lon=0, speed=0)
             latitude = row[4] if row[4] else 0
@@ -537,28 +541,61 @@ class OverviewScreen(BaseScreen):
             
             if latitude == 0 and longitude == 0 and speed == 0:
                 continue  # Skip this record
-                
-            # adapt to new API format
-            heading = row[7] if row[7] else 0  # heading (bearing) from GPS
-            record = {
-                "siteId": site_id,  # siteId from settings
-                "tagName": row[1],  # tagName (was rfidTag)
-                "latitude": latitude,  # latitude
-                "longitude": longitude,  # longitude
-                "speed": speed,  # speed as integer
-                "deviceId": device_id,  # deviceId from get_processor_id()
-                "antenna": int(row[2]) if row[2] else 1,  # antenna number
-                "barrier": heading,  # heading (bearing) from GPS
-                "isProcess": True  # isProcess (was isProcessed)
-            }
-            payload.append(record)
-            uploaded_record_ids.append(row[0])  # Track the record ID (first column)
+            
+            valid_records.append(row)
         
-        if payload and self.api.upload_records(payload):
-            # Delete the successfully uploaded records
-            self.storage.delete_uploaded_records(uploaded_record_ids)
-            # Also do best-effort pruning for any old records
-            self.storage.prune_old()
+        if not valid_records:
+            return
+        
+        # Process records in batches of max_upload_records
+        # Records are already sorted oldest first (timestamp ASC)
+        total_records = len(valid_records)
+        batch_number = 0
+        
+        while batch_number * max_upload_records < total_records:
+            # Get the current batch (oldest records first)
+            start_idx = batch_number * max_upload_records
+            end_idx = min(start_idx + max_upload_records, total_records)
+            batch_records = valid_records[start_idx:end_idx]
+            
+            # Build payload for this batch
+            payload = []
+            uploaded_record_ids = []  # Track IDs of records to be uploaded in this batch
+            
+            for row in batch_records:
+                latitude = row[4] if row[4] else 0
+                longitude = row[5] if row[5] else 0  
+                speed = int(row[6]) if row[6] else 0
+                heading = row[7] if row[7] else 0  # heading (bearing) from GPS
+                
+                # adapt to new API format
+                record = {
+                    "siteId": site_id,  # siteId from settings
+                    "tagName": row[1],  # tagName (was rfidTag)
+                    "latitude": latitude,  # latitude
+                    "longitude": longitude,  # longitude
+                    "speed": speed,  # speed as integer
+                    "deviceId": device_id,  # deviceId from get_processor_id()
+                    "antenna": int(row[2]) if row[2] else 1,  # antenna number
+                    "barrier": heading,  # heading (bearing) from GPS
+                    "isProcess": True  # isProcess (was isProcessed)
+                }
+                payload.append(record)
+                uploaded_record_ids.append(row[0])  # Track the record ID (first column)
+            
+            # Upload this batch
+            if payload and self.api.upload_records(payload):
+                # Delete the successfully uploaded records
+                self.storage.delete_uploaded_records(uploaded_record_ids)
+                logger.debug(f"Successfully uploaded batch {batch_number + 1} with {len(uploaded_record_ids)} record(s)")
+                batch_number += 1
+            else:
+                # Upload failed, stop processing remaining batches
+                logger.warning(f"Failed to upload batch {batch_number + 1}, stopping batch processing")
+                break
+        
+        # Also do best-effort pruning for any old records
+        self.storage.prune_old()
 
 
 def calculate_next_id(used_ids):

@@ -65,6 +65,7 @@ def get_default_config():
             "site_id": "019a9e1e-81ff-75ab-99fc-4115bb92fec6",
             "record_interval_ms": 7000,
             "health_interval_ms": 15000,
+            "max_upload_records": 10,
         },
         "database_config": {
             "use_db": True,
