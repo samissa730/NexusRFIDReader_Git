@@ -218,32 +218,32 @@ class OverviewScreen(BaseScreen):
                 self.last_lon = lon
                 self.last_utctime = int(time.time() * 1_000_000)
 
-            upload_flag = True
+            storage_flag = True
             
-            # Store and display tag data even without GPS data, but mark GPS as invalid
-            # Only skip upload to server if GPS data is invalid
-            if lat == 0 and lon == 0 and speed == 0:
-                upload_flag = False
+            # Filter records for storage based on GPS data and filter settings
+            # Skip storage if GPS data is invalid (lat=0, lon=0, speed=0)
+            if (lat == 0 and lon == 0) or speed == 0:
+                storage_flag = False
                 # logger.debug(f"Tag detected but no GPS data: TAG {tag['EPC-96']} ant={tag['AntennaID']} rssi={tag['PeakRSSI']} (lat=0, lon=0, speed=0)")
             
-            # Apply filters from settings
-            if upload_flag:
+            # Apply filters from settings for storage
+            if storage_flag:
                 sp = FILTER_CONFIG.get('speed', {})
                 if sp.get('enabled'):
                     min_s = sp.get('min')
                     max_s = sp.get('max')
                     if min_s is not None and max_s is not None and (speed < min_s or speed > max_s):
-                        upload_flag = False
+                        storage_flag = False
 
-            if upload_flag:
+            if storage_flag:
                 rs = FILTER_CONFIG.get('rssi', {})
                 if rs.get('enabled'):
                     min_r = rs.get('min')
                     max_r = rs.get('max')
                     if min_r is not None and max_r is not None and (tag['PeakRSSI'] < min_r or tag['PeakRSSI'] > max_r):
-                        upload_flag = False
+                        storage_flag = False
 
-            if upload_flag:
+            if storage_flag:
                 tr = FILTER_CONFIG.get('tag_range', {})
                 if tr.get('enabled'):
                     min_t = tr.get('min')
@@ -251,17 +251,17 @@ class OverviewScreen(BaseScreen):
                     try:
                         epc = int(tag['EPC-96'])
                         if min_t is not None and max_t is not None and (epc < min_t or epc > max_t):
-                            upload_flag = False
+                            storage_flag = False
                     except Exception:
-                        upload_flag = False
+                        storage_flag = False
 
-            # Skip storage if speed is 0
-            if speed == 0:
-                # Don't store records with speed 0, but still update UI
-                logger.info(f"Skipping storage: speed is 0 for tag {tag['EPC-96']}")
-                # pass
+            # Skip storage if storage_flag is False
+            if not storage_flag:
+                # Don't store records that don't pass filters, but still update UI
+                # logger.info(f"Skipping storage: filters failed for tag {tag['EPC-96']}")
+                pass
             else:
-                # Always store tag data locally, regardless of GPS validity
+                # Store tag data locally if it passes all filters
                 # Check if current values are different from last stored values
                 current_rfid = tag['EPC-96']
                 current_lat = lat
