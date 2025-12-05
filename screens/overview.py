@@ -120,7 +120,11 @@ class OverviewScreen(BaseScreen):
         # Initialize RFID with GPS getter function to always access current GPS instance
         self.rfid = RFID(gps=None, gps_getter=lambda: self.gps)
         self.rfid.sig_msg.connect(self._on_rfid_status)
+        self.rfid.sig_arp_scan_status.connect(self._on_arp_scan_status)
         self.rfid.start()
+        
+        # Initialize spinner for arp-scan
+        self.arp_scan_spinner = QtWaitingSpinner(self, center_on_parent=True, disable_parent_when_spinning=False)
 
         # Schedulers
         self.health_timer = QTimer(self)
@@ -166,6 +170,8 @@ class OverviewScreen(BaseScreen):
             self.gps_timeout_timer.stop()
         if hasattr(self, 'config_reload_timer'):
             self.config_reload_timer.stop()
+        if hasattr(self, 'arp_scan_spinner'):
+            self.arp_scan_spinner.stop()
         self.storage.close()
 
     def _set_gps_status(self, text, ok):
@@ -191,6 +197,15 @@ class OverviewScreen(BaseScreen):
             self.gps_connection_start_time = time.time()
             self.gps_timeout_timer.start()
             self._start_gps_scan()
+
+    def _on_arp_scan_status(self, is_scanning):
+        """Handle arp-scan status changes - show/hide spinner"""
+        if is_scanning:
+            self.arp_scan_spinner.start()
+            logger.debug("ARP-scan started - showing spinner")
+        else:
+            self.arp_scan_spinner.stop()
+            logger.debug("ARP-scan completed - hiding spinner")
 
     def _on_rfid_status(self, status):
         # logger.debug(f"RFID status received: {status}")
