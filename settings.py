@@ -75,8 +75,8 @@ def get_default_config():
         "filter_config": {
             "speed": {
                 "enabled": True,
-                "min": 0,
-                "max": 15,
+                "min": 1,
+                "max": 20,
             },
             "rssi": {
                 "enabled": False,
