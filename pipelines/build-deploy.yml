@@ -165,7 +165,7 @@ stages:
               echo "✅ Executable built successfully"
             displayName: 'Build Executable (Linux/RaspberryPi)'
             condition: succeeded()
-          
+
           # Create .deb package for Linux/RaspberryPi
           - bash: |
               set -euo pipefail
@@ -492,7 +492,7 @@ stages:
               echo "" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
               echo "**OTA Update Version:** $(Build.BuildNumber)" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
             displayName: 'Generate Release Notes'
-            
+
           - task: PublishPipelineArtifact@1
             displayName: 'Publish Release Notes'
             inputs:
@@ -646,32 +646,69 @@ stages:
                       CN="deviceupdates"
                       SAS="$(rfidstoragesasRW)"
                       BUILD="$(Build.BuildNumber)"
-                      
-                      # Upload executables to builds/{build_number}/{osName}/
-                      az storage blob upload-batch \
-                        --account-name "$SA" \
-                        --destination "$CN" \
-                        --destination-path "builds/$BUILD/Linux" \
-                        --source "$(Pipeline.Workspace)/Linux" \
-                        --sas-token "$SAS" \
-                        --overwrite
-                      
-                      az storage blob upload-batch \
-                        --account-name "$SA" \
-                        --destination "$CN" \
-                        --destination-path "builds/$BUILD/RaspberryPi" \
-                        --source "$(Pipeline.Workspace)/RaspberryPi" \
-                        --sas-token "$SAS" \
-                        --overwrite
-                      
-                      # Upload release packages to releases/{build_number}/
                       P="$(projectName)"
                       
+                      echo "=== Debug Information ==="
+                      echo "Storage Account: $SA"
+                      echo "Container: $CN"
+                      echo "Build Number: $BUILD"
+                      echo "Project Name: $P"
+                      echo ""
+                      
+                      # Debug: List contents of downloaded directories
+                      echo "=== Contents of Linux directory ==="
+                      ls -la "$(Pipeline.Workspace)/Linux" || echo "Linux directory not found or empty"
+                      echo ""
+                      echo "=== Contents of RaspberryPi directory ==="
+                      ls -la "$(Pipeline.Workspace)/RaspberryPi" || echo "RaspberryPi directory not found or empty"
+                      echo ""
+                      
+                      # Upload .deb packages to builds/{build_number}/{osName}/
                       # Linux .deb package
-                      LINUX_DEB=$(find "$(Pipeline.Workspace)/Linux" -type f -name "$P-$BUILD-*.deb" 2>/dev/null | head -1)
+                      LINUX_DEB=$(find "$(Pipeline.Workspace)/Linux" -type f -name "*.deb" 2>/dev/null | head -1)
                       if [ -n "$LINUX_DEB" ] && [ -f "$LINUX_DEB" ]; then
                         DEB_NAME=$(basename "$LINUX_DEB")
-                        echo "Uploading Linux .deb package: $DEB_NAME"
+                        echo "Found Linux .deb package: $DEB_NAME"
+                        echo "Uploading to builds/$BUILD/Linux/$DEB_NAME"
+                        az storage blob upload \
+                          --account-name "$SA" \
+                          --container-name "$CN" \
+                          --name "builds/$BUILD/Linux/$DEB_NAME" \
+                          --file "$LINUX_DEB" \
+                          --sas-token "$SAS" \
+                          --overwrite
+                        echo "✅ Linux package uploaded to builds/"
+                      else
+                        echo "ERROR: Linux .deb package not found in $(Pipeline.Workspace)/Linux"
+                        exit 1
+                      fi
+                      
+                      # RaspberryPi .deb package
+                      RPI_DEB=$(find "$(Pipeline.Workspace)/RaspberryPi" -type f -name "*.deb" 2>/dev/null | head -1)
+                      if [ -n "$RPI_DEB" ] && [ -f "$RPI_DEB" ]; then
+                        DEB_NAME=$(basename "$RPI_DEB")
+                        echo "Found RaspberryPi .deb package: $DEB_NAME"
+                        echo "Uploading to builds/$BUILD/RaspberryPi/$DEB_NAME"
+                        az storage blob upload \
+                          --account-name "$SA" \
+                          --container-name "$CN" \
+                          --name "builds/$BUILD/RaspberryPi/$DEB_NAME" \
+                          --file "$RPI_DEB" \
+                          --sas-token "$SAS" \
+                          --overwrite
+                        echo "✅ RaspberryPi package uploaded to builds/"
+                      else
+                        echo "ERROR: RaspberryPi .deb package not found in $(Pipeline.Workspace)/RaspberryPi"
+                        exit 1
+                      fi
+                      
+                      # Upload release packages to releases/{build_number}/
+                      echo ""
+                      echo "=== Uploading to releases/ ==="
+                      LINUX_DEB=$(find "$(Pipeline.Workspace)/Linux" -type f -name "*.deb" 2>/dev/null | head -1)
+                      if [ -n "$LINUX_DEB" ] && [ -f "$LINUX_DEB" ]; then
+                        DEB_NAME=$(basename "$LINUX_DEB")
+                        echo "Uploading Linux .deb package to releases: $DEB_NAME"
                         az storage blob upload \
                           --account-name "$SA" \
                           --container-name "$CN" \
@@ -679,15 +716,16 @@ stages:
                           --file "$LINUX_DEB" \
                           --sas-token "$SAS" \
                           --overwrite
+                        echo "✅ Linux package uploaded to releases/"
                       else
-                        echo "WARNING: Linux .deb package not found in $(Pipeline.Workspace)/Linux"
+                        echo "ERROR: Linux .deb package not found for releases upload"
+                        exit 1
                       fi
                       
-                      # RaspberryPi .deb package
-                      RPI_DEB=$(find "$(Pipeline.Workspace)/RaspberryPi" -type f -name "$P-$BUILD-*.deb" 2>/dev/null | head -1)
+                      RPI_DEB=$(find "$(Pipeline.Workspace)/RaspberryPi" -type f -name "*.deb" 2>/dev/null | head -1)
                       if [ -n "$RPI_DEB" ] && [ -f "$RPI_DEB" ]; then
                         DEB_NAME=$(basename "$RPI_DEB")
-                        echo "Uploading RaspberryPi .deb package: $DEB_NAME"
+                        echo "Uploading RaspberryPi .deb package to releases: $DEB_NAME"
                         az storage blob upload \
                           --account-name "$SA" \
                           --container-name "$CN" \
@@ -695,9 +733,14 @@ stages:
                           --file "$RPI_DEB" \
                           --sas-token "$SAS" \
                           --overwrite
+                        echo "✅ RaspberryPi package uploaded to releases/"
                       else
-                        echo "WARNING: RaspberryPi .deb package not found in $(Pipeline.Workspace)/RaspberryPi"
+                        echo "ERROR: RaspberryPi .deb package not found for releases upload"
+                        exit 1
                       fi
+                      
+                      echo ""
+                      echo "✅ All uploads completed successfully"
 
   # Deploy to PROD
   - stage: DeployProd
