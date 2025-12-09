@@ -107,26 +107,18 @@ class ApiClient:
         http = self._session()
         try:
             response = http.post(self.auth0_url, headers=headers, data=payload, timeout=10)
-            # Check status code first instead of calling raise_for_status()
+            response.raise_for_status()
             if response.status_code == 200:
-                try:
-                    data = response.json()
-                    if 'access_token' in data:
-                        self.token = data['access_token']
-                        # Set expiration time (default to 1 hour if not provided)
-                        expires_in = data.get('expires_in', 3600)
-                        self.token_expires_at = time.time() + expires_in - 60  # Refresh 1 minute early
-                        logger.debug('Received Auth0 token successfully!')
-                        return True
-                except json.JSONDecodeError as e:
-                    logger.error(f"Auth0 token refresh failed: Invalid JSON response - {str(e)}, response text: {response.text[:200]}")
-            else:
-                error_body = response.text if response.text else "No response body"
-                logger.error(f"Auth0 token refresh failed: HTTP {response.status_code} - {error_body}")
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Auth0 token refresh failed: Request error - {str(e)}")
+                data = response.json()
+                if 'access_token' in data:
+                    self.token = data['access_token']
+                    # Set expiration time (default to 1 hour if not provided)
+                    expires_in = data.get('expires_in', 3600)
+                    self.token_expires_at = time.time() + expires_in - 60  # Refresh 1 minute early
+                    logger.debug('Received Auth0 token successfully!')
+                    return True
         except Exception as e:
-            logger.error(f"Auth0 token refresh failed: Unexpected error - {type(e).__name__}: {str(e)}")
+            logger.error(f"Auth0 token refresh failed: {e}")
         finally:
             http.close()
         return False
@@ -161,30 +153,19 @@ class ApiClient:
         http = self._session()
         try:
             response = http.post(self.health_url, headers=self._headers(), json=payload, timeout=10)
-            
-            # Check status code first (like the test script does) instead of calling raise_for_status()
-            if response.status_code == 200:
-                try:
-                    data = response.json()
-                    # Check for new API response format
-                    if data.get('isSuccess') == True and data.get('status') == 'Ok':
-                        logger.debug(f"Health data uploaded successfully: {payload['userName']} - RFID: {payload['rfidStatus']}, GPS: {payload['gpsStatus']}")
-                        return True
-                    # Fallback to old format
-                    success = data.get('metadata', {}).get('code') == '200'
-                    if success:
-                        logger.debug(f"Health data uploaded successfully (legacy format): {payload['userName']} - RFID: {payload['rfidStatus']}, GPS: {payload['gpsStatus']}")
-                    else:
-                        logger.warning(f"Health upload failed: isSuccess={data.get('isSuccess')}, status={data.get('status')}, errors={data.get('errors', [])}")
-                    return success
-                except json.JSONDecodeError as e:
-                    logger.error(f"Uploading health data failed: Invalid JSON response - {str(e)}, response text: {response.text[:200]}")
-                    return False
+            response.raise_for_status()
+            data = response.json()
+            # Check for new API response format
+            if data.get('isSuccess') == True and data.get('status') == 'Ok':
+                logger.debug(f"Health data uploaded successfully: {payload['userName']} - RFID: {payload['rfidStatus']}, GPS: {payload['gpsStatus']}")
+                return True
+            # Fallback to old format
+            success = data.get('metadata', {}).get('code') == '200'
+            if success:
+                logger.debug(f"Health data uploaded successfully (legacy format): {payload['userName']} - RFID: {payload['rfidStatus']}, GPS: {payload['gpsStatus']}")
             else:
-                # Non-200 status code - log error details
-                error_body = response.text if response.text else "No response body"
-                logger.error(f"Uploading health data failed: HTTP {response.status_code} - {error_body}")
-                return False
+                logger.warning(f"Health upload failed: isSuccess={data.get('isSuccess')}, status={data.get('status')}, errors={data.get('errors', [])}")
+            return success
         except requests.exceptions.HTTPError as e:
             # HTTP error (4xx, 5xx)
             try:
@@ -227,31 +208,20 @@ class ApiClient:
                 json=payload, 
                 timeout=timeout_seconds
             )
+            response.raise_for_status()
+            data = response.json()
             
-            # Check status code first (like the test script does) instead of calling raise_for_status()
-            if response.status_code == 200:
-                try:
-                    data = response.json()
-                    
-                    # Check for new API response format
-                    if data.get('isSuccess') == True and data.get('status') == 'Ok':
-                        logger.debug(f"Records uploaded successfully: {record_count} record(s) for user {self.user_name}")
-                        return True
-                    # Fallback to old format
-                    success = data.get('metadata', {}).get('code') == '200'
-                    if success:
-                        logger.debug(f"Records uploaded successfully (legacy format): {record_count} record(s) for user {self.user_name}")
-                    else:
-                        logger.warning(f"Record upload failed: isSuccess={data.get('isSuccess')}, status={data.get('status')}, errors={data.get('errors', [])}, validationErrors={data.get('validationErrors', [])}")
-                    return success
-                except json.JSONDecodeError as e:
-                    logger.error(f"Uploading records failed: Invalid JSON response - {str(e)}, response text: {response.text[:200]}")
-                    return False
+            # Check for new API response format
+            if data.get('isSuccess') == True and data.get('status') == 'Ok':
+                logger.debug(f"Records uploaded successfully: {record_count} record(s) for user {self.user_name}")
+                return True
+            # Fallback to old format
+            success = data.get('metadata', {}).get('code') == '200'
+            if success:
+                logger.debug(f"Records uploaded successfully (legacy format): {record_count} record(s) for user {self.user_name}")
             else:
-                # Non-200 status code - log error details
-                error_body = response.text if response.text else "No response body"
-                logger.error(f"Uploading records failed: HTTP {response.status_code} - {error_body}")
-                return False
+                logger.warning(f"Record upload failed: isSuccess={data.get('isSuccess')}, status={data.get('status')}, errors={data.get('errors', [])}, validationErrors={data.get('validationErrors', [])}")
+            return success
         except requests.exceptions.Timeout as e:
             # Specific handling for timeout errors with payload details
             logger.error(f"Uploading records failed: Timeout after {timeout_seconds}s - {record_count} record(s), payload size: {payload_size / 1024:.2f} KB - {str(e)}")
