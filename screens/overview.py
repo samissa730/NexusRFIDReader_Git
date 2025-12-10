@@ -127,7 +127,7 @@ class OverviewScreen(BaseScreen):
         self.arp_scan_spinner = QtWaitingSpinner(self.ui.tableWidget, center_on_parent=True, disable_parent_when_spinning=False)
         
         # Initialize label for waiting message
-        self.waiting_label = QLabel("Waiting connect to Reader...", self.ui.tableWidget)
+        self.waiting_label = QLabel("Waiting for RFID Reader to connect...", self.ui.tableWidget)
         self.waiting_label.setStyleSheet("color: #00ff00; font-size: 14px; font-weight: bold; background-color: transparent;")
         self.waiting_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.waiting_label.hide()
