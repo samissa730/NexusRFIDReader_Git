@@ -1,5 +1,5 @@
 from PySide6.QtCore import Qt, QTimer, QThread, Signal
-from PySide6.QtWidgets import QTableWidgetItem
+from PySide6.QtWidgets import QTableWidgetItem, QLabel
 
 from screens.base import BaseScreen
 from ui.screens.ui_overview import Ui_OverviewScreen
@@ -124,7 +124,13 @@ class OverviewScreen(BaseScreen):
         self.rfid.start()
         
         # Initialize spinner for arp-scan
-        self.arp_scan_spinner = QtWaitingSpinner(self, center_on_parent=True, disable_parent_when_spinning=False)
+        self.arp_scan_spinner = QtWaitingSpinner(self.ui.tableWidget, center_on_parent=True, disable_parent_when_spinning=False)
+        
+        # Initialize label for waiting message
+        self.waiting_label = QLabel("Waiting connect to Reader...", self.ui.tableWidget)
+        self.waiting_label.setStyleSheet("color: #00ff00; font-size: 14px; font-weight: bold; background-color: transparent;")
+        self.waiting_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.waiting_label.hide()
 
         # Schedulers
         self.health_timer = QTimer(self)
@@ -172,6 +178,8 @@ class OverviewScreen(BaseScreen):
             self.config_reload_timer.stop()
         if hasattr(self, 'arp_scan_spinner'):
             self.arp_scan_spinner.stop()
+        if hasattr(self, 'waiting_label'):
+            self.waiting_label.hide()
         self.storage.close()
 
     def _set_gps_status(self, text, ok):
@@ -202,10 +210,31 @@ class OverviewScreen(BaseScreen):
         """Handle arp-scan status changes - show/hide spinner"""
         if is_scanning:
             self.arp_scan_spinner.start()
+            self._update_waiting_label_position()
+            self.waiting_label.show()
             logger.debug("ARP-scan started - showing spinner")
         else:
             self.arp_scan_spinner.stop()
+            self.waiting_label.hide()
             logger.debug("ARP-scan completed - hiding spinner")
+    
+    def _update_waiting_label_position(self):
+        """Update the position of the waiting label to be below the spinner"""
+        if self.ui.tableWidget:
+            # Get table widget center in local coordinates
+            table_rect = self.ui.tableWidget.rect()
+            center_x = table_rect.center().x()
+            center_y = table_rect.center().y()
+            
+            # Spinner size is approximately 60x60 (innerRadius + lineLength) * 2
+            spinner_size = 60
+            # Position label below the spinner, centered horizontally
+            label_width = 300
+            label_height = 30
+            label_x = center_x - label_width // 2
+            label_y = center_y + spinner_size // 2 + 20  # Below spinner with spacing
+            self.waiting_label.move(label_x, label_y)
+            self.waiting_label.resize(label_width, label_height)
 
     def _on_rfid_status(self, status):
         # logger.debug(f"RFID status received: {status}")
