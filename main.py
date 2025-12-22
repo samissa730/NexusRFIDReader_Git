@@ -57,7 +57,7 @@ class RFIDReaderApp(QMainWindow):
         for k in screens.keys():
             sh = (
                 "color:#FFFFFF;background-color:#595959;border-top-right-radius:5px;border-top-left-radius:5px;padding-left:10px"
-                if (k == self._cur_screen_name and k != "settings")
+                if k == self._cur_screen_name
                 else "color:#FFFFFF;border:none;"
             )
             getattr(self.ui, f"btn_{k}").setStyleSheet(sh)
