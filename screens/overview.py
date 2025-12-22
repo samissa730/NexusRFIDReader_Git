@@ -162,25 +162,46 @@ class OverviewScreen(BaseScreen):
         self._start_config_reload_timer()
 
     def on_leave(self):
+        logger.info("Leaving overview screen - stopping all threads and timers")
+        
+        # Stop all timers first
+        if hasattr(self, 'health_timer') and self.health_timer.isActive():
+            self.health_timer.stop()
+        if hasattr(self, 'upload_timer') and self.upload_timer.isActive():
+            self.upload_timer.stop()
+        if hasattr(self, 'gps_display_timer') and self.gps_display_timer.isActive():
+            self.gps_display_timer.stop()
+        if hasattr(self, 'internet_timer') and self.internet_timer.isActive():
+            self.internet_timer.stop()
+        if hasattr(self, 'gps_timeout_timer') and self.gps_timeout_timer.isActive():
+            self.gps_timeout_timer.stop()
+        if hasattr(self, 'external_retry_timer') and self.external_retry_timer.isActive():
+            self.external_retry_timer.stop()
+        if hasattr(self, 'config_reload_timer') and self.config_reload_timer.isActive():
+            self.config_reload_timer.stop()
+        
+        # Stop all threads
         if self.gps and self.gps.isRunning():
+            logger.info("Stopping GPS thread")
             self.gps.stop()
         if self.rfid and self.rfid.isRunning():
+            logger.info("Stopping RFID thread")
             self.rfid.stop()
         if self.gps_scanner and self.gps_scanner.isRunning():
+            logger.info("Stopping GPS scanner thread")
             self.gps_scanner.stop()
-        if hasattr(self, 'gps_display_timer'):
-            self.gps_display_timer.stop()
-        if hasattr(self, 'internet_timer'):
-            self.internet_timer.stop()
-        if hasattr(self, 'gps_timeout_timer'):
-            self.gps_timeout_timer.stop()
-        if hasattr(self, 'config_reload_timer'):
-            self.config_reload_timer.stop()
+        
+        # Stop UI elements
         if hasattr(self, 'arp_scan_spinner'):
             self.arp_scan_spinner.stop()
         if hasattr(self, 'waiting_label'):
             self.waiting_label.hide()
-        self.storage.close()
+        
+        # Close storage
+        if hasattr(self, 'storage'):
+            self.storage.close()
+        
+        logger.info("All threads and timers stopped successfully")
 
     def _set_gps_status(self, text, ok):
         self.ui.gps_connection_status.setStyleSheet("""color: #00ff00;""" if ok else """color: #ff0000;""")
