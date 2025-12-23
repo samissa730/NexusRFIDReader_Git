@@ -131,13 +131,16 @@ class Ui_SettingsScreen(object):
         self.verticalLayout_3.setObjectName(u"verticalLayout_3")
         self.edit_auth0_url = QLineEdit(self.widget_2)
         self.edit_auth0_url.setObjectName(u"edit_auth0_url")
-        self.edit_auth0_url.setFont(font)
+        font1 = QFont()
+        font1.setPointSize(7)
+        font1.setBold(False)
+        self.edit_auth0_url.setFont(font1)
 
         self.verticalLayout_3.addWidget(self.edit_auth0_url)
 
         self.edit_record_url = QLineEdit(self.widget_2)
         self.edit_record_url.setObjectName(u"edit_record_url")
-        self.edit_record_url.setFont(font)
+        self.edit_record_url.setFont(font1)
 
         self.verticalLayout_3.addWidget(self.edit_record_url)
 
@@ -325,10 +328,10 @@ class Ui_SettingsScreen(object):
         self.verticalLayout_8.setObjectName(u"verticalLayout_8")
         self.speed_enabled = QCheckBox(self.widget_12)
         self.speed_enabled.setObjectName(u"speed_enabled")
-        font1 = QFont()
-        font1.setPointSize(7)
-        font1.setBold(True)
-        self.speed_enabled.setFont(font1)
+        font2 = QFont()
+        font2.setPointSize(7)
+        font2.setBold(True)
+        self.speed_enabled.setFont(font2)
         self.speed_enabled.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.speed_enabled.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
         self.speed_enabled.setStyleSheet(u"QCheckBox{\n"
@@ -491,10 +494,10 @@ class Ui_SettingsScreen(object):
         self.verticalLayout_12.setObjectName(u"verticalLayout_12")
         self.label_6 = QLabel(self.widget_8)
         self.label_6.setObjectName(u"label_6")
-        font2 = QFont()
-        font2.setPointSize(11)
-        font2.setBold(True)
-        self.label_6.setFont(font2)
+        font3 = QFont()
+        font3.setPointSize(11)
+        font3.setBold(True)
+        self.label_6.setFont(font3)
         self.label_6.setStyleSheet(u"QLabel {  \n"
 "    color: white;  /* Change 'blue' to your preferred color */  \n"
 "}  ")
@@ -503,7 +506,7 @@ class Ui_SettingsScreen(object):
 
         self.label_7 = QLabel(self.widget_8)
         self.label_7.setObjectName(u"label_7")
-        self.label_7.setFont(font2)
+        self.label_7.setFont(font3)
         self.label_7.setStyleSheet(u"QLabel {  \n"
 "    color: white;  /* Change 'blue' to your preferred color */  \n"
 "}  ")
@@ -600,14 +603,14 @@ class Ui_SettingsScreen(object):
         self.label_1.setText(QCoreApplication.translate("SettingsScreen", u"Authenticate URL:", None))
         self.label_2.setText(QCoreApplication.translate("SettingsScreen", u"Upload URL:", None))
         self.label_3.setText(QCoreApplication.translate("SettingsScreen", u"Site ID:", None))
-        self.label_4.setText(QCoreApplication.translate("SettingsScreen", u"Upload Interval Period:", None))
+        self.label_4.setText(QCoreApplication.translate("SettingsScreen", u"Upload Interval Period(ms):", None))
         self.label_5.setText(QCoreApplication.translate("SettingsScreen", u"Max Upload Records:", None))
         self.edit_auth0_url.setText("")
         self.edit_record_url.setText("")
         self.edit_site_id.setText("")
         self.groupBox_db.setTitle(QCoreApplication.translate("SettingsScreen", u"Database Config", None))
         self.label_10.setText(QCoreApplication.translate("SettingsScreen", u"Max Store Records:", None))
-        self.label_11.setText(QCoreApplication.translate("SettingsScreen", u"Duplicate Detection Period:", None))
+        self.label_11.setText(QCoreApplication.translate("SettingsScreen", u"Duplicate Detection Period(s):", None))
         self.edit_max_records.setText("")
         self.edit_duplicate_detection_seconds.setText("")
         self.groupBox_speed.setTitle(QCoreApplication.translate("SettingsScreen", u"Speed Filter Config", None))

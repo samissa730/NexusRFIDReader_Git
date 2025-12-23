@@ -170,7 +170,7 @@
 }  </string>
                 </property>
                 <property name="text">
-                 <string>Upload Interval Period:</string>
+                 <string>Upload Interval Period(ms):</string>
                 </property>
                </widget>
               </item>
@@ -220,8 +220,8 @@
                <widget class="QLineEdit" name="edit_auth0_url">
                 <property name="font">
                  <font>
-                  <pointsize>10</pointsize>
-                  <bold>true</bold>
+                  <pointsize>7</pointsize>
+                  <bold>false</bold>
                  </font>
                 </property>
                 <property name="text">
@@ -233,8 +233,8 @@
                <widget class="QLineEdit" name="edit_record_url">
                 <property name="font">
                  <font>
-                  <pointsize>10</pointsize>
-                  <bold>true</bold>
+                  <pointsize>7</pointsize>
+                  <bold>false</bold>
                  </font>
                 </property>
                 <property name="text">
@@ -382,7 +382,7 @@
 }  </string>
                     </property>
                     <property name="text">
-                     <string>Duplicate Detection Period:</string>
+                     <string>Duplicate Detection Period(s):</string>
                     </property>
                    </widget>
                   </item>
