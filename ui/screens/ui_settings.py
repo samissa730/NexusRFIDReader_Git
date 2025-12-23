@@ -17,14 +17,14 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QPalette, QPixmap, QRadialGradient, QTransform)
 from PySide6.QtWidgets import (QApplication, QCheckBox, QGroupBox, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QSizePolicy,
-    QVBoxLayout, QWidget)
+    QSpacerItem, QVBoxLayout, QWidget)
 import ui.pl_rc
 
 class Ui_SettingsScreen(object):
     def setupUi(self, SettingsScreen):
         if not SettingsScreen.objectName():
             SettingsScreen.setObjectName(u"SettingsScreen")
-        SettingsScreen.resize(800, 504)
+        SettingsScreen.resize(800, 500)
         SettingsScreen.setMinimumSize(QSize(790, 500))
         SettingsScreen.setStyleSheet(u"")
         self.verticalLayout_1 = QVBoxLayout(SettingsScreen)
@@ -377,6 +377,10 @@ class Ui_SettingsScreen(object):
 
         self.horizontalLayout.addLayout(self.verticalLayout_4)
 
+        self.horizontalSpacer = QSpacerItem(10, 20, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout.addItem(self.horizontalSpacer)
+
         self.verticalLayout_9 = QVBoxLayout()
         self.verticalLayout_9.setObjectName(u"verticalLayout_9")
         self.groupBox_gps = QGroupBox(SettingsScreen)
@@ -544,16 +548,20 @@ class Ui_SettingsScreen(object):
 
         self.verticalLayout_9.addWidget(self.groupBox_1)
 
-        self.btn_save = QPushButton(SettingsScreen)
-        self.btn_save.setObjectName(u"btn_save")
-        self.btn_save.setMaximumSize(QSize(1677215, 16777215))
-        self.btn_save.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
-        self.btn_save.setStyleSheet(u"QPushButton {\n"
+        self.widget_25 = QWidget(SettingsScreen)
+        self.widget_25.setObjectName(u"widget_25")
+        self.verticalLayout_18 = QVBoxLayout(self.widget_25)
+        self.verticalLayout_18.setObjectName(u"verticalLayout_18")
+        self.setting_save_btn = QPushButton(self.widget_25)
+        self.setting_save_btn.setObjectName(u"setting_save_btn")
+        self.setting_save_btn.setFont(font)
+        self.setting_save_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.setting_save_btn.setStyleSheet(u"QPushButton {\n"
 "	background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1,   \n"
 "                                      stop:0 #222222, stop:1 #aaaaaa);\n"
 "    border: 2px solid white;  \n"
 "    border-radius: 10px;  \n"
-"    min-width: 60px;\n"
+"    min-width: 80px;\n"
 "	min-height: 20px;\n"
 "	color: white;\n"
 "} \n"
@@ -566,7 +574,10 @@ class Ui_SettingsScreen(object):
 "    background-color: #909090; /* Darker green when pressed */  \n"
 "}  ")
 
-        self.verticalLayout_9.addWidget(self.btn_save)
+        self.verticalLayout_18.addWidget(self.setting_save_btn)
+
+
+        self.verticalLayout_9.addWidget(self.widget_25)
 
 
         self.horizontalLayout.addLayout(self.verticalLayout_9)
@@ -619,6 +630,6 @@ class Ui_SettingsScreen(object):
         self.label_7.setText(QCoreApplication.translate("SettingsScreen", u"Port:", None))
         self.edit_rfid_host.setText("")
         self.edit_rfid_port.setText("")
-        self.btn_save.setText(QCoreApplication.translate("SettingsScreen", u"Save", None))
+        self.setting_save_btn.setText(QCoreApplication.translate("SettingsScreen", u"Save", None))
     # retranslateUi
 
