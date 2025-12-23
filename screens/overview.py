@@ -162,44 +162,94 @@ class OverviewScreen(BaseScreen):
         self._start_config_reload_timer()
 
     def on_leave(self):
-        logger.info("Leaving overview screen - stopping all threads and timers")
+        logger.info("Leaving overview screen - stopping all threads and timers immediately")
         
-        # Stop all timers first
-        if hasattr(self, 'health_timer') and self.health_timer.isActive():
-            self.health_timer.stop()
-        if hasattr(self, 'upload_timer') and self.upload_timer.isActive():
-            self.upload_timer.stop()
-        if hasattr(self, 'gps_display_timer') and self.gps_display_timer.isActive():
-            self.gps_display_timer.stop()
-        if hasattr(self, 'internet_timer') and self.internet_timer.isActive():
-            self.internet_timer.stop()
-        if hasattr(self, 'gps_timeout_timer') and self.gps_timeout_timer.isActive():
-            self.gps_timeout_timer.stop()
-        if hasattr(self, 'external_retry_timer') and self.external_retry_timer.isActive():
-            self.external_retry_timer.stop()
-        if hasattr(self, 'config_reload_timer') and self.config_reload_timer.isActive():
-            self.config_reload_timer.stop()
+        # Disconnect all signal connections first to prevent callbacks from firing
+        try:
+            if hasattr(self, 'rfid') and self.rfid:
+                self.rfid.sig_msg.disconnect()
+                self.rfid.sig_arp_scan_status.disconnect()
+        except Exception as e:
+            logger.debug(f"Error disconnecting RFID signals: {e}")
         
-        # Stop all threads
-        if self.gps and self.gps.isRunning():
-            logger.info("Stopping GPS thread")
-            self.gps.stop()
-        if self.rfid and self.rfid.isRunning():
-            logger.info("Stopping RFID thread")
-            self.rfid.stop()
-        if self.gps_scanner and self.gps_scanner.isRunning():
-            logger.info("Stopping GPS scanner thread")
-            self.gps_scanner.stop()
+        try:
+            if hasattr(self, 'gps') and self.gps:
+                self.gps.sig_msg.disconnect()
+        except Exception as e:
+            logger.debug(f"Error disconnecting GPS signals: {e}")
+        
+        try:
+            if hasattr(self, 'gps_scanner') and self.gps_scanner:
+                self.gps_scanner.gps_found.disconnect()
+                self.gps_scanner.gps_not_found.disconnect()
+        except Exception as e:
+            logger.debug(f"Error disconnecting GPS scanner signals: {e}")
+        
+        # Stop all timers unconditionally (stop even if not active to ensure clean state)
+        timers_to_stop = [
+            'health_timer', 'upload_timer', 'gps_display_timer', 
+            'internet_timer', 'gps_timeout_timer', 'external_retry_timer', 
+            'config_reload_timer'
+        ]
+        for timer_name in timers_to_stop:
+            if hasattr(self, timer_name):
+                timer = getattr(self, timer_name)
+                if timer and timer.isActive():
+                    timer.stop()
+                    logger.debug(f"Stopped {timer_name}")
+        
+        # Stop all threads immediately
+        if hasattr(self, 'rfid') and self.rfid:
+            if self.rfid.isRunning():
+                logger.info("Stopping RFID thread immediately")
+                self.rfid.stop()
+            else:
+                # Even if not running, ensure stop flag is set
+                try:
+                    self.rfid._b_stop.set()
+                except Exception:
+                    pass
+        
+        if hasattr(self, 'gps') and self.gps:
+            if self.gps.isRunning():
+                logger.info("Stopping GPS thread immediately")
+                self.gps.stop()
+            else:
+                # Even if not running, ensure stop flag is set
+                try:
+                    self.gps._b_stop.set()
+                except Exception:
+                    pass
+        
+        if hasattr(self, 'gps_scanner') and self.gps_scanner:
+            if self.gps_scanner.isRunning():
+                logger.info("Stopping GPS scanner thread immediately")
+                self.gps_scanner.stop()
+            else:
+                # Even if not running, ensure stop flag is set
+                try:
+                    self.gps_scanner._stop_requested = True
+                except Exception:
+                    pass
         
         # Stop UI elements
         if hasattr(self, 'arp_scan_spinner'):
-            self.arp_scan_spinner.stop()
+            try:
+                self.arp_scan_spinner.stop()
+            except Exception:
+                pass
         if hasattr(self, 'waiting_label'):
-            self.waiting_label.hide()
+            try:
+                self.waiting_label.hide()
+            except Exception:
+                pass
         
         # Close storage
         if hasattr(self, 'storage'):
-            self.storage.close()
+            try:
+                self.storage.close()
+            except Exception as e:
+                logger.debug(f"Error closing storage: {e}")
         
         logger.info("All threads and timers stopped successfully")
 
