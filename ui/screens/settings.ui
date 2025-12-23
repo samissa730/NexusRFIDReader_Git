@@ -508,27 +508,6 @@
                    <number>15</number>
                   </property>
                   <item>
-                   <widget class="QLabel" name="label_12">
-                    <property name="font">
-                     <font>
-                      <pointsize>10</pointsize>
-                      <bold>true</bold>
-                     </font>
-                    </property>
-                    <property name="styleSheet">
-                     <string notr="true">QLabel {  
-    color: white;  /* Change 'blue' to your preferred color */  
-}  </string>
-                    </property>
-                    <property name="text">
-                     <string>Enabled:</string>
-                    </property>
-                    <property name="alignment">
-                     <set>Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter</set>
-                    </property>
-                   </widget>
-                  </item>
-                  <item>
                    <widget class="QLabel" name="label_13">
                     <property name="font">
                      <font>
@@ -588,51 +567,6 @@
                   <property name="spacing">
                    <number>8</number>
                   </property>
-                  <item>
-                   <widget class="QCheckBox" name="speed_enabled">
-                    <property name="font">
-                     <font>
-                      <pointsize>7</pointsize>
-                      <bold>true</bold>
-                     </font>
-                    </property>
-                    <property name="focusPolicy">
-                     <enum>Qt::FocusPolicy::StrongFocus</enum>
-                    </property>
-                    <property name="layoutDirection">
-                     <enum>Qt::LayoutDirection::LeftToRight</enum>
-                    </property>
-                    <property name="styleSheet">
-                     <string notr="true">QCheckBox{
-	color: white; 
-}
-
-QCheckBox::indicator {  
-    width: 14px;  
-    height: 14px;  
-}  
-
-QCheckBox::indicator:unchecked {  
-    border: 2px solid gray;  
-    background-color: white;  
-}
-
-QCheckBox::indicator:checked { 
-	border: 2px solid gray;   
-    image: url(:/img/checkmark.png);  /* Use a custom image if needed */  
- }</string>
-                    </property>
-                    <property name="text">
-                     <string/>
-                    </property>
-                    <property name="shortcut">
-                     <string/>
-                    </property>
-                    <property name="checked">
-                     <bool>true</bool>
-                    </property>
-                   </widget>
-                  </item>
                   <item>
                    <widget class="QLineEdit" name="edit_min_speed">
                     <property name="font">

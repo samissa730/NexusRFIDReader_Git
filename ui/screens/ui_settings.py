@@ -15,9 +15,9 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QFont, QFontDatabase, QGradient, QIcon,
     QImage, QKeySequence, QLinearGradient, QPainter,
     QPalette, QPixmap, QRadialGradient, QTransform)
-from PySide6.QtWidgets import (QApplication, QCheckBox, QGroupBox, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QSizePolicy,
-    QSpacerItem, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QApplication, QGroupBox, QHBoxLayout, QLabel,
+    QLineEdit, QPushButton, QSizePolicy, QSpacerItem,
+    QVBoxLayout, QWidget)
 import ui.pl_rc
 
 class Ui_SettingsScreen(object):
@@ -281,16 +281,6 @@ class Ui_SettingsScreen(object):
         self.verticalLayout_7 = QVBoxLayout(self.widget_13)
         self.verticalLayout_7.setSpacing(15)
         self.verticalLayout_7.setObjectName(u"verticalLayout_7")
-        self.label_12 = QLabel(self.widget_13)
-        self.label_12.setObjectName(u"label_12")
-        self.label_12.setFont(font)
-        self.label_12.setStyleSheet(u"QLabel {  \n"
-"    color: white;  /* Change 'blue' to your preferred color */  \n"
-"}  ")
-        self.label_12.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
-
-        self.verticalLayout_7.addWidget(self.label_12)
-
         self.label_13 = QLabel(self.widget_13)
         self.label_13.setObjectName(u"label_13")
         self.label_13.setFont(font)
@@ -326,36 +316,6 @@ class Ui_SettingsScreen(object):
         self.verticalLayout_8 = QVBoxLayout(self.widget_12)
         self.verticalLayout_8.setSpacing(8)
         self.verticalLayout_8.setObjectName(u"verticalLayout_8")
-        self.speed_enabled = QCheckBox(self.widget_12)
-        self.speed_enabled.setObjectName(u"speed_enabled")
-        font2 = QFont()
-        font2.setPointSize(7)
-        font2.setBold(True)
-        self.speed_enabled.setFont(font2)
-        self.speed_enabled.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.speed_enabled.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
-        self.speed_enabled.setStyleSheet(u"QCheckBox{\n"
-"	color: white; \n"
-"}\n"
-"\n"
-"QCheckBox::indicator {  \n"
-"    width: 14px;  \n"
-"    height: 14px;  \n"
-"}  \n"
-"\n"
-"QCheckBox::indicator:unchecked {  \n"
-"    border: 2px solid gray;  \n"
-"    background-color: white;  \n"
-"}\n"
-"\n"
-"QCheckBox::indicator:checked { \n"
-"	border: 2px solid gray;   \n"
-"    image: url(:/img/checkmark.png);  /* Use a custom image if needed */  \n"
-" }")
-        self.speed_enabled.setChecked(True)
-
-        self.verticalLayout_8.addWidget(self.speed_enabled)
-
         self.edit_min_speed = QLineEdit(self.widget_12)
         self.edit_min_speed.setObjectName(u"edit_min_speed")
         self.edit_min_speed.setFont(font)
@@ -494,10 +454,10 @@ class Ui_SettingsScreen(object):
         self.verticalLayout_12.setObjectName(u"verticalLayout_12")
         self.label_6 = QLabel(self.widget_8)
         self.label_6.setObjectName(u"label_6")
-        font3 = QFont()
-        font3.setPointSize(11)
-        font3.setBold(True)
-        self.label_6.setFont(font3)
+        font2 = QFont()
+        font2.setPointSize(11)
+        font2.setBold(True)
+        self.label_6.setFont(font2)
         self.label_6.setStyleSheet(u"QLabel {  \n"
 "    color: white;  /* Change 'blue' to your preferred color */  \n"
 "}  ")
@@ -506,7 +466,7 @@ class Ui_SettingsScreen(object):
 
         self.label_7 = QLabel(self.widget_8)
         self.label_7.setObjectName(u"label_7")
-        self.label_7.setFont(font3)
+        self.label_7.setFont(font2)
         self.label_7.setStyleSheet(u"QLabel {  \n"
 "    color: white;  /* Change 'blue' to your preferred color */  \n"
 "}  ")
@@ -614,13 +574,8 @@ class Ui_SettingsScreen(object):
         self.edit_max_records.setText("")
         self.edit_duplicate_detection_seconds.setText("")
         self.groupBox_speed.setTitle(QCoreApplication.translate("SettingsScreen", u"Speed Filter Config", None))
-        self.label_12.setText(QCoreApplication.translate("SettingsScreen", u"Enabled:", None))
         self.label_13.setText(QCoreApplication.translate("SettingsScreen", u"Min Speed(mph):", None))
         self.label_14.setText(QCoreApplication.translate("SettingsScreen", u"Max Speed(mph):", None))
-        self.speed_enabled.setText("")
-#if QT_CONFIG(shortcut)
-        self.speed_enabled.setShortcut("")
-#endif // QT_CONFIG(shortcut)
         self.edit_min_speed.setText("")
         self.edit_max_speed.setText("")
         self.groupBox_gps.setTitle(QCoreApplication.translate("SettingsScreen", u"GPS Config", None))

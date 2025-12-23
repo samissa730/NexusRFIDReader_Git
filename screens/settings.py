@@ -65,7 +65,6 @@ class SettingsScreen(BaseScreen):
             # Filter Config - Speed
             filter_config = config.get("filter_config", {})
             speed_config = filter_config.get("speed", {})
-            self.ui.speed_enabled.setChecked(bool(speed_config.get("enabled", False)))
             self.ui.edit_min_speed.setText(str(speed_config.get("min", "")))
             self.ui.edit_max_speed.setText(str(speed_config.get("max", "")))
             
@@ -171,7 +170,6 @@ class SettingsScreen(BaseScreen):
                 return
             
             # Filter Config - Speed
-            config["filter_config"]["speed"]["enabled"] = self.ui.speed_enabled.isChecked()
             try:
                 min_speed = float(self.ui.edit_min_speed.text()) if self.ui.edit_min_speed.text() else config["filter_config"]["speed"].get("min", 1)
                 max_speed = float(self.ui.edit_max_speed.text()) if self.ui.edit_max_speed.text() else config["filter_config"]["speed"].get("max", 20)
