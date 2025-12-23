@@ -24,8 +24,8 @@ class Ui_OverviewScreen(object):
     def setupUi(self, OverviewScreen):
         if not OverviewScreen.objectName():
             OverviewScreen.setObjectName(u"OverviewScreen")
-        OverviewScreen.resize(800, 480)
-        OverviewScreen.setMinimumSize(QSize(790, 420))
+        OverviewScreen.resize(800, 500)
+        OverviewScreen.setMinimumSize(QSize(790, 500))
         OverviewScreen.setStyleSheet(u"")
         self.verticalLayout_20 = QVBoxLayout(OverviewScreen)
         self.verticalLayout_20.setSpacing(0)
