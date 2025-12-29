@@ -49,10 +49,6 @@ class SettingsScreen(BaseScreen):
             
             # API Config
             api_config = config.get("api_config", {})
-            self.ui.edit_auth0_url.setText(str(api_config.get("auth0_url", "")))
-            self.ui.edit_auth0_url.setReadOnly(True)
-            self.ui.edit_record_url.setText(str(api_config.get("record_url", "")))
-            self.ui.edit_record_url.setReadOnly(True)
             self.ui.edit_site_id.setText(str(api_config.get("site_id", "")))
             self.ui.edit_record_interval_ms.setText(str(api_config.get("record_interval_ms", "")))
             self.ui.edit_max_upload_records.setText(str(api_config.get("max_upload_records", "")))
@@ -146,7 +142,7 @@ class SettingsScreen(BaseScreen):
                 self._show_notification("Error: Invalid RFID port value", is_error=True)
                 return
             
-            # API Config (only editable fields - auth0_url and record_url are read-only)
+            # API Config
             config["api_config"]["site_id"] = self.ui.edit_site_id.text() or config["api_config"].get("site_id", "")
             try:
                 record_interval_ms = int(self.ui.edit_record_interval_ms.text()) if self.ui.edit_record_interval_ms.text() else config["api_config"].get("record_interval_ms", 7000)

@@ -103,42 +103,6 @@
                <number>15</number>
               </property>
               <item>
-               <widget class="QLabel" name="label_1">
-                <property name="font">
-                 <font>
-                  <pointsize>10</pointsize>
-                  <bold>true</bold>
-                 </font>
-                </property>
-                <property name="styleSheet">
-                 <string notr="true">QLabel {  
-    color: white;  /* Change 'blue' to your preferred color */  
-}  </string>
-                </property>
-                <property name="text">
-                 <string>Authenticate URL:</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QLabel" name="label_2">
-                <property name="font">
-                 <font>
-                  <pointsize>10</pointsize>
-                  <bold>true</bold>
-                 </font>
-                </property>
-                <property name="styleSheet">
-                 <string notr="true">QLabel {  
-    color: white;  /* Change 'blue' to your preferred color */  
-}  </string>
-                </property>
-                <property name="text">
-                 <string>Upload URL:</string>
-                </property>
-               </widget>
-              </item>
-              <item>
                <widget class="QLabel" name="label_3">
                 <property name="font">
                  <font>
@@ -216,32 +180,6 @@
               <property name="spacing">
                <number>8</number>
               </property>
-              <item>
-               <widget class="QLineEdit" name="edit_auth0_url">
-                <property name="font">
-                 <font>
-                  <pointsize>7</pointsize>
-                  <bold>false</bold>
-                 </font>
-                </property>
-                <property name="text">
-                 <string/>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QLineEdit" name="edit_record_url">
-                <property name="font">
-                 <font>
-                  <pointsize>7</pointsize>
-                  <bold>false</bold>
-                 </font>
-                </property>
-                <property name="text">
-                 <string/>
-                </property>
-               </widget>
-              </item>
               <item>
                <widget class="QLineEdit" name="edit_site_id">
                 <property name="font">

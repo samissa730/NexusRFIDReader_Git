@@ -67,24 +67,6 @@ class Ui_SettingsScreen(object):
         self.verticalLayout_2 = QVBoxLayout(self.widget_3)
         self.verticalLayout_2.setSpacing(15)
         self.verticalLayout_2.setObjectName(u"verticalLayout_2")
-        self.label_1 = QLabel(self.widget_3)
-        self.label_1.setObjectName(u"label_1")
-        self.label_1.setFont(font)
-        self.label_1.setStyleSheet(u"QLabel {  \n"
-"    color: white;  /* Change 'blue' to your preferred color */  \n"
-"}  ")
-
-        self.verticalLayout_2.addWidget(self.label_1)
-
-        self.label_2 = QLabel(self.widget_3)
-        self.label_2.setObjectName(u"label_2")
-        self.label_2.setFont(font)
-        self.label_2.setStyleSheet(u"QLabel {  \n"
-"    color: white;  /* Change 'blue' to your preferred color */  \n"
-"}  ")
-
-        self.verticalLayout_2.addWidget(self.label_2)
-
         self.label_3 = QLabel(self.widget_3)
         self.label_3.setObjectName(u"label_3")
         self.label_3.setFont(font)
@@ -129,21 +111,6 @@ class Ui_SettingsScreen(object):
         self.verticalLayout_3 = QVBoxLayout(self.widget_2)
         self.verticalLayout_3.setSpacing(8)
         self.verticalLayout_3.setObjectName(u"verticalLayout_3")
-        self.edit_auth0_url = QLineEdit(self.widget_2)
-        self.edit_auth0_url.setObjectName(u"edit_auth0_url")
-        font1 = QFont()
-        font1.setPointSize(7)
-        font1.setBold(False)
-        self.edit_auth0_url.setFont(font1)
-
-        self.verticalLayout_3.addWidget(self.edit_auth0_url)
-
-        self.edit_record_url = QLineEdit(self.widget_2)
-        self.edit_record_url.setObjectName(u"edit_record_url")
-        self.edit_record_url.setFont(font1)
-
-        self.verticalLayout_3.addWidget(self.edit_record_url)
-
         self.edit_site_id = QLineEdit(self.widget_2)
         self.edit_site_id.setObjectName(u"edit_site_id")
         self.edit_site_id.setFont(font)
@@ -454,10 +421,10 @@ class Ui_SettingsScreen(object):
         self.verticalLayout_12.setObjectName(u"verticalLayout_12")
         self.label_6 = QLabel(self.widget_8)
         self.label_6.setObjectName(u"label_6")
-        font2 = QFont()
-        font2.setPointSize(11)
-        font2.setBold(True)
-        self.label_6.setFont(font2)
+        font1 = QFont()
+        font1.setPointSize(11)
+        font1.setBold(True)
+        self.label_6.setFont(font1)
         self.label_6.setStyleSheet(u"QLabel {  \n"
 "    color: white;  /* Change 'blue' to your preferred color */  \n"
 "}  ")
@@ -466,7 +433,7 @@ class Ui_SettingsScreen(object):
 
         self.label_7 = QLabel(self.widget_8)
         self.label_7.setObjectName(u"label_7")
-        self.label_7.setFont(font2)
+        self.label_7.setFont(font1)
         self.label_7.setStyleSheet(u"QLabel {  \n"
 "    color: white;  /* Change 'blue' to your preferred color */  \n"
 "}  ")
@@ -560,13 +527,9 @@ class Ui_SettingsScreen(object):
     def retranslateUi(self, SettingsScreen):
         SettingsScreen.setWindowTitle(QCoreApplication.translate("SettingsScreen", u"Settings", None))
         self.groupBox_5.setTitle(QCoreApplication.translate("SettingsScreen", u"API Config", None))
-        self.label_1.setText(QCoreApplication.translate("SettingsScreen", u"Authenticate URL:", None))
-        self.label_2.setText(QCoreApplication.translate("SettingsScreen", u"Upload URL:", None))
         self.label_3.setText(QCoreApplication.translate("SettingsScreen", u"Site ID:", None))
         self.label_4.setText(QCoreApplication.translate("SettingsScreen", u"Upload Interval Period(ms):", None))
         self.label_5.setText(QCoreApplication.translate("SettingsScreen", u"Max Upload Records:", None))
-        self.edit_auth0_url.setText("")
-        self.edit_record_url.setText("")
         self.edit_site_id.setText("")
         self.groupBox_db.setTitle(QCoreApplication.translate("SettingsScreen", u"Database Config", None))
         self.label_10.setText(QCoreApplication.translate("SettingsScreen", u"Max Store Records:", None))
