@@ -336,10 +336,9 @@ class OverviewScreen(BaseScreen):
             storage_flag = True
             
             # Filter records for storage based on GPS data and filter settings
-            # Skip storage if GPS data is invalid (lat=0, lon=0, speed=0)
-            if (lat == 0 and lon == 0) or speed == 0:
+            if lat == 0 and lon == 0:
                 storage_flag = False
-                # logger.debug(f"Tag detected but no GPS data: TAG {tag['EPC-96']} ant={tag['AntennaID']} rssi={tag['PeakRSSI']} (lat=0, lon=0, speed=0)")
+                # logger.debug(f"Tag detected but no GPS data: TAG {tag['EPC-96']} ant={tag['AntennaID']} rssi={tag['PeakRSSI']} (lat=0, lon=0)")
             
             # Apply filters from settings for storage
             if storage_flag:
@@ -665,7 +664,7 @@ class OverviewScreen(BaseScreen):
             longitude = row[5] if row[5] else 0  
             speed = int(row[6]) if row[6] else 0
             
-            if latitude == 0 and longitude == 0 and speed == 0:
+            if latitude == 0 and longitude == 0:
                 continue  # Skip this record
             
             valid_records.append(row)
