@@ -29,41 +29,43 @@ def get_tunnel_type(interface):
     return None
 
 def has_internet(interface):
-    """Check if interface has internet connectivity - Windows compatible"""
+    """Check if interface has internet connectivity by pinging 8.8.8.8 through the specific interface"""
     try:
+        # Get interface IP first
+        interfaces = psutil.net_if_addrs()
+        if interface not in interfaces:
+            return False
+        
+        # Find IPv4 address for this interface
+        ipv4_addr = None
+        for addr in interfaces[interface]:
+            if addr.family == socket.AF_INET:
+                ipv4_addr = addr.address
+                break
+        
+        if not ipv4_addr:
+            return False
+        
         if platform.system() == "Windows":
-            # Windows: Use ping through specific interface
-            # Get interface IP first
-            interfaces = psutil.net_if_addrs()
-            if interface not in interfaces:
-                return False
-            
-            # Find IPv4 address for this interface
-            ipv4_addr = None
-            for addr in interfaces[interface]:
-                if addr.family == socket.AF_INET:
-                    ipv4_addr = addr.address
-                    break
-            
-            if not ipv4_addr:
-                return False
-            
-            # Test connectivity using ping (Windows-compatible)
+            # Windows: Use ping with -S flag to specify source IP
             result = subprocess.run(
-                ["ping", "-n", "1", "-w", "2000", "8.8.8.8"],
+                ["ping", "-n", "2", "-w", "2000", "-S", ipv4_addr, "8.8.8.8"],
                 capture_output=True,
-                timeout=3,
+                timeout=5,
                 text=True
             )
             return result.returncode == 0
         else:
-            # Linux: Use socket binding
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.settimeout(2)
-            s.setsockopt(socket.SOL_SOCKET, 25, interface.encode())  # SO_BINDTODEVICE
-            s.connect(("8.8.8.8", 53))
-            s.close()
-            return True
+            # Linux: Use ping with -I flag to bind to specific interface
+            result = subprocess.run(
+                ["ping", "-I", interface, "-c", "2", "-W", "2", "8.8.8.8"],
+                capture_output=True,
+                timeout=5,
+                text=True
+            )
+            return result.returncode == 0
+    except subprocess.TimeoutExpired:
+        return False
     except Exception:
         return False
 
@@ -74,6 +76,10 @@ def detect_active_tunnels():
     stats = psutil.net_if_stats()
 
     for iface, addrs in interfaces.items():
+        # Skip loopback interface
+        if iface == 'lo':
+            continue
+            
         if iface not in stats or not stats[iface].isup:
             continue
 
