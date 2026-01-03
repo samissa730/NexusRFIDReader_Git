@@ -275,9 +275,17 @@ class OverviewScreen(BaseScreen):
             else:
                 tunnel_text = " and ".join(sorted(tunnels))
             self.ui.internet_tunnel.setText(tunnel_text)
+        except subprocess.TimeoutExpired:
+            # Ping timeout - interface likely doesn't have internet
+            logger.debug("Internet tunnel detection timed out")
+            # Keep current value or set to "N/A" if not set
+            if not self.ui.internet_tunnel.text() or self.ui.internet_tunnel.text() == "":
+                self.ui.internet_tunnel.setText("N/A")
         except Exception as e:
             logger.debug(f"Error detecting internet tunnels: {e}")
-            self.ui.internet_tunnel.setText("N/A")
+            # Keep current value or set to "N/A" if not set
+            if not self.ui.internet_tunnel.text() or self.ui.internet_tunnel.text() == "":
+                self.ui.internet_tunnel.setText("N/A")
 
     def _on_gps_status(self, status):
         # Called by external GPS worker
