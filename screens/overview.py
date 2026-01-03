@@ -365,7 +365,7 @@ class OverviewScreen(BaseScreen):
                     min_s = sp.get('min')
                     max_s = sp.get('max')
                     if min_s is not None and max_s is not None and (speed < min_s or speed > max_s):
-                        logger.debug(f"Skipping storage: speed {speed} is not in range {min_s} to {max_s}")
+                        # logger.debug(f"Skipping storage: speed {speed} is not in range {min_s} to {max_s}")
                         storage_flag = False
 
             if storage_flag:
@@ -374,7 +374,7 @@ class OverviewScreen(BaseScreen):
                     min_r = rs.get('min')
                     max_r = rs.get('max')
                     if min_r is not None and max_r is not None and (tag['PeakRSSI'] < min_r or tag['PeakRSSI'] > max_r):
-                        logger.debug(f"Skipping storage: RSSI {tag['PeakRSSI']} is not in range {min_r} to {max_r}")
+                        # logger.debug(f"Skipping storage: RSSI {tag['PeakRSSI']} is not in range {min_r} to {max_r}")
                         storage_flag = False
 
             if storage_flag:
@@ -385,7 +385,7 @@ class OverviewScreen(BaseScreen):
                     try:
                         epc = int(tag['EPC-96'])
                         if min_t is not None and max_t is not None and (epc < min_t or epc > max_t):
-                            logger.debug(f"Skipping storage: EPC {epc} is not in range {min_t} to {max_t}")
+                            # logger.debug(f"Skipping storage: EPC {epc} is not in range {min_t} to {max_t}")
                             storage_flag = False
                     except Exception:
                         logger.debug(f"Skipping storage: EPC {tag['EPC-96']} is not an integer")
