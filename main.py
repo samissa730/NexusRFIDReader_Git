@@ -89,20 +89,6 @@ if __name__ == "__main__":
             
             # Wait a moment for the interface to settle after dhclient
             time.sleep(2)
-            
-            # Configure network interface priorities: Ethernet > WiFi > Cellular
-            try:
-                from utils.network import configure_network_priorities
-                logger.info("Configuring network interface priorities...")
-                network_result = configure_network_priorities()
-                if network_result['success']:
-                    logger.info(f"Network priorities configured successfully. Working interfaces: {', '.join(network_result['working'])}")
-                    if network_result['configured']:
-                        logger.info(f"Configured interfaces (in priority order): {', '.join(network_result['configured'])}")
-                else:
-                    logger.warning("Network priority configuration completed but no interfaces were configured")
-            except Exception as e:
-                logger.error(f"Error configuring network priorities: {e}")
         else:
             logger.info("Skipping 'sudo dhclient usb0' (non-Linux platform)")
     except Exception as e:

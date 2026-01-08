@@ -16,7 +16,7 @@ import time
 import subprocess
 import platform
 from ping3 import ping
-from utils_Test.internet_status import detect_active_tunnels
+from utils.network import detect_active_tunnels, configure_network_priorities
 
 
 class GPSScannerThread(QThread):
@@ -267,7 +267,7 @@ class OverviewScreen(BaseScreen):
         self.ui.internet_status.setText(text)
     
     def _update_internet_tunnel_status(self):
-        """Update internet tunnel status display"""
+        """Update internet tunnel status display and check/update network priorities"""
         try:
             tunnels = detect_active_tunnels()
             if not tunnels:
@@ -275,6 +275,18 @@ class OverviewScreen(BaseScreen):
             else:
                 tunnel_text = " and ".join(sorted(tunnels))
             self.ui.internet_tunnel.setText(tunnel_text)
+            
+            # Check and update network interface priorities if needed
+            # Only check if we have active tunnels (interfaces with internet)
+            if tunnels:
+                try:
+                    network_result = configure_network_priorities()
+                    if network_result['success']:
+                        if network_result['configured']:
+                            logger.info(f"Network priorities updated. Configured interfaces: {', '.join(network_result['configured'])}")
+                        # else: priorities were already optimal, no action needed
+                except Exception as e:
+                    logger.debug(f"Error configuring network priorities: {e}")
         except subprocess.TimeoutExpired:
             # Ping timeout - interface likely doesn't have internet
             logger.debug("Internet tunnel detection timed out")
