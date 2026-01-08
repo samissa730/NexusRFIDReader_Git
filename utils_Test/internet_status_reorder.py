@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Script to test internet connectivity through each network interface.
-Tests each interface by pinging 8.8.8.8 through that specific interface.
-After testing, reorders interface priorities: Ethernet > WiFi > Cellular
+Script to activate cellular interface (usb0) and reorder network interface priorities.
+Sets priority order: Ethernet -> WiFi -> Cellular (usb0)
+Outputs previous and updated priorities and saves to internet_output.txt
 """
 
 import subprocess
@@ -11,6 +11,63 @@ import psutil
 import platform
 import sys
 import re
+import os
+from datetime import datetime
+
+
+def get_default_routes():
+    """Get current default routes with their metrics."""
+    routes = []
+    try:
+        if platform.system() == "Linux":
+            result = subprocess.run(
+                ['ip', 'route', 'show', 'default'],
+                capture_output=True,
+                timeout=5,
+                text=True
+            )
+            if result.returncode == 0 and result.stdout:
+                for line in result.stdout.strip().split('\n'):
+                    if line.strip():
+                        # Parse: default via 192.168.0.1 dev eth1 metric 100
+                        # Or: default via 192.168.225.1 dev usb0 (no metric)
+                        match = re.search(r'default via (\S+) dev (\w+)(?: metric (\d+))?', line)
+                        if match:
+                            gateway = match.group(1)
+                            interface = match.group(2)
+                            metric = match.group(3)
+                            metric_value = int(metric) if metric else 0  # No metric means highest priority (0)
+                            routes.append({
+                                'interface': interface,
+                                'gateway': gateway,
+                                'metric': metric_value,
+                                'raw': line.strip()
+                            })
+        elif platform.system() == "Windows":
+            # Windows implementation would use netsh or PowerShell
+            ps_cmd = 'Get-NetRoute -DestinationPrefix "0.0.0.0/0" | Select-Object InterfaceAlias, NextHop, RouteMetric'
+            result = subprocess.run(
+                ['powershell', '-Command', ps_cmd],
+                capture_output=True,
+                timeout=5,
+                text=True
+            )
+            if result.returncode == 0 and result.stdout:
+                # Parse PowerShell output
+                lines = result.stdout.strip().split('\n')
+                for line in lines[2:]:  # Skip header lines
+                    if line.strip():
+                        parts = line.split()
+                        if len(parts) >= 3:
+                            routes.append({
+                                'interface': parts[0],
+                                'gateway': parts[1],
+                                'metric': int(parts[2]) if parts[2].isdigit() else 0,
+                                'raw': line.strip()
+                            })
+    except Exception as e:
+        print(f"Error getting default routes: {e}", file=sys.stderr)
+    return routes
 
 
 def get_active_interfaces():
@@ -36,16 +93,46 @@ def get_active_interfaces():
                 break
         
         if ipv4_addr:
+            interface_type = get_interface_type(iface)
             interfaces.append({
                 'name': iface,
                 'ip': ipv4_addr,
-                'status': 'UP' if net_if_stats[iface].isup else 'DOWN'
+                'status': 'UP' if net_if_stats[iface].isup else 'DOWN',
+                'type': interface_type
             })
     
     return interfaces
 
 
-def test_interface_ping(interface_name, interface_ip):
+def get_interface_type(interface_name):
+    """Determine interface type based on name."""
+    iface_lower = interface_name.lower()
+    
+    if iface_lower.startswith('eth') or iface_lower.startswith('en'):
+        return "Ethernet"
+    elif iface_lower.startswith('wlan') or iface_lower.startswith('wl'):
+        return "WiFi"
+    elif iface_lower.startswith('usb') or iface_lower.startswith('wwan') or iface_lower.startswith('cdc'):
+        return "Cellular"
+    else:
+        return "Unknown"
+
+
+def get_interface_metric(interface_name):
+    """Get the desired metric based on interface type."""
+    interface_type = get_interface_type(interface_name)
+    
+    if interface_type == "Ethernet":
+        return 100
+    elif interface_type == "WiFi":
+        return 200
+    elif interface_type == "Cellular":
+        return 300
+    else:
+        return 400  # Unknown interfaces get lowest priority
+
+
+def test_interface_connectivity(interface_name, interface_ip):
     """
     Test internet connectivity through a specific interface by pinging 8.8.8.8.
     Returns True if ping succeeds, False otherwise.
@@ -81,332 +168,259 @@ def test_interface_ping(interface_name, interface_ip):
     except subprocess.TimeoutExpired:
         return False
     except Exception as e:
-        print(f"Error testing {interface_name}: {e}", file=sys.stderr)
         return False
 
 
-def get_tunnel_type(interface_name):
-    """Determine tunnel/connection type based on interface name."""
-    iface_lower = interface_name.lower()
-    
-    if iface_lower.startswith('eth') or iface_lower.startswith('en'):
-        return "Ethernet"
-    elif iface_lower.startswith('wlan') or iface_lower.startswith('wl'):
-        return "WiFi"
-    elif iface_lower.startswith('usb'):
-        return "USB/Cellular"
-    elif iface_lower.startswith('wwan') or iface_lower.startswith('cdc'):
-        return "Cellular"
-    elif iface_lower.startswith('tun') or iface_lower.startswith('tap'):
-        return "VPN/Tunnel"
-    else:
-        return "Unknown"
-
-
-def get_interface_priority_type(interface_name):
-    """Get priority type for interface ordering (1=Ethernet, 2=WiFi, 3=Cellular)."""
-    iface_lower = interface_name.lower()
-    
-    if iface_lower.startswith('eth') or iface_lower.startswith('en'):
-        return 1  # Ethernet - highest priority
-    elif iface_lower.startswith('wlan') or iface_lower.startswith('wl'):
-        return 2  # WiFi - medium priority
-    elif iface_lower.startswith('usb') or iface_lower.startswith('wwan') or iface_lower.startswith('cdc'):
-        return 3  # Cellular - lowest priority
-    else:
-        return 99  # Unknown - lowest priority
-
-
-def get_current_default_interface():
-    """Get the current default network interface."""
+def run_dhclient(interface):
+    """Run dhclient on the specified interface."""
     try:
         if platform.system() == "Linux":
-            # Get default route interface
             result = subprocess.run(
-                ['ip', 'route', 'show', 'default'],
+                ['sudo', '-n', 'dhclient', interface],
                 capture_output=True,
-                timeout=5,
+                timeout=30,
                 text=True
             )
-            if result.returncode == 0 and result.stdout:
-                # Parse output: default via 192.168.1.1 dev eth0 proto dhcp metric 100
-                match = re.search(r'dev\s+(\w+)', result.stdout)
-                if match:
-                    return match.group(1)
-        elif platform.system() == "Windows":
-            # Use PowerShell to get default interface
-            ps_cmd = 'Get-NetRoute -DestinationPrefix "0.0.0.0/0" | Select-Object -First 1 | Get-NetAdapter | Select-Object -ExpandProperty Name'
-            result = subprocess.run(
-                ['powershell', '-Command', ps_cmd],
-                capture_output=True,
-                timeout=5,
-                text=True
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                return result.stdout.strip()
-    except Exception as e:
-        print(f"Warning: Could not determine current default interface: {e}", file=sys.stderr)
-    return None
-
-
-def reorder_interface_priorities(working_interfaces):
-    """
-    Reorder network interface priorities without reboot.
-    Priority: Ethernet (1) > WiFi (2) > Cellular (3)
-    Returns True if successful, False otherwise.
-    """
-    if not working_interfaces:
-        return False
-    
-    # Sort interfaces by priority type
-    sorted_interfaces = sorted(working_interfaces, key=lambda x: get_interface_priority_type(x['name']))
-    
-    try:
-        if platform.system() == "Linux":
-            return reorder_linux_priorities(sorted_interfaces)
-        elif platform.system() == "Windows":
-            return reorder_windows_priorities(sorted_interfaces)
+            return result.returncode == 0, result.stdout, result.stderr
         else:
-            print("Warning: Interface priority reordering not supported on this platform", file=sys.stderr)
-            return False
+            return False, "", "dhclient only available on Linux"
+    except subprocess.TimeoutExpired:
+        return False, "", "dhclient timed out"
     except Exception as e:
-        print(f"Error reordering interface priorities: {e}", file=sys.stderr)
-        return False
+        return False, "", str(e)
 
 
-def reorder_linux_priorities(sorted_interfaces):
-    """Reorder interface priorities on Linux using ip route metrics."""
+def reorder_routes(routes, active_interfaces):
+    """Reorder routes by setting proper metrics."""
+    success = True
+    errors = []
+    
+    if platform.system() != "Linux":
+        return False, ["Route reordering only supported on Linux"]
+    
+    if not routes:
+        return False, ["No default routes found to reorder"]
+    
     try:
-        # Assign metrics: lower metric = higher priority
-        # Ethernet: 100, WiFi: 200, Cellular: 300
-        metric_map = {1: 100, 2: 200, 3: 300, 99: 400}
+        # Create a map of interface -> gateway from existing routes
+        # Handle duplicates by keeping the first occurrence (typically the one without metric)
+        interface_gateways = {}
+        interfaces_to_reorder = []
         
-        success_count = 0
+        for route in routes:
+            iface = route['interface']
+            gateway = route['gateway']
+            
+            # Only process if we have a gateway and haven't seen this interface yet
+            if gateway and iface not in interface_gateways:
+                interface_gateways[iface] = gateway
+                interfaces_to_reorder.append({
+                    'interface': iface,
+                    'gateway': gateway
+                })
         
-        for iface in sorted_interfaces:
-            priority = get_interface_priority_type(iface['name'])
-            metric = metric_map.get(priority, 400)
+        if not interfaces_to_reorder:
+            return False, ["No valid interfaces with gateways found in routes"]
+        
+        # First, delete all existing default routes for interfaces we'll reorder
+        for route in routes:
+            try:
+                # Delete route - handle both with and without metric
+                delete_cmd = ['sudo', '-n', 'ip', 'route', 'del', 'default']
+                if route['gateway']:
+                    delete_cmd.extend(['via', route['gateway']])
+                delete_cmd.extend(['dev', route['interface']])
+                # Only add metric if it exists and is > 0 (to avoid deleting wrong route)
+                if route.get('metric', 0) > 0:
+                    delete_cmd.extend(['metric', str(route['metric'])])
+                
+                result = subprocess.run(delete_cmd, capture_output=True, timeout=5, text=True)
+                # Continue even if deletion fails (route might not exist or already deleted)
+            except Exception:
+                pass
+        
+        # Add routes back with proper metrics, in priority order
+        # Sort interfaces by priority: Ethernet (100), WiFi (200), Cellular (300)
+        sorted_interfaces = sorted(
+            interfaces_to_reorder,
+            key=lambda x: get_interface_metric(x['interface'])
+        )
+        
+        for route_info in sorted_interfaces:
+            ifname = route_info['interface']
+            gateway = route_info['gateway']
+            metric = get_interface_metric(ifname)
             
-            # Get default route for this interface
-            result = subprocess.run(
-                ['ip', 'route', 'show', 'default', 'dev', iface['name']],
-                capture_output=True,
-                timeout=5,
-                text=True
-            )
-            
-            if result.returncode == 0 and result.stdout:
-                # Delete existing default route for this interface
-                del_result = subprocess.run(
-                    ['sudo', 'ip', 'route', 'del', 'default', 'dev', iface['name']],
+            try:
+                # Add route with metric
+                add_cmd = [
+                    'sudo', '-n', 'ip', 'route', 'add', 'default',
+                    'via', gateway,
+                    'dev', ifname,
+                    'metric', str(metric)
+                ]
+                
+                result = subprocess.run(
+                    add_cmd,
                     capture_output=True,
                     timeout=5,
                     text=True
                 )
                 
-                # Add default route with new metric
-                # Extract gateway from original route
-                match = re.search(r'via\s+([\d.]+)', result.stdout)
-                if match:
-                    gateway = match.group(1)
-                    add_result = subprocess.run(
-                        ['sudo', 'ip', 'route', 'add', 'default', 'via', gateway, 'dev', iface['name'], 'metric', str(metric)],
-                        capture_output=True,
-                        timeout=5,
-                        text=True
-                    )
-                    if add_result.returncode == 0:
-                        print(f"  Set {iface['name']} ({iface['type']}) metric to {metric}")
-                        success_count += 1
-                    else:
-                        print(f"  Warning: Failed to set metric for {iface['name']}: {add_result.stderr}", file=sys.stderr)
-                else:
-                    # Try without gateway (direct connection)
-                    add_result = subprocess.run(
-                        ['sudo', 'ip', 'route', 'add', 'default', 'dev', iface['name'], 'metric', str(metric)],
-                        capture_output=True,
-                        timeout=5,
-                        text=True
-                    )
-                    if add_result.returncode == 0:
-                        print(f"  Set {iface['name']} ({iface['type']}) metric to {metric}")
-                        success_count += 1
-                    else:
-                        print(f"  Warning: Failed to set metric for {iface['name']}: {add_result.stderr}", file=sys.stderr)
-            else:
-                # No default route exists for this interface, try to add one
-                # First, try to get gateway from interface's network
-                gateway_result = subprocess.run(
-                    ['ip', 'route', 'show', 'dev', iface['name']],
-                    capture_output=True,
-                    timeout=5,
-                    text=True
-                )
-                if gateway_result.returncode == 0 and gateway_result.stdout:
-                    # Try to find a gateway in the routes
-                    gateway_match = re.search(r'via\s+([\d.]+)', gateway_result.stdout)
-                    if gateway_match:
-                        gateway = gateway_match.group(1)
-                        add_result = subprocess.run(
-                            ['sudo', 'ip', 'route', 'add', 'default', 'via', gateway, 'dev', iface['name'], 'metric', str(metric)],
-                            capture_output=True,
-                            timeout=5,
-                            text=True
-                        )
-                        if add_result.returncode == 0:
-                            print(f"  Added default route for {iface['name']} ({iface['type']}) with metric {metric}")
-                            success_count += 1
+                if result.returncode != 0:
+                    # Check if it's just a "File exists" error (route already exists)
+                    if "File exists" not in result.stderr and "already exists" not in result.stderr.lower():
+                        errors.append(f"Failed to add route for {ifname}: {result.stderr}")
+                        success = False
+            except Exception as e:
+                errors.append(f"Error adding route for {ifname}: {str(e)}")
+                success = False
         
-        return success_count > 0
     except Exception as e:
-        print(f"Error in Linux priority reordering: {e}", file=sys.stderr)
-        return False
+        errors.append(f"Error reordering routes: {str(e)}")
+        success = False
+    
+    return success, errors
 
 
-def reorder_windows_priorities(sorted_interfaces):
-    """Reorder interface priorities on Windows using interface metrics."""
-    try:
-        # Assign metrics: lower metric = higher priority
-        # Ethernet: 10, WiFi: 20, Cellular: 30
-        metric_map = {1: 10, 2: 20, 3: 30, 99: 40}
-        
-        for iface in sorted_interfaces:
-            priority = get_interface_priority_type(iface['name'])
-            metric = metric_map.get(priority, 40)
-            
-            # Set interface metric using netsh
-            result = subprocess.run(
-                ['netsh', 'interface', 'ip', 'set', 'interface', iface['name'], 'metric=' + str(metric)],
-                capture_output=True,
-                timeout=5,
-                text=True
-            )
-            
-            if result.returncode == 0:
-                print(f"  Set {iface['name']} ({iface['type']}) metric to {metric}")
-            else:
-                print(f"  Warning: Failed to set metric for {iface['name']}: {result.stderr}", file=sys.stderr)
-        
-        return True
-    except Exception as e:
-        print(f"Error in Windows priority reordering: {e}", file=sys.stderr)
-        return False
+def format_routes_output(routes, title="Default Routes"):
+    """Format routes for output."""
+    output = [f"{title}:"]
+    if not routes:
+        output.append("  No default routes found")
+    else:
+        # Sort by metric (lower = higher priority)
+        sorted_routes = sorted(routes, key=lambda x: x['metric'])
+        for i, route in enumerate(sorted_routes, 1):
+            metric_str = f"metric {route['metric']}" if route['metric'] > 0 else "metric 0 (highest priority)"
+            output.append(f"  {i}. {route['interface']} ({get_interface_type(route['interface'])}) - "
+                         f"Gateway: {route['gateway']}, {metric_str}")
+            output.append(f"     Raw: {route['raw']}")
+    return '\n'.join(output)
 
 
 def main():
-    """Main function to test all interfaces and report results."""
-    print("=" * 60)
-    print("Network Interface Internet Connectivity Test")
-    print("=" * 60)
-    print()
+    """Main function to reorder network interfaces."""
+    output_lines = []
+    output_lines.append("=" * 70)
+    output_lines.append("Network Interface Priority Reordering")
+    output_lines.append("=" * 70)
+    output_lines.append(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    output_lines.append("")
     
-    # Get current default interface before any changes
-    current_default = get_current_default_interface()
+    # Step 1: Get initial default routes
+    output_lines.append("STEP 1: Getting initial default routes...")
+    initial_routes = get_default_routes()
+    output_lines.append(format_routes_output(initial_routes, "Initial Default Routes"))
+    output_lines.append("")
     
-    # Get all active interfaces
-    interfaces = get_active_interfaces()
-    
-    if not interfaces:
-        print("No active network interfaces found with IPv4 addresses.")
-        return
-    
-    print(f"Found {len(interfaces)} active interface(s):")
-    for iface in interfaces:
-        print(f"  - {iface['name']}: {iface['ip']} ({iface['status']})")
-    print()
-    
-    if current_default:
-        print(f"Current default interface: {current_default}")
+    # Step 2: Get and verify active interfaces
+    output_lines.append("STEP 2: Getting and verifying active network interfaces...")
+    active_interfaces = get_active_interfaces()
+    if active_interfaces:
+        output_lines.append(f"Found {len(active_interfaces)} active interface(s):")
+        for iface in active_interfaces:
+            # Test connectivity
+            has_internet = test_interface_connectivity(iface['name'], iface['ip'])
+            status_icon = "✓" if has_internet else "✗"
+            connectivity = "CONNECTED" if has_internet else "NO CONNECTION"
+            output_lines.append(f"  - {iface['name']}: {iface['ip']} ({iface['status']}) [{iface['type']}] {status_icon} {connectivity}")
+            iface['has_internet'] = has_internet
     else:
-        print("Current default interface: Unable to determine")
-    print()
+        output_lines.append("  No active interfaces found")
+    output_lines.append("")
     
-    print("Testing internet connectivity (pinging 8.8.8.8) through each interface...")
-    print()
-    
-    working_interfaces = []
-    failed_interfaces = []
-    
-    # Test each interface
-    for iface in interfaces:
-        interface_name = iface['name']
-        interface_ip = iface['ip']
-        tunnel_type = get_tunnel_type(interface_name)
-        
-        print(f"Testing {interface_name} ({tunnel_type}) - {interface_ip}...", end=' ', flush=True)
-        
-        if test_interface_ping(interface_name, interface_ip):
-            print("✓ CONNECTED")
-            working_interfaces.append({
-                'name': interface_name,
-                'ip': interface_ip,
-                'type': tunnel_type
-            })
+    # Step 3: Run dhclient on usb0
+    output_lines.append("STEP 3: Activating cellular interface (usb0)...")
+    usb0_found = any(iface['name'] == 'usb0' for iface in active_interfaces)
+    if usb0_found:
+        success, stdout, stderr = run_dhclient('usb0')
+        if success:
+            output_lines.append("  ✓ Successfully ran: sudo -n dhclient usb0")
+            if stdout:
+                output_lines.append(f"  Output: {stdout}")
         else:
-            print("✗ NO CONNECTION")
-            failed_interfaces.append({
-                'name': interface_name,
-                'ip': interface_ip,
-                'type': tunnel_type
-            })
-    
-    print()
-    print("=" * 60)
-    print("RESULTS SUMMARY")
-    print("=" * 60)
-    print()
-    
-    if working_interfaces:
-        print(f"✓ {len(working_interfaces)} interface(s) with internet connectivity:")
-        for iface in working_interfaces:
-            print(f"  • {iface['name']} ({iface['type']}) - {iface['ip']}")
+            output_lines.append(f"  ✗ Failed to run dhclient usb0")
+            if stderr:
+                output_lines.append(f"  Error: {stderr}")
     else:
-        print("✗ No interfaces with internet connectivity found.")
+        output_lines.append("  ⚠ usb0 interface not found, skipping dhclient")
+    output_lines.append("")
     
-    print()
+    # Step 4: Get routes after dhclient
+    output_lines.append("STEP 4: Getting default routes after dhclient...")
+    routes_after_dhclient = get_default_routes()
+    output_lines.append(format_routes_output(routes_after_dhclient, "Default Routes After dhclient"))
+    output_lines.append("")
     
-    if failed_interfaces:
-        print(f"✗ {len(failed_interfaces)} interface(s) without internet connectivity:")
-        for iface in failed_interfaces:
-            print(f"  • {iface['name']} ({iface['type']}) - {iface['ip']}")
+    # Step 5: Reorder routes
+    output_lines.append("STEP 5: Reordering interface priorities...")
+    output_lines.append("  Target priority order:")
+    output_lines.append("    1. Ethernet (metric 100)")
+    output_lines.append("    2. WiFi (metric 200)")
+    output_lines.append("    3. Cellular (metric 300)")
+    output_lines.append("")
     
-    print()
-    print("=" * 60)
-    
-    # Reorder interface priorities if we have working interfaces
-    if working_interfaces:
-        print()
-        print("Reordering interface priorities (Ethernet > WiFi > Cellular)...")
-        print()
-        
-        if reorder_interface_priorities(working_interfaces):
-            print("✓ Interface priorities updated successfully")
+    if platform.system() == "Linux" and active_interfaces:
+        success, errors = reorder_routes(routes_after_dhclient, active_interfaces)
+        if success:
+            output_lines.append("  ✓ Successfully reordered routes")
         else:
-            print("✗ Failed to update interface priorities (may require admin/sudo privileges)")
-        
-        # Get updated default interface
-        updated_default = get_current_default_interface()
-        
-        print()
-        print("=" * 60)
-        print("INTERFACE PRIORITY UPDATE")
-        print("=" * 60)
-        print()
-        print(f"Previous default interface: {current_default if current_default else 'Unable to determine'}")
-        print(f"Updated default interface: {updated_default if updated_default else 'Unable to determine'}")
-        
-        if current_default != updated_default:
-            print("✓ Default interface changed")
-        else:
-            print("ℹ Default interface unchanged (may already be optimal)")
+            output_lines.append("  ✗ Failed to reorder routes:")
+            for error in errors:
+                output_lines.append(f"    - {error}")
+    else:
+        output_lines.append("  ⚠ Route reordering skipped (not Linux or no active interfaces)")
+    output_lines.append("")
     
-    print()
-    print("=" * 60)
+    # Step 6: Get final routes
+    output_lines.append("STEP 6: Getting final default routes...")
+    final_routes = get_default_routes()
+    output_lines.append(format_routes_output(final_routes, "Final Default Routes"))
+    output_lines.append("")
     
-    # Return exit code: 0 if at least one interface works, 1 otherwise
-    sys.exit(0 if working_interfaces else 1)
+    # Summary
+    output_lines.append("=" * 70)
+    output_lines.append("SUMMARY")
+    output_lines.append("=" * 70)
+    output_lines.append("")
+    output_lines.append("PREVIOUS PRIORITIES (after dhclient):")
+    if routes_after_dhclient:
+        sorted_prev = sorted(routes_after_dhclient, key=lambda x: x['metric'])
+        for i, route in enumerate(sorted_prev, 1):
+            metric_str = f"metric {route['metric']}" if route['metric'] > 0 else "metric 0 (default)"
+            output_lines.append(f"  {i}. {route['interface']} ({get_interface_type(route['interface'])}) - {metric_str}")
+    else:
+        output_lines.append("  No routes found")
+    output_lines.append("")
+    output_lines.append("UPDATED PRIORITIES (after reordering):")
+    if final_routes:
+        sorted_final = sorted(final_routes, key=lambda x: x['metric'])
+        for i, route in enumerate(sorted_final, 1):
+            metric_str = f"metric {route['metric']}" if route['metric'] > 0 else "metric 0 (default)"
+            output_lines.append(f"  {i}. {route['interface']} ({get_interface_type(route['interface'])}) - {metric_str}")
+    else:
+        output_lines.append("  No routes found")
+    output_lines.append("")
+    output_lines.append("=" * 70)
+    
+    # Print to console
+    output_text = '\n'.join(output_lines)
+    print(output_text)
+    
+    # Save to file
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    output_file = os.path.join(script_dir, 'internet_output.txt')
+    try:
+        with open(output_file, 'w') as f:
+            f.write(output_text)
+        print(f"\nOutput saved to: {output_file}")
+    except Exception as e:
+        print(f"\nError saving output to file: {e}", file=sys.stderr)
+        sys.exit(1)
+    
+    sys.exit(0)
 
 
 if __name__ == "__main__":
     main()
-
