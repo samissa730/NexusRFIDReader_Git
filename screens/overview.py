@@ -15,6 +15,7 @@ from settings import API_CONFIG, FILTER_CONFIG, DATABASE_CONFIG, reload_config
 import time
 import subprocess
 import platform
+import sqlite3
 from ping3 import ping
 from utils.network import detect_active_tunnels
 
@@ -165,9 +166,15 @@ class OverviewScreen(BaseScreen):
         self.config_reload_timer = QTimer(self)
         self.config_reload_timer.timeout.connect(self._reload_config_and_update)
         self._start_config_reload_timer()
+        
+        # Flag to track if screen is being destroyed/left
+        self._is_leaving = False
 
     def on_leave(self):
         logger.info("Leaving overview screen - stopping all threads and timers immediately")
+        
+        # Set flag to prevent any new storage operations
+        self._is_leaving = True
         
         # Disconnect all signal connections first to prevent callbacks from firing
         try:
@@ -334,6 +341,10 @@ class OverviewScreen(BaseScreen):
             self.waiting_label.resize(label_width, label_height)
 
     def _on_rfid_status(self, status):
+        # Check if we're leaving - if so, ignore all RFID signals
+        if self._is_leaving:
+            return
+        
         # logger.debug(f"RFID status received: {status}")
         if status == 1:
             self.ui.rfid_connection_status.setStyleSheet("""color: #00ff00;""")
@@ -419,35 +430,46 @@ class OverviewScreen(BaseScreen):
                     pass
                 else:
                     # Values are different, proceed with storage
+                    # Check if storage is still valid before using it
+                    if self._is_leaving or not self.storage:
+                        return
+                    
                     if self.storage.use_db:
+                        # Check if database connection is still valid
+                        if not self.storage.db_connection or not self.storage.db_cursor:
+                            logger.debug("Database connection closed, skipping storage")
+                            return
+                        
                         # Prevent duplicates within configured time window
                         duplicate_window_seconds = DATABASE_CONFIG.get('duplicate_detection_seconds', 3)
                         duplicate_window_microseconds = duplicate_window_seconds * 1_000_000
-                        assert self.storage.db_cursor
-                        self.storage.db_cursor.execute('''
-                            SELECT * FROM records
-                            WHERE rfidTag = ?
-                            AND (
-                                ABS(timestamp - ?) < ?
-                                OR (latitude = ? AND longitude = ?)
-                            )
-                        ''', (tag['EPC-96'], tag['LastSeenTimestampUTC'], duplicate_window_microseconds, lat, lon))
-                        rows = self.storage.db_cursor.fetchall()
-                        if not rows:
-                            # Prepare record list with explicit id
-                            assert self.storage.db_cursor
-                            self.storage.db_cursor.execute('SELECT id FROM records ORDER BY id ASC')
-                            used_ids = self.storage.db_cursor.fetchall()
-                            rec = [
-                                calculate_next_id(used_ids), tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
-                                lat, lon, speed, bearing, "-", self.api.user_name, tag['LastSeenTimestampUTC'],
-                                "", "", "", "", "", "", "", ""
-                            ]
-                            self.storage.add_record(rec)
-                            # Update last stored values after successful storage
-                            self.last_stored_rfid = current_rfid
-                            self.last_stored_lat = current_lat
-                            self.last_stored_lon = current_lon
+                        try:
+                            self.storage.db_cursor.execute('''
+                                SELECT * FROM records
+                                WHERE rfidTag = ?
+                                AND (
+                                    ABS(timestamp - ?) < ?
+                                    OR (latitude = ? AND longitude = ?)
+                                )
+                            ''', (tag['EPC-96'], tag['LastSeenTimestampUTC'], duplicate_window_microseconds, lat, lon))
+                            rows = self.storage.db_cursor.fetchall()
+                            if not rows:
+                                # Prepare record list with explicit id
+                                self.storage.db_cursor.execute('SELECT id FROM records ORDER BY id ASC')
+                                used_ids = self.storage.db_cursor.fetchall()
+                                rec = [
+                                    calculate_next_id(used_ids), tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
+                                    lat, lon, speed, bearing, "-", self.api.user_name, tag['LastSeenTimestampUTC'],
+                                    "", "", "", "", "", "", "", ""
+                                ]
+                                self.storage.add_record(rec)
+                                # Update last stored values after successful storage
+                                self.last_stored_rfid = current_rfid
+                                self.last_stored_lat = current_lat
+                                self.last_stored_lon = current_lon
+                        except (sqlite3.ProgrammingError, AttributeError) as e:
+                            logger.debug(f"Database operation failed (possibly closed): {e}")
+                            return
                     else:
                         new_data = [True, tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
                                     lat, lon, speed, bearing, "-", self.api.user_name, tag['LastSeenTimestampUTC'],
@@ -675,7 +697,21 @@ class OverviewScreen(BaseScreen):
             logger.error("Failed to reload configuration, using existing values")
 
     def _upload_records(self):
-        data = self.storage.fetch_all_records()
+        # Check if we're leaving or storage is invalid
+        if self._is_leaving or not self.storage:
+            return
+        
+        # Check if database connection is still valid (if using database)
+        if self.storage.use_db:
+            if not self.storage.db_connection or not self.storage.db_cursor:
+                return
+        
+        try:
+            data = self.storage.fetch_all_records()
+        except (sqlite3.ProgrammingError, AttributeError) as e:
+            logger.debug(f"Failed to fetch records (possibly closed): {e}")
+            return
+        
         if not data:
             return
         
@@ -740,16 +776,25 @@ class OverviewScreen(BaseScreen):
             # Upload this batch
             if payload and self.api.upload_records(payload):
                 # Delete the successfully uploaded records
-                self.storage.delete_uploaded_records(uploaded_record_ids)
-                logger.debug(f"Successfully uploaded batch {batch_number + 1} with {len(uploaded_record_ids)} record(s)")
-                batch_number += 1
+                try:
+                    if not self._is_leaving and self.storage:
+                        self.storage.delete_uploaded_records(uploaded_record_ids)
+                    logger.debug(f"Successfully uploaded batch {batch_number + 1} with {len(uploaded_record_ids)} record(s)")
+                    batch_number += 1
+                except (sqlite3.ProgrammingError, AttributeError) as e:
+                    logger.debug(f"Failed to delete uploaded records (possibly closed): {e}")
+                    break
             else:
                 # Upload failed, stop processing remaining batches
                 logger.warning(f"Failed to upload batch {batch_number + 1}, stopping batch processing")
                 break
         
         # Also do best-effort pruning for any old records
-        self.storage.prune_old()
+        if not self._is_leaving and self.storage:
+            try:
+                self.storage.prune_old()
+            except (sqlite3.ProgrammingError, AttributeError) as e:
+                logger.debug(f"Failed to prune old records (possibly closed): {e}")
 
 
 def calculate_next_id(used_ids):
