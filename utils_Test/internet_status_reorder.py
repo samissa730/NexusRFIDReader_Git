@@ -12,6 +12,7 @@ import platform
 import sys
 import re
 import os
+import time
 from datetime import datetime
 
 
@@ -29,18 +30,30 @@ def get_default_routes():
             if result.returncode == 0 and result.stdout:
                 for line in result.stdout.strip().split('\n'):
                     if line.strip():
-                        # Parse: default via 192.168.0.1 dev eth1 metric 100
-                        # Or: default via 192.168.225.1 dev usb0 (no metric)
-                        match = re.search(r'default via (\S+) dev (\w+)(?: metric (\d+))?', line)
+                        # Parse various formats:
+                        # default via 192.168.0.1 dev eth1 metric 100
+                        # default via 192.168.0.1 dev eth1 proto dhcp src 192.168.0.202 metric 100
+                        # default via 192.168.225.1 dev usb0 (no metric)
+                        # default via 192.168.0.1 dev wlan0 metric 200
+                        # Extract gateway, interface, and metric (which can appear anywhere)
+                        match = re.search(r'default via (\S+) dev (\w+)', line)
                         if match:
                             gateway = match.group(1)
                             interface = match.group(2)
-                            metric = match.group(3)
-                            metric_value = int(metric) if metric else 0  # No metric means highest priority (0)
+                            
+                            # Extract metric (can appear anywhere in the line after dev)
+                            metric_match = re.search(r'\bmetric (\d+)\b', line)
+                            metric_value = int(metric_match.group(1)) if metric_match else 0
+                            
+                            # Extract src IP if present (for deletion purposes)
+                            src_match = re.search(r'\bsrc (\S+)\b', line)
+                            src_ip = src_match.group(1) if src_match else None
+                            
                             routes.append({
                                 'interface': interface,
                                 'gateway': gateway,
                                 'metric': metric_value,
+                                'src': src_ip,
                                 'raw': line.strip()
                             })
         elif platform.system() == "Windows":
@@ -222,22 +235,60 @@ def reorder_routes(routes, active_interfaces):
         if not interfaces_to_reorder:
             return False, ["No valid interfaces with gateways found in routes"]
         
-        # First, delete all existing default routes for interfaces we'll reorder
+        # First, delete ALL existing default routes completely
+        # Delete by interface to ensure we get all variations (with/without src, proto, etc.)
+        interfaces_seen = set()
         for route in routes:
+            iface = route['interface']
+            if iface not in interfaces_seen:
+                interfaces_seen.add(iface)
+                try:
+                    # Delete all default routes for this interface (handles all variations)
+                    # This will delete routes regardless of metric, src, proto, etc.
+                    delete_cmd = ['sudo', '-n', 'ip', 'route', 'del', 'default', 'dev', iface]
+                    result = subprocess.run(delete_cmd, capture_output=True, timeout=5, text=True)
+                    # Continue even if deletion fails - might need multiple attempts
+                    # Also try deleting specific routes
+                    if route.get('gateway'):
+                        delete_cmd2 = ['sudo', '-n', 'ip', 'route', 'del', 'default',
+                                      'via', route['gateway'], 'dev', iface]
+                        subprocess.run(delete_cmd2, capture_output=True, timeout=5, text=True)
+                except Exception:
+                    pass
+        
+        # Additional cleanup: Make multiple passes to ensure all routes are deleted
+        # DHCP clients may recreate routes, so we need to be thorough
+        for cleanup_pass in range(3):  # Try up to 3 times
             try:
-                # Delete route - handle both with and without metric
-                delete_cmd = ['sudo', '-n', 'ip', 'route', 'del', 'default']
-                if route['gateway']:
-                    delete_cmd.extend(['via', route['gateway']])
-                delete_cmd.extend(['dev', route['interface']])
-                # Only add metric if it exists and is > 0 (to avoid deleting wrong route)
-                if route.get('metric', 0) > 0:
-                    delete_cmd.extend(['metric', str(route['metric'])])
-                
-                result = subprocess.run(delete_cmd, capture_output=True, timeout=5, text=True)
-                # Continue even if deletion fails (route might not exist or already deleted)
+                cleanup_result = subprocess.run(
+                    ['ip', 'route', 'show', 'default'],
+                    capture_output=True,
+                    timeout=5,
+                    text=True
+                )
+                if cleanup_result.returncode == 0 and cleanup_result.stdout.strip():
+                    # Delete any remaining default routes by interface
+                    interfaces_to_clean = set()
+                    for cleanup_line in cleanup_result.stdout.strip().split('\n'):
+                        if cleanup_line.strip():
+                            match = re.search(r'dev (\w+)', cleanup_line)
+                            if match:
+                                interfaces_to_clean.add(match.group(1))
+                    
+                    for cleanup_iface in interfaces_to_clean:
+                        try:
+                            # Delete all default routes for this interface
+                            cleanup_cmd = ['sudo', '-n', 'ip', 'route', 'del', 'default', 'dev', cleanup_iface]
+                            subprocess.run(cleanup_cmd, capture_output=True, timeout=5, text=True)
+                        except Exception:
+                            pass
+                    
+                    if cleanup_pass < 2:  # Don't sleep on last pass
+                        time.sleep(0.3)  # Brief pause between passes
+                else:
+                    break  # No more routes to clean
             except Exception:
-                pass
+                break
         
         # Add routes back with proper metrics, in priority order
         # Sort interfaces by priority: Ethernet (100), WiFi (200), Cellular (300)
@@ -252,29 +303,89 @@ def reorder_routes(routes, active_interfaces):
             metric = get_interface_metric(ifname)
             
             try:
-                # Add route with metric
-                add_cmd = [
-                    'sudo', '-n', 'ip', 'route', 'add', 'default',
+                # Try replace first (will update existing route or add if not exists)
+                # If replace fails, fall back to add
+                replace_cmd = [
+                    'sudo', '-n', 'ip', 'route', 'replace', 'default',
                     'via', gateway,
                     'dev', ifname,
                     'metric', str(metric)
                 ]
                 
                 result = subprocess.run(
-                    add_cmd,
+                    replace_cmd,
                     capture_output=True,
                     timeout=5,
                     text=True
                 )
                 
                 if result.returncode != 0:
-                    # Check if it's just a "File exists" error (route already exists)
-                    if "File exists" not in result.stderr and "already exists" not in result.stderr.lower():
-                        errors.append(f"Failed to add route for {ifname}: {result.stderr}")
-                        success = False
+                    # If replace fails, try add
+                    add_cmd = [
+                        'sudo', '-n', 'ip', 'route', 'add', 'default',
+                        'via', gateway,
+                        'dev', ifname,
+                        'metric', str(metric)
+                    ]
+                    
+                    result = subprocess.run(
+                        add_cmd,
+                        capture_output=True,
+                        timeout=5,
+                        text=True
+                    )
+                    
+                    if result.returncode != 0:
+                        # Check if it's just a "File exists" error (route already exists)
+                        if "File exists" not in result.stderr and "already exists" not in result.stderr.lower():
+                            errors.append(f"Failed to add/replace route for {ifname}: {result.stderr}")
+                            success = False
             except Exception as e:
                 errors.append(f"Error adding route for {ifname}: {str(e)}")
                 success = False
+        
+        # Wait a moment for routes to settle, then verify and fix any routes that dhcp might have changed
+        time.sleep(0.5)
+        try:
+            verify_result = subprocess.run(
+                ['ip', 'route', 'show', 'default'],
+                capture_output=True,
+                timeout=5,
+                text=True
+            )
+            if verify_result.returncode == 0:
+                # Check if any routes have wrong metrics and fix them
+                for verify_line in verify_result.stdout.strip().split('\n'):
+                    if verify_line.strip():
+                        match = re.search(r'dev (\w+)', verify_line)
+                        if match:
+                            verify_iface = match.group(1)
+                            expected_metric = get_interface_metric(verify_iface)
+                            
+                            # Extract actual metric from route
+                            metric_match = re.search(r'\bmetric (\d+)\b', verify_line)
+                            actual_metric = int(metric_match.group(1)) if metric_match else 0
+                            
+                            # Only fix if metric is wrong (and it's one of our interfaces)
+                            if (verify_iface in interface_gateways and 
+                                actual_metric != expected_metric and 
+                                expected_metric < 400):  # Skip unknown interfaces
+                                # Delete wrong route and re-add with correct metric
+                                try:
+                                    del_cmd = ['sudo', '-n', 'ip', 'route', 'del', 'default', 'dev', verify_iface]
+                                    subprocess.run(del_cmd, capture_output=True, timeout=5, text=True)
+                                    
+                                    replace_cmd = [
+                                        'sudo', '-n', 'ip', 'route', 'replace', 'default',
+                                        'via', interface_gateways[verify_iface],
+                                        'dev', verify_iface,
+                                        'metric', str(expected_metric)
+                                    ]
+                                    subprocess.run(replace_cmd, capture_output=True, timeout=5, text=True)
+                                except Exception:
+                                    pass
+        except Exception:
+            pass
         
     except Exception as e:
         errors.append(f"Error reordering routes: {str(e)}")
