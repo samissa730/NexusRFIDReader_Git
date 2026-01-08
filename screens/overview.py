@@ -9,6 +9,7 @@ from utils.gps import GPS
 from utils.common import extract_from_gps, get_date_from_utc, pre_config_gps, find_gps_port, get_processor_id, enable_gps_at_command
 from utils.data_storage import DataStorage
 from utils.api_client import ApiClient
+from utils.network import CURRENT_INTERFACE, get_current_active_interface
 from widgets.waiting_spinner import QtWaitingSpinner
 import settings
 from settings import API_CONFIG, FILTER_CONFIG, DATABASE_CONFIG, reload_config
@@ -154,7 +155,7 @@ class OverviewScreen(BaseScreen):
         self._check_internet_status()  # Initial check
         
         # Initialize internet tunnel status
-        self.ui.internet_tunnel.setText("N/A")
+        self._update_internet_tunnel_display()
         
         # Internet disconnection tracking
         self.internet_disconnected_start = None
@@ -568,6 +569,26 @@ class OverviewScreen(BaseScreen):
                 if gps_timestamp:
                     self.ui.last_gps_read.setText(f"{lat:.7f}, {lon:.7f}")
                     self.ui.last_gps_time.setText(get_date_from_utc(gps_timestamp))
+
+    def _update_internet_tunnel_display(self):
+        """Update the internet tunnel display with current active interface."""
+        try:
+            # First try to get from global variable set during startup
+            current_interface = CURRENT_INTERFACE
+            
+            # If not available, try to get current interface
+            if not current_interface:
+                current_interface = get_current_active_interface()
+            
+            if current_interface:
+                interface_name = current_interface['interface']
+                interface_type = current_interface['type']
+                self.ui.internet_tunnel.setText(f"{interface_name} ({interface_type})")
+            else:
+                self.ui.internet_tunnel.setText("N/A")
+        except Exception as e:
+            logger.debug(f"Error updating internet tunnel display: {e}")
+            self.ui.internet_tunnel.setText("N/A")
 
     def _check_internet_status(self):
         """Check internet connectivity by pinging Google DNS"""
