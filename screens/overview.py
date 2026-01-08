@@ -161,6 +161,12 @@ class OverviewScreen(BaseScreen):
         self.internet_disconnected_start = None
         self.internet_limit_seconds = settings.INTERNET_LIMIT_TIME * 60  # Convert minutes to seconds
         
+        # Network interface reordering timer - reorder every 30 minutes
+        self.network_reorder_timer = QTimer(self)
+        self.network_reorder_timer.timeout.connect(self._reorder_network_interfaces)
+        self.network_reorder_timer.start(30 * 60 * 1000)  # 30 minutes = 1800000 ms
+        self._reorder_network_interfaces()  # Initial check
+        
         # Config reload timer - reload config every internet_limit_time * 3 seconds
         self.config_reload_timer = QTimer(self)
         self.config_reload_timer.timeout.connect(self._reload_config_and_update)
@@ -194,7 +200,7 @@ class OverviewScreen(BaseScreen):
         timers_to_stop = [
             'health_timer', 'upload_timer', 'gps_display_timer', 
             'internet_timer', 'gps_timeout_timer', 'external_retry_timer', 
-            'config_reload_timer'
+            'config_reload_timer', 'network_reorder_timer'
         ]
         for timer_name in timers_to_stop:
             if hasattr(self, timer_name):
@@ -267,7 +273,7 @@ class OverviewScreen(BaseScreen):
         self.ui.internet_status.setText(text)
     
     def _update_internet_tunnel_status(self):
-        """Update internet tunnel status display and check/update network priorities"""
+        """Update internet tunnel status display only"""
         try:
             tunnels = detect_active_tunnels()
             if not tunnels:
@@ -275,18 +281,6 @@ class OverviewScreen(BaseScreen):
             else:
                 tunnel_text = " and ".join(sorted(tunnels))
             self.ui.internet_tunnel.setText(tunnel_text)
-            
-            # Check and update network interface priorities if needed
-            # Only check if we have active tunnels (interfaces with internet)
-            if tunnels:
-                try:
-                    network_result = configure_network_priorities()
-                    if network_result['success']:
-                        if network_result['configured']:
-                            logger.info(f"Network priorities updated. Configured interfaces: {', '.join(network_result['configured'])}")
-                        # else: priorities were already optimal, no action needed
-                except Exception as e:
-                    logger.debug(f"Error configuring network priorities: {e}")
         except subprocess.TimeoutExpired:
             # Ping timeout - interface likely doesn't have internet
             logger.debug("Internet tunnel detection timed out")
@@ -298,6 +292,23 @@ class OverviewScreen(BaseScreen):
             # Keep current value or set to "N/A" if not set
             if not self.ui.internet_tunnel.text() or self.ui.internet_tunnel.text() == "":
                 self.ui.internet_tunnel.setText("N/A")
+    
+    def _reorder_network_interfaces(self):
+        """Reorder network interface priorities - called every 30 minutes"""
+        try:
+            tunnels = detect_active_tunnels()
+            # Only reorder if we have active tunnels (interfaces with internet)
+            if tunnels:
+                try:
+                    network_result = configure_network_priorities()
+                    if network_result['success']:
+                        if network_result['configured']:
+                            logger.info(f"Network priorities updated. Configured interfaces: {', '.join(network_result['configured'])}")
+                        # else: priorities were already optimal, no action needed
+                except Exception as e:
+                    logger.debug(f"Error configuring network priorities: {e}")
+        except Exception as e:
+            logger.debug(f"Error detecting tunnels for network reordering: {e}")
 
     def _on_gps_status(self, status):
         # Called by external GPS worker
