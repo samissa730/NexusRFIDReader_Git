@@ -17,7 +17,6 @@ import subprocess
 import platform
 import sqlite3
 from ping3 import ping
-from utils.network import detect_active_tunnels
 
 
 class GPSScannerThread(QThread):
@@ -156,7 +155,6 @@ class OverviewScreen(BaseScreen):
         
         # Initialize internet tunnel status
         self.ui.internet_tunnel.setText("N/A")
-        self._update_internet_tunnel_status()  # Initial check
         
         # Internet disconnection tracking
         self.internet_disconnected_start = None
@@ -273,26 +271,6 @@ class OverviewScreen(BaseScreen):
         self.ui.internet_status.setStyleSheet("""color: #00ff00;""" if ok else """color: #ff0000;""")
         self.ui.internet_status.setText(text)
     
-    def _update_internet_tunnel_status(self):
-        """Update internet tunnel status display only"""
-        try:
-            tunnels = detect_active_tunnels()
-            if not tunnels:
-                tunnel_text = "Nothing"
-            else:
-                tunnel_text = " and ".join(sorted(tunnels))
-            self.ui.internet_tunnel.setText(tunnel_text)
-        except subprocess.TimeoutExpired:
-            # Ping timeout - interface likely doesn't have internet
-            logger.debug("Internet tunnel detection timed out")
-            # Keep current value or set to "N/A" if not set
-            if not self.ui.internet_tunnel.text() or self.ui.internet_tunnel.text() == "":
-                self.ui.internet_tunnel.setText("N/A")
-        except Exception as e:
-            logger.debug(f"Error detecting internet tunnels: {e}")
-            # Keep current value or set to "N/A" if not set
-            if not self.ui.internet_tunnel.text() or self.ui.internet_tunnel.text() == "":
-                self.ui.internet_tunnel.setText("N/A")
 
     def _on_gps_status(self, status):
         # Called by external GPS worker
@@ -608,9 +586,6 @@ class OverviewScreen(BaseScreen):
             self._set_internet_status("Disconnected", False)
             logger.debug(f"Internet ping error: {e}")
             self._handle_internet_disconnection()
-        
-        # Update tunnel status
-        self._update_internet_tunnel_status()
 
     def _handle_internet_disconnection(self):
         """Handle internet disconnection and check if restart is needed"""
