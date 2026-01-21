@@ -715,7 +715,24 @@ class OverviewScreen(BaseScreen):
         max_upload_records = API_CONFIG.get('max_upload_records', 10)
         device_id = get_processor_id()
         # Get site_id from API_CONFIG in settings (loaded from config.json)
+        record_url = API_CONFIG.get('record_url', '')
         site_id = API_CONFIG.get('site_id', '')
+        
+        if record_url and '/sites/' in record_url:
+            try:
+                url_site_id = record_url.split('/sites/')[1].split('/')[0]
+                # Validate it's a GUID format (contains hyphens and is 36 chars)
+                if len(url_site_id) == 36 and url_site_id.count('-') == 4:
+                    site_id = url_site_id
+                    logger.debug(f"Using siteId from URL: {site_id}")
+                else:
+                    logger.warning(f"URL siteId doesn't look like a GUID: {url_site_id}, using config value: {site_id}")
+            except Exception as e:
+                logger.warning(f"Failed to extract siteId from URL: {e}, using config value: {site_id}")
+        
+        if not site_id:
+            logger.error("No siteId available - cannot upload records")
+            return
         
         # Filter out records with no GPS data first
         valid_records = []
@@ -753,6 +770,7 @@ class OverviewScreen(BaseScreen):
                 longitude = row[5] if row[5] else 0  
                 speed = int(row[6]) if row[6] else 0
                 heading = row[7] if row[7] else 0  # heading (bearing) from GPS
+                rssi = int(row[3]) if row[3] else 0
                 
                 # adapt to new API format
                 record = {
@@ -763,7 +781,8 @@ class OverviewScreen(BaseScreen):
                     "speed": speed,  # speed as integer
                     "deviceId": device_id,  # deviceId from get_processor_id()
                     "antenna": int(row[2]) if row[2] else 1,  # antenna number
-                    "barrier": heading,  # heading (bearing) from GPS
+                    "barrier": str(heading),  # heading (bearing) from GPS
+                    "rssi":str(rssi),
                     "isProcess": True  # isProcess (was isProcessed)
                 }
                 payload.append(record)
