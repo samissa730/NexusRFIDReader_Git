@@ -198,9 +198,8 @@ class OverviewScreen(BaseScreen):
             self._start_gps_scan()
 
     def _on_rfid_status(self, status):
-        try:
-            logger.debug(f"RFID status received: {status}")
-            if status == 1:
+        # logger.debug(f"RFID status received: {status}")
+        if status == 1:
             self.ui.rfid_connection_status.setStyleSheet("""color: #00ff00;""")
             self.ui.rfid_connection_status.setText("Connected")
             logger.info("RFID reader connected")
@@ -209,7 +208,7 @@ class OverviewScreen(BaseScreen):
             self.ui.rfid_connection_status.setText("Disconnected")
             logger.warning("RFID reader disconnected")
         elif status == 3:
-            logger.debug("RFID tag detected, processing...")
+            # logger.debug("RFID tag detected, processing...")
             if not self.rfid.tag_data or len(self.rfid.tag_data) < 5:
                 logger.warning("RFID tag detected but no tag data available")
                 return
@@ -285,52 +284,54 @@ class OverviewScreen(BaseScreen):
                 else:
                     # Values are different, proceed with storage
                     # Check if storage is still valid before using it
-                    # Note: Don't return here - we still want to update UI even if storage fails
-                    if not self._is_leaving and self.storage:
-                        if self.storage.use_db:
-                            # Check if database connection is still valid
-                            if not self.storage.db_connection or not self.storage.db_cursor:
-                                logger.debug("Database connection closed, skipping storage")
-                            else:
-                                # Prevent duplicates within configured time window
-                                duplicate_window_seconds = DATABASE_CONFIG.get('duplicate_detection_seconds', 3)
-                                duplicate_window_microseconds = duplicate_window_seconds * 1_000_000
-                                try:
-                                    self.storage.db_cursor.execute('''
-                                        SELECT * FROM records
-                                        WHERE rfidTag = ?
-                                        AND (
-                                            ABS(timestamp - ?) < ?
-                                            OR (latitude = ? AND longitude = ?)
-                                        )
-                                    ''', (tag['EPC-96'], tag['LastSeenTimestampUTC'], duplicate_window_microseconds, lat, lon))
-                                    rows = self.storage.db_cursor.fetchall()
-                                    if not rows:
-                                        # Prepare record list with explicit id
-                                        self.storage.db_cursor.execute('SELECT id FROM records ORDER BY id ASC')
-                                        used_ids = self.storage.db_cursor.fetchall()
-                                        rec = [
-                                            calculate_next_id(used_ids), tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
-                                            lat, lon, speed, bearing, "-", self.api.user_name, tag['LastSeenTimestampUTC'],
-                                            "", "", "", "", "", "", "", ""
-                                        ]
-                                        self.storage.add_record(rec)
-                                        # Update last stored values after successful storage
-                                        self.last_stored_rfid = current_rfid
-                                        self.last_stored_lat = current_lat
-                                        self.last_stored_lon = current_lon
-                                except (sqlite3.ProgrammingError, AttributeError) as e:
-                                    logger.debug(f"Database operation failed (possibly closed): {e}")
-                                    # Don't return here - continue to update UI even if storage fails
-                        else:
-                            new_data = [True, tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
-                                        lat, lon, speed, bearing, "-", self.api.user_name, tag['LastSeenTimestampUTC'],
-                                        "", "", "", "", "", "", "", ""]
-                            self.storage.add_record(new_data)
-                            # Update last stored values after successful storage
-                            self.last_stored_rfid = current_rfid
-                            self.last_stored_lat = current_lat
-                            self.last_stored_lon = current_lon
+                    if self._is_leaving or not self.storage:
+                        return
+                    
+                    if self.storage.use_db:
+                        # Check if database connection is still valid
+                        if not self.storage.db_connection or not self.storage.db_cursor:
+                            logger.debug("Database connection closed, skipping storage")
+                            return
+                        
+                        # Prevent duplicates within configured time window
+                        duplicate_window_seconds = DATABASE_CONFIG.get('duplicate_detection_seconds', 3)
+                        duplicate_window_microseconds = duplicate_window_seconds * 1_000_000
+                        try:
+                            self.storage.db_cursor.execute('''
+                                SELECT * FROM records
+                                WHERE rfidTag = ?
+                                AND (
+                                    ABS(timestamp - ?) < ?
+                                    OR (latitude = ? AND longitude = ?)
+                                )
+                            ''', (tag['EPC-96'], tag['LastSeenTimestampUTC'], duplicate_window_microseconds, lat, lon))
+                            rows = self.storage.db_cursor.fetchall()
+                            if not rows:
+                                # Prepare record list with explicit id
+                                self.storage.db_cursor.execute('SELECT id FROM records ORDER BY id ASC')
+                                used_ids = self.storage.db_cursor.fetchall()
+                                rec = [
+                                    calculate_next_id(used_ids), tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
+                                    lat, lon, speed, bearing, "-", self.api.user_name, tag['LastSeenTimestampUTC'],
+                                    "", "", "", "", "", "", "", ""
+                                ]
+                                self.storage.add_record(rec)
+                                # Update last stored values after successful storage
+                                self.last_stored_rfid = current_rfid
+                                self.last_stored_lat = current_lat
+                                self.last_stored_lon = current_lon
+                        except (sqlite3.ProgrammingError, AttributeError) as e:
+                            logger.debug(f"Database operation failed (possibly closed): {e}")
+                            # Don't return here - continue to update UI even if storage fails
+                    else:
+                        new_data = [True, tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
+                                    lat, lon, speed, bearing, "-", self.api.user_name, tag['LastSeenTimestampUTC'],
+                                    "", "", "", "", "", "", "", ""]
+                        self.storage.add_record(new_data)
+                        # Update last stored values after successful storage
+                        self.last_stored_rfid = current_rfid
+                        self.last_stored_lat = current_lat
+                        self.last_stored_lon = current_lon
 
             # one-line debug for real-time processing
             # logger.debug(f"TAG {tag['EPC-96']} ant={tag['AntennaID']} rssi={tag['PeakRSSI']} pos=({lat:.7f},{lon:.7f}) speed={speed} heading={bearing}")
@@ -356,9 +357,7 @@ class OverviewScreen(BaseScreen):
                     self.ui.last_gps_time.setText(get_date_from_utc(tag['LastSeenTimestampUTC']))
             else:
                 self.ui.last_gps_time.setText(get_date_from_utc(tag['LastSeenTimestampUTC']))
-            logger.info(f"Tag processed and displayed: {tag['EPC-96']} at {get_date_from_utc(tag['LastSeenTimestampUTC'])}")
-        except Exception as e:
-            logger.error(f"Error in _on_rfid_status: {e}", exc_info=True)
+            # logger.info(f"Tag processed and displayed: {tag['EPC-96']} at {get_date_from_utc(tag['LastSeenTimestampUTC'])}")
 
     def _refresh_table(self, new_data):
         try:
