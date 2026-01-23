@@ -368,13 +368,40 @@ class OverviewScreen(BaseScreen):
                 self.ui.last_gps_time.setText(get_date_from_utc(tag['LastSeenTimestampUTC']))
             # logger.info(f"Tag processed and displayed: {tag['EPC-96']} at {get_date_from_utc(tag['LastSeenTimestampUTC'])}")
 
+    # def _refresh_table(self, new_data):
+    #     for row in range(self.ui.tableWidget.rowCount() - 2, -1, -1):
+    #         for column in range(self.ui.tableWidget.columnCount()):
+    #             item = self.ui.tableWidget.item(row, column).text()
+    #             self.ui.tableWidget.setItem(row + 1, column, QTableWidgetItem(item))
+    #     for column in range(self.ui.tableWidget.columnCount()):
+    #         self.ui.tableWidget.setItem(0, column, QTableWidgetItem(new_data[column]))
+
     def _refresh_table(self, new_data):
-        for row in range(self.ui.tableWidget.rowCount() - 2, -1, -1):
-            for column in range(self.ui.tableWidget.columnCount()):
-                item = self.ui.tableWidget.item(row, column).text()
-                self.ui.tableWidget.setItem(row + 1, column, QTableWidgetItem(item))
-        for column in range(self.ui.tableWidget.columnCount()):
-            self.ui.tableWidget.setItem(0, column, QTableWidgetItem(new_data[column]))
+        try:
+            # Shift existing rows down
+            for row in range(self.ui.tableWidget.rowCount() - 2, -1, -1):
+                for column in range(self.ui.tableWidget.columnCount()):
+                    item = self.ui.tableWidget.item(row, column)
+                    if item is not None:
+                        text = item.text()
+                    else:
+                        text = ""
+                    # Create new item with same flags as initial items
+                    new_item = QTableWidgetItem(text)
+                    new_item.setFlags(new_item.flags() & ~Qt.ItemFlag.ItemIsSelectable & ~Qt.ItemFlag.ItemIsEditable & ~Qt.ItemFlag.ItemIsEnabled)
+                    self.ui.tableWidget.setItem(row + 1, column, new_item)
+            
+            # Insert new data in row 0
+            for column in range(min(len(new_data), self.ui.tableWidget.columnCount())):
+                new_item = QTableWidgetItem(str(new_data[column]))
+                new_item.setFlags(new_item.flags() & ~Qt.ItemFlag.ItemIsSelectable & ~Qt.ItemFlag.ItemIsEditable & ~Qt.ItemFlag.ItemIsEnabled)
+                self.ui.tableWidget.setItem(0, column, new_item)
+            
+            # Force table to repaint/update
+            self.ui.tableWidget.viewport().update()
+            logger.debug(f"Table refreshed successfully with {len(new_data)} columns of data")
+        except Exception as e:
+            logger.error(f"Error refreshing table: {e}")
 
     def _check_gps_timeout(self):
         """Check if GPS has been disconnected for too long and enable GPS if needed"""
