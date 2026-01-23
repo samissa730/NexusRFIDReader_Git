@@ -273,8 +273,7 @@ class OverviewScreen(BaseScreen):
             # Skip storage if storage_flag is False
             if not storage_flag:
                 # Don't store records that don't pass filters, but still update UI
-                # logger.info(f"Skipping storage: filters failed for tag {tag['EPC-96']}")
-                pass
+                logger.debug(f"Storage skipped: filters failed for tag {tag['EPC-96']}")
             else:
                 # Store tag data locally if it passes all filters
                 # Check if current values are different from last stored values
@@ -286,59 +285,65 @@ class OverviewScreen(BaseScreen):
                 # if (self.last_stored_rfid == current_rfid or ( self.last_stored_lat == current_lat and self.last_stored_lon == current_lon)):
                 if (self.last_stored_lat == current_lat and self.last_stored_lon == current_lon):
                     # Values haven't changed, skip storage but still update UI
-                    # logger.debug(f"Skipping storage: same values as last stored (RFID: {current_rfid}, lat: {current_lat}, lon: {current_lon})")
-                    pass
+                    logger.debug(f"Storage skipped: same position as last stored (RFID: {current_rfid}, lat: {current_lat}, lon: {current_lon})")
                 else:
                     # Values are different, proceed with storage
                     # Check if storage is still valid before using it
-                    if self._is_leaving or not self.storage:
-                        return
-                    
-                    if self.storage.use_db:
+                    if self._is_leaving:
+                        logger.warning(f"Storage skipped: screen is being left/destroyed for tag {tag['EPC-96']}")
+                    elif not self.storage:
+                        logger.warning(f"Storage skipped: storage object is None for tag {tag['EPC-96']}")
+                    elif self.storage.use_db:
                         # Check if database connection is still valid
                         if not self.storage.db_connection or not self.storage.db_cursor:
-                            logger.debug("Database connection closed, skipping storage")
-                            return
-                        
-                        # Prevent duplicates within configured time window
-                        duplicate_window_seconds = DATABASE_CONFIG.get('duplicate_detection_seconds', 3)
-                        duplicate_window_microseconds = duplicate_window_seconds * 1_000_000
-                        try:
-                            self.storage.db_cursor.execute('''
-                                SELECT * FROM records
-                                WHERE rfidTag = ?
-                                AND (
-                                    ABS(timestamp - ?) < ?
-                                    OR (latitude = ? AND longitude = ?)
-                                )
-                            ''', (tag['EPC-96'], tag['LastSeenTimestampUTC'], duplicate_window_microseconds, lat, lon))
-                            rows = self.storage.db_cursor.fetchall()
-                            if not rows:
-                                # Prepare record list with explicit id
-                                self.storage.db_cursor.execute('SELECT id FROM records ORDER BY id ASC')
-                                used_ids = self.storage.db_cursor.fetchall()
-                                rec = [
-                                    calculate_next_id(used_ids), tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
-                                    lat, lon, speed, bearing, "-", self.api.user_name, tag['LastSeenTimestampUTC'],
-                                    "", "", "", "", "", "", "", ""
-                                ]
-                                self.storage.add_record(rec)
-                                # Update last stored values after successful storage
-                                self.last_stored_rfid = current_rfid
-                                self.last_stored_lat = current_lat
-                                self.last_stored_lon = current_lon
-                        except (sqlite3.ProgrammingError, AttributeError) as e:
-                            logger.debug(f"Database operation failed (possibly closed): {e}")
-                            return
+                            logger.warning(f"Storage skipped: database connection closed for tag {tag['EPC-96']}")
+                        else:
+                            # Prevent duplicates within configured time window
+                            duplicate_window_seconds = DATABASE_CONFIG.get('duplicate_detection_seconds', 3)
+                            duplicate_window_microseconds = duplicate_window_seconds * 1_000_000
+                            try:
+                                self.storage.db_cursor.execute('''
+                                    SELECT * FROM records
+                                    WHERE rfidTag = ?
+                                    AND (
+                                        ABS(timestamp - ?) < ?
+                                        OR (latitude = ? AND longitude = ?)
+                                    )
+                                ''', (tag['EPC-96'], tag['LastSeenTimestampUTC'], duplicate_window_microseconds, lat, lon))
+                                rows = self.storage.db_cursor.fetchall()
+                                if not rows:
+                                    # Prepare record list with explicit id
+                                    self.storage.db_cursor.execute('SELECT id FROM records ORDER BY id ASC')
+                                    used_ids = self.storage.db_cursor.fetchall()
+                                    rec = [
+                                        calculate_next_id(used_ids), tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
+                                        lat, lon, speed, bearing, "-", self.api.user_name, tag['LastSeenTimestampUTC'],
+                                        "", "", "", "", "", "", "", ""
+                                    ]
+                                    self.storage.add_record(rec)
+                                    # Update last stored values after successful storage
+                                    self.last_stored_rfid = current_rfid
+                                    self.last_stored_lat = current_lat
+                                    self.last_stored_lon = current_lon
+                                    logger.info(f"Storage SUCCESS: Tag {tag['EPC-96']} stored to database (lat: {lat:.7f}, lon: {lon:.7f})")
+                                else:
+                                    logger.debug(f"Storage skipped: duplicate record detected for tag {tag['EPC-96']} within {duplicate_window_seconds}s window")
+                            except (sqlite3.ProgrammingError, AttributeError) as e:
+                                logger.error(f"Storage FAILED: Database operation error for tag {tag['EPC-96']}: {e}")
                     else:
-                        new_data = [True, tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
-                                    lat, lon, speed, bearing, "-", self.api.user_name, tag['LastSeenTimestampUTC'],
-                                    "", "", "", "", "", "", "", ""]
-                        self.storage.add_record(new_data)
-                        # Update last stored values after successful storage
-                        self.last_stored_rfid = current_rfid
-                        self.last_stored_lat = current_lat
-                        self.last_stored_lon = current_lon
+                        # In-memory storage
+                        try:
+                            new_data = [True, tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
+                                        lat, lon, speed, bearing, "-", self.api.user_name, tag['LastSeenTimestampUTC'],
+                                        "", "", "", "", "", "", "", ""]
+                            self.storage.add_record(new_data)
+                            # Update last stored values after successful storage
+                            self.last_stored_rfid = current_rfid
+                            self.last_stored_lat = current_lat
+                            self.last_stored_lon = current_lon
+                            logger.info(f"Storage SUCCESS: Tag {tag['EPC-96']} stored to memory (lat: {lat:.7f}, lon: {lon:.7f})")
+                        except Exception as e:
+                            logger.error(f"Storage FAILED: Memory storage error for tag {tag['EPC-96']}: {e}")
 
             # one-line debug for real-time processing
             # logger.debug(f"TAG {tag['EPC-96']} ant={tag['AntennaID']} rssi={tag['PeakRSSI']} pos=({lat:.7f},{lon:.7f}) speed={speed} heading={bearing}")
