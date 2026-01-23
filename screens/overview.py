@@ -1,5 +1,5 @@
 from PySide6.QtCore import Qt, QTimer, QThread, Signal
-from PySide6.QtWidgets import QTableWidgetItem
+from PySide6.QtWidgets import QTableWidgetItem, QApplication
 
 from screens.base import BaseScreen
 from ui.screens.ui_overview import Ui_OverviewScreen
@@ -399,6 +399,11 @@ class OverviewScreen(BaseScreen):
             
             # Force table to repaint/update
             self.ui.tableWidget.viewport().update()
+            self.ui.tableWidget.repaint()
+            
+            # Force Qt to process events to ensure UI updates (important for systemd service)
+            QApplication.processEvents()
+            
             logger.debug(f"Table refreshed successfully with {len(new_data)} columns of data")
         except Exception as e:
             logger.error(f"Error refreshing table: {e}")
