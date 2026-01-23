@@ -542,6 +542,44 @@ class OverviewScreen(BaseScreen):
             
             if latitude == 0 and longitude == 0 and speed == 0:
                 continue  # Skip this record
+            
+            # Apply filters from settings (same logic as in _on_rfid_status)
+            upload_flag = True
+            
+            # Speed filter
+            sp = FILTER_CONFIG.get('speed', {})
+            if sp.get('enabled'):
+                min_s = sp.get('min')
+                max_s = sp.get('max')
+                if min_s is not None and max_s is not None and (speed < min_s or speed > max_s):
+                    upload_flag = False
+            
+            # RSSI filter
+            if upload_flag:
+                rs = FILTER_CONFIG.get('rssi', {})
+                if rs.get('enabled'):
+                    min_r = rs.get('min')
+                    max_r = rs.get('max')
+                    rssi = int(row[3]) if row[3] else 0
+                    if min_r is not None and max_r is not None and (rssi < min_r or rssi > max_r):
+                        upload_flag = False
+            
+            # Tag range filter
+            if upload_flag:
+                tr = FILTER_CONFIG.get('tag_range', {})
+                if tr.get('enabled'):
+                    min_t = tr.get('min')
+                    max_t = tr.get('max')
+                    try:
+                        epc = int(row[1])  # row[1] is the RFID tag (EPC-96)
+                        if min_t is not None and max_t is not None and (epc < min_t or epc > max_t):
+                            upload_flag = False
+                    except Exception:
+                        upload_flag = False
+            
+            # Skip this record if it doesn't pass filters
+            if not upload_flag:
+                continue
                 
             # adapt to new API format
             heading = row[7] if row[7] else 0  # heading (bearing) from GPS
