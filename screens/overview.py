@@ -233,18 +233,28 @@ class OverviewScreen(BaseScreen):
             if upload_flag:
                 sp = FILTER_CONFIG.get('speed', {})
                 if sp.get('enabled'):
-                    min_s = sp.get('min')
-                    max_s = sp.get('max')
-                    if min_s is not None and max_s is not None and (speed < min_s or speed > max_s):
-                        upload_flag = False
+                    try:
+                        min_s = float(sp.get('min')) if sp.get('min') is not None else None
+                        max_s = float(sp.get('max')) if sp.get('max') is not None else None
+                        speed_float = float(speed)
+                        if min_s is not None and max_s is not None and (speed_float < min_s or speed_float > max_s):
+                            upload_flag = False
+                    except (ValueError, TypeError):
+                        # If conversion fails, skip filter (log error in production)
+                        pass
 
             if upload_flag:
                 rs = FILTER_CONFIG.get('rssi', {})
                 if rs.get('enabled'):
-                    min_r = rs.get('min')
-                    max_r = rs.get('max')
-                    if min_r is not None and max_r is not None and (tag['PeakRSSI'] < min_r or tag['PeakRSSI'] > max_r):
-                        upload_flag = False
+                    try:
+                        min_r = float(rs.get('min')) if rs.get('min') is not None else None
+                        max_r = float(rs.get('max')) if rs.get('max') is not None else None
+                        rssi_float = float(tag['PeakRSSI'])
+                        if min_r is not None and max_r is not None and (rssi_float < min_r or rssi_float > max_r):
+                            upload_flag = False
+                    except (ValueError, TypeError):
+                        # If conversion fails, skip filter (log error in production)
+                        pass
 
             if upload_flag:
                 tr = FILTER_CONFIG.get('tag_range', {})
@@ -549,20 +559,30 @@ class OverviewScreen(BaseScreen):
             # Speed filter
             sp = FILTER_CONFIG.get('speed', {})
             if sp.get('enabled'):
-                min_s = sp.get('min')
-                max_s = sp.get('max')
-                if min_s is not None and max_s is not None and (speed < min_s or speed > max_s):
-                    upload_flag = False
+                try:
+                    min_s = float(sp.get('min')) if sp.get('min') is not None else None
+                    max_s = float(sp.get('max')) if sp.get('max') is not None else None
+                    speed_float = float(speed)
+                    if min_s is not None and max_s is not None and (speed_float < min_s or speed_float > max_s):
+                        upload_flag = False
+                except (ValueError, TypeError):
+                    # If conversion fails, skip filter (log error in production)
+                    pass
             
             # RSSI filter
             if upload_flag:
                 rs = FILTER_CONFIG.get('rssi', {})
                 if rs.get('enabled'):
-                    min_r = rs.get('min')
-                    max_r = rs.get('max')
-                    rssi = int(row[3]) if row[3] else 0
-                    if min_r is not None and max_r is not None and (rssi < min_r or rssi > max_r):
-                        upload_flag = False
+                    try:
+                        min_r = float(rs.get('min')) if rs.get('min') is not None else None
+                        max_r = float(rs.get('max')) if rs.get('max') is not None else None
+                        rssi = int(row[3]) if row[3] else 0
+                        rssi_float = float(rssi)
+                        if min_r is not None and max_r is not None and (rssi_float < min_r or rssi_float > max_r):
+                            upload_flag = False
+                    except (ValueError, TypeError):
+                        # If conversion fails, skip filter (log error in production)
+                        pass
             
             # Tag range filter
             if upload_flag:
