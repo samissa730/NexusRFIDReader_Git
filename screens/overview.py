@@ -606,7 +606,7 @@ class OverviewScreen(BaseScreen):
                     try:
                         speed_float = float(speed_raw) if speed_raw is not None else 0.0
                         if speed_float < min_s or speed_float > max_s:
-                            logger.debug(f"Skipping upload: speed {speed_float} is not in range {min_s} to {max_s}")
+                            # logger.debug(f"Skipping upload: speed {speed_float} is not in range {min_s} to {max_s}")
                             continue  # Skip this record
                     except (ValueError, TypeError) as e:
                         logger.debug(f"Error comparing speed value {speed_raw} for upload: {e}")
