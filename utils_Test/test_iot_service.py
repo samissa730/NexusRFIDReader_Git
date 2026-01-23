@@ -1,0 +1,319 @@
+#!/usr/bin/env python3
+"""
+Test IoT Service - Extended version of iot_service.py with Unix socket server
+This version receives scan data via IPC and forwards to Azure IoT Hub
+Run this to test the IPC → IoT Hub flow
+"""
+
+import json
+import time
+import signal
+import subprocess
+import sys
+import threading
+import socket
+from pathlib import Path
+
+try:
+    from azure.iot.device import (
+        IoTHubDeviceClient,
+        MethodResponse,
+        ProvisioningDeviceClient
+    )
+except ImportError:
+    print("ERROR: Azure IoT SDK not installed")
+    print("Install with: sudo pip3 install azure-iot-device")
+    sys.exit(1)
+
+CONFIG_PATH = Path("/etc/azureiotpnp/provisioning_config.json")
+SOCKET_PATH = "/var/run/nexus-iot.sock"
+
+class TestAzureIoTService:
+    def __init__(self):
+        self.client = None
+        self.running = True
+        self.socket_server = None
+        self.socket_thread = None
+        self.message_count = 0
+        self._load_configuration()
+        signal.signal(signal.SIGTERM, self._signal_handler)
+        signal.signal(signal.SIGINT, self._signal_handler)
+
+    def _signal_handler(self, signum, frame):
+        print(f"\nReceived signal {signum}, shutting down...")
+        self.running = False
+
+    def _load_configuration(self):
+        """Load configuration from provisioning config"""
+        if not CONFIG_PATH.exists():
+            print(f"ERROR: Configuration file not found: {CONFIG_PATH}")
+            print("Please run device_setup.py first!")
+            raise FileNotFoundError("Device not configured")
+        
+        config = json.loads(CONFIG_PATH.read_text())
+        self.global_endpoint = config["globalEndpoint"]
+        self.id_scope = config["idScope"]
+        self.registration_id = config["registrationId"]
+        self.symmetric_key = config["symmetricKey"]
+        
+        # Load device tags
+        tags_from_config = config.get("tags", {})
+        self.tag = tags_from_config
+        self.nexus_locate = self.tag.get("nexusLocate", {})
+        
+        print(f"✓ Loaded configuration for device: {self.registration_id}")
+        print(f"  Site: {self.nexus_locate.get('siteName', 'N/A')}")
+        print(f"  Truck: {self.nexus_locate.get('truckNumber', 'N/A')}")
+
+    def provision_device(self):
+        """Provision device using DPS"""
+        print("Starting device provisioning...")
+        prov_client = ProvisioningDeviceClient.create_from_symmetric_key(
+            provisioning_host=self.global_endpoint,
+            registration_id=self.registration_id,
+            id_scope=self.id_scope,
+            symmetric_key=self.symmetric_key
+        )
+        
+        result = prov_client.register()
+        if result.status != "assigned":
+            print(f"✗ Provisioning failed: {result.status}")
+            return False
+        
+        self.assigned_hub = result.registration_state.assigned_hub
+        self.device_id = result.registration_state.device_id
+        print(f"✓ Provisioned to hub: {self.assigned_hub}")
+        print(f"✓ Device ID: {self.device_id}")
+        return True
+
+    def connect_to_iot_hub(self):
+        """Connect to IoT Hub"""
+        try:
+            if self.client:
+                self.client.disconnect()
+            
+            self.client = IoTHubDeviceClient.create_from_symmetric_key(
+                symmetric_key=self.symmetric_key,
+                hostname=self.assigned_hub,
+                device_id=self.device_id
+            )
+            
+            self.client.connect()
+            print("✓ Connected to IoT Hub")
+            
+            # Report tags to device twin
+            self._update_reported_tags()
+            return True
+        except Exception as e:
+            print(f"✗ Connection failed: {e}")
+            return False
+
+    def _update_reported_tags(self):
+        """Report configuration tags to device twin"""
+        try:
+            if not isinstance(self.tag, dict) or not self.tag:
+                return
+            self.client.patch_twin_reported_properties({"tags": self.tag})
+            print("✓ Reported tags to IoT Hub")
+        except Exception as e:
+            print(f"Warning: Failed to report tags: {e}")
+
+    def _start_socket_server(self):
+        """Start Unix socket server to receive scan data from main app"""
+        try:
+            # Remove old socket file if exists
+            if Path(SOCKET_PATH).exists():
+                Path(SOCKET_PATH).unlink()
+                print(f"✓ Removed old socket file")
+            
+            # Create Unix socket server
+            self.socket_server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            self.socket_server.bind(SOCKET_PATH)
+            self.socket_server.listen(5)
+            
+            # Set permissions so main app can connect
+            import os
+            os.chmod(SOCKET_PATH, 0o666)
+            
+            print(f"✓ Socket server listening on {SOCKET_PATH}")
+            
+            # Start accepting connections in background thread
+            self.socket_thread = threading.Thread(
+                target=self._handle_socket_connections,
+                daemon=True
+            )
+            self.socket_thread.start()
+            
+        except Exception as e:
+            print(f"✗ Failed to start socket server: {e}")
+            raise
+
+    def _handle_socket_connections(self):
+        """Accept and handle incoming socket connections"""
+        print("Socket server ready to accept connections...")
+        while self.running:
+            try:
+                # Set timeout to check self.running periodically
+                self.socket_server.settimeout(1.0)
+                try:
+                    conn, _ = self.socket_server.accept()
+                    print(f"✓ New client connected")
+                    # Handle each connection in separate thread
+                    client_thread = threading.Thread(
+                        target=self._handle_client,
+                        args=(conn,),
+                        daemon=True
+                    )
+                    client_thread.start()
+                except socket.timeout:
+                    continue
+            except Exception as e:
+                if self.running:
+                    print(f"✗ Socket server error: {e}")
+
+    def _handle_client(self, conn):
+        """Handle messages from a connected client"""
+        buffer = ""
+        try:
+            while self.running:
+                data = conn.recv(4096)
+                if not data:
+                    break
+                
+                buffer += data.decode('utf-8')
+                
+                # Process complete messages (newline-delimited)
+                while '\n' in buffer:
+                    line, buffer = buffer.split('\n', 1)
+                    if line:
+                        self._process_message(line)
+                        
+        except Exception as e:
+            print(f"✗ Client handler error: {e}")
+        finally:
+            conn.close()
+            print("Client disconnected")
+
+    def _process_message(self, message_str):
+        """Process received scan message and send to IoT Hub"""
+        try:
+            message = json.loads(message_str)
+            msg_type = message.get("type")
+            
+            if msg_type == "scan":
+                scan_data = message.get("data", {})
+                
+                # Add device identification from config
+                enriched_data = {
+                    **scan_data,
+                    "deviceInfo": {
+                        "registrationId": self.registration_id,
+                        "deviceId": self.device_id,
+                        "siteName": self.nexus_locate.get('siteName'),
+                        "truckNumber": self.nexus_locate.get('truckNumber'),
+                        "deviceSerial": self.nexus_locate.get('deviceSerial')
+                    }
+                }
+                
+                # Send to Azure IoT Hub
+                iot_message = json.dumps(enriched_data)
+                self.client.send_message(iot_message)
+                self.message_count += 1
+                
+                print(f"✓ [{self.message_count}] Sent scan to IoT Hub: {scan_data.get('tagName')}")
+                print(f"   Location: ({scan_data.get('latitude')}, {scan_data.get('longitude')})")
+                print(f"   Site: {self.nexus_locate.get('siteName')}, Truck: {self.nexus_locate.get('truckNumber')}")
+                
+        except json.JSONDecodeError as e:
+            print(f"✗ Invalid JSON message: {e}")
+        except Exception as e:
+            print(f"✗ Failed to process message: {e}")
+
+    def run(self):
+        """Main service loop"""
+        print()
+        print("=" * 60)
+        print("Test Azure IoT Service with IPC Support")
+        print("=" * 60)
+        print()
+        
+        # Provision and connect
+        if not self.provision_device():
+            return
+        if not self.connect_to_iot_hub():
+            return
+        
+        # Start socket server for scan data
+        print()
+        self._start_socket_server()
+        
+        # Send initial connection message
+        initial_msg = json.dumps({
+            "event": "test_service_connected",
+            "deviceId": self.device_id,
+            "registrationId": self.registration_id,
+            "siteName": self.nexus_locate.get('siteName'),
+            "truckNumber": self.nexus_locate.get('truckNumber'),
+            "timestamp": int(time.time())
+        })
+        self.client.send_message(initial_msg)
+        print("✓ Sent initial connection message")
+        
+        print()
+        print("=" * 60)
+        print("Service is running and ready to receive scan data")
+        print("Run test_iot_publisher.py to send test scans")
+        print("Press Ctrl+C to stop")
+        print("=" * 60)
+        print()
+        
+        try:
+            # Keep service alive
+            while self.running:
+                time.sleep(1)
+        finally:
+            # Cleanup
+            print("\nShutting down...")
+            
+            if self.socket_server:
+                try:
+                    self.socket_server.close()
+                    if Path(SOCKET_PATH).exists():
+                        Path(SOCKET_PATH).unlink()
+                    print("✓ Socket server closed")
+                except:
+                    pass
+            
+            if self.client:
+                try:
+                    disconnect_msg = json.dumps({
+                        "event": "test_service_disconnecting",
+                        "deviceId": self.device_id,
+                        "timestamp": int(time.time()),
+                        "messages_sent": self.message_count
+                    })
+                    self.client.send_message(disconnect_msg)
+                    self.client.disconnect()
+                    print("✓ Disconnected from IoT Hub")
+                except Exception as e:
+                    print(f"Warning: Error during disconnect: {e}")
+            
+            print(f"\nTotal messages sent: {self.message_count}")
+
+
+if __name__ == "__main__":
+    try:
+        service = TestAzureIoTService()
+        service.run()
+    except FileNotFoundError:
+        print("\nDevice setup required! Please ensure Azure IoT is configured.")
+        print("Check /etc/azureiotpnp/provisioning_config.json exists")
+        sys.exit(1)
+    except KeyboardInterrupt:
+        print("\n\nService stopped by user")
+        sys.exit(0)
+    except Exception as e:
+        print(f"\nFatal error: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
