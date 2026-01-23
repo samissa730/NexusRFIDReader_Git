@@ -40,9 +40,16 @@ print_step() {
 SERVICE_NAME="nexusrfid"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
-HOME_DIR="$(cd -- "${PROJECT_ROOT}/.." && pwd)"
 RUN_SCRIPT="${PROJECT_ROOT}/scripts/run_app.sh"
 UNIT_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
+
+# Get actual user info
+SERVICE_USER=${SUDO_USER:-$(whoami)}
+SERVICE_HOME=$(getent passwd "$SERVICE_USER" 2>/dev/null | cut -d: -f6)
+if [ -z "$SERVICE_HOME" ]; then
+    SERVICE_HOME=$(eval echo ~$SERVICE_USER)
+fi
+SERVICE_UID=$(id -u "$SERVICE_USER" 2>/dev/null || echo "1000")
 
 echo "============================================================"
 print_header "Installing Nexus RFID Service"
@@ -51,7 +58,9 @@ print_status "Service name: ${SERVICE_NAME}"
 print_status "Project root: ${PROJECT_ROOT}"
 print_status "Run script: ${RUN_SCRIPT}"
 print_status "Unit file: ${UNIT_PATH}"
-print_status "Home directory: ${HOME_DIR}"
+print_status "Service user: ${SERVICE_USER}"
+print_status "Service home: ${SERVICE_HOME}"
+print_status "Service UID: ${SERVICE_UID}"
 echo "============================================================"
 
 # Ensure systemd is available and target directory exists
@@ -75,6 +84,18 @@ else
   print_success "Run script already executable"
 fi
 
+# Ensure XAUTHORITY file exists and has proper permissions
+print_step "Setting up X11 authorization..."
+if [ ! -f "${SERVICE_HOME}/.Xauthority" ]; then
+    print_warning "Xauthority file not found, creating..."
+    touch "${SERVICE_HOME}/.Xauthority" 2>/dev/null || true
+fi
+if [ -f "${SERVICE_HOME}/.Xauthority" ]; then
+    chown "${SERVICE_USER}:${SERVICE_USER}" "${SERVICE_HOME}/.Xauthority" 2>/dev/null || true
+    chmod 600 "${SERVICE_HOME}/.Xauthority" 2>/dev/null || true
+    print_success "Xauthority file configured"
+fi
+
 print_step "Creating systemd service unit file..."
 sudo bash -c "cat > '${UNIT_PATH}'" <<UNIT
 [Unit]
@@ -92,13 +113,13 @@ ExecStartPre=/bin/sleep 5
 ExecStart=${RUN_SCRIPT}
 Restart=always
 RestartSec=5
-User=${SUDO_USER:-$(whoami)}
+User=${SERVICE_USER}
 Environment=PYTHONUNBUFFERED=1
 Environment=DISPLAY=:0
-Environment=XAUTHORITY=${HOME_DIR}/.Xauthority
-Environment=HOME=${HOME_DIR}
-Environment=XDG_RUNTIME_DIR=/run/user/1000
-Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+Environment=XAUTHORITY=${SERVICE_HOME}/.Xauthority
+Environment=HOME=${SERVICE_HOME}
+Environment=XDG_RUNTIME_DIR=/run/user/${SERVICE_UID}
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${SERVICE_UID}/bus
 
 [Install]
 WantedBy=graphical.target
