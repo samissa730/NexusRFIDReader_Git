@@ -347,7 +347,7 @@ class OverviewScreen(BaseScreen):
             table_data = [get_date_from_utc(tag['LastSeenTimestampUTC']), tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
                          f"{lat:.7f}".rstrip('0').rstrip('.') + ", " + f"{lon:.7f}".rstrip('0').rstrip('.'),
                          f"{speed:.4f}".rstrip('0').rstrip('.'), f"{bearing}"]
-            # logger.debug(f"Updating table with data: {table_data}")
+            logger.debug(f"Updating table with data: {table_data}")
             self._refresh_table(table_data)
             self.ui.last_rfid_read.setText(tag['EPC-96'])
             self.ui.last_rfid_time.setText(get_date_from_utc(tag['LastSeenTimestampUTC']))
