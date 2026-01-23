@@ -582,17 +582,67 @@ class OverviewScreen(BaseScreen):
             logger.error("No siteId available - cannot upload records")
             return
         
-        # Filter out records with no GPS data first
+        # Filter out records that don't pass filter criteria (GPS data, speed, RSSI, tag_range)
         valid_records = []
         for row in data:
-            # Skip records with no GPS data (lat=0, lon=0, speed=0)
+            # Extract record data
             latitude = row[4] if row[4] else 0
-            longitude = row[5] if row[5] else 0  
-            speed = int(row[6]) if row[6] else 0
+            longitude = row[5] if row[5] else 0
+            speed_raw = row[6] if row[6] else 0
+            rssi = row[3] if row[3] else 0
+            rfid_tag = row[1] if row[1] else ""
             
+            # Skip records with no GPS data
             if latitude == 0 and longitude == 0:
                 continue  # Skip this record
             
+            # Apply speed filter if enabled
+            sp = FILTER_CONFIG.get('speed', {})
+            if sp.get('enabled'):
+                min_s = sp.get('min')
+                max_s = sp.get('max')
+                if min_s is not None and max_s is not None:
+                    # Ensure speed is a numeric value for comparison
+                    try:
+                        speed_float = float(speed_raw) if speed_raw is not None else 0.0
+                        if speed_float < min_s or speed_float > max_s:
+                            logger.debug(f"Skipping upload: speed {speed_float} is not in range {min_s} to {max_s}")
+                            continue  # Skip this record
+                    except (ValueError, TypeError) as e:
+                        logger.debug(f"Error comparing speed value {speed_raw} for upload: {e}")
+                        continue  # Skip this record if speed cannot be converted
+            
+            # Apply RSSI filter if enabled
+            rs = FILTER_CONFIG.get('rssi', {})
+            if rs.get('enabled'):
+                min_r = rs.get('min')
+                max_r = rs.get('max')
+                if min_r is not None and max_r is not None:
+                    try:
+                        rssi_int = int(rssi) if rssi is not None else 0
+                        if rssi_int < min_r or rssi_int > max_r:
+                            logger.debug(f"Skipping upload: RSSI {rssi_int} is not in range {min_r} to {max_r}")
+                            continue  # Skip this record
+                    except (ValueError, TypeError) as e:
+                        logger.debug(f"Error comparing RSSI value {rssi} for upload: {e}")
+                        continue  # Skip this record if RSSI cannot be converted
+            
+            # Apply tag_range filter if enabled
+            tr = FILTER_CONFIG.get('tag_range', {})
+            if tr.get('enabled'):
+                min_t = tr.get('min')
+                max_t = tr.get('max')
+                if min_t is not None and max_t is not None:
+                    try:
+                        epc = int(rfid_tag)
+                        if epc < min_t or epc > max_t:
+                            logger.debug(f"Skipping upload: EPC {epc} is not in range {min_t} to {max_t}")
+                            continue  # Skip this record
+                    except (ValueError, TypeError) as e:
+                        logger.debug(f"Error comparing EPC {rfid_tag} for upload: {e}")
+                        continue  # Skip this record if EPC cannot be converted
+            
+            # Record passed all filters, add to valid_records
             valid_records.append(row)
         
         if not valid_records:
