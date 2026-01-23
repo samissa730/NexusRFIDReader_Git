@@ -14,7 +14,6 @@ from settings import API_CONFIG, FILTER_CONFIG, DATABASE_CONFIG, reload_config
 import time
 import subprocess
 import platform
-import sqlite3
 from ping3 import ping
 
 
@@ -49,12 +48,11 @@ class OverviewScreen(BaseScreen):
         self.ui = Ui_OverviewScreen()
         self.ui.setupUi(self)
 
-        # Prepare table cells (non-editable, but enabled for display)
+        # Prepare table cells (non-editable)
         for row in range(self.ui.tableWidget.rowCount()):
             for column in range(self.ui.tableWidget.columnCount()):
                 item = QTableWidgetItem("")
-                # Remove selectable and editable flags, but keep enabled so items are visible
-                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsSelectable & ~Qt.ItemFlag.ItemIsEditable)
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsSelectable & ~Qt.ItemFlag.ItemIsEditable & ~Qt.ItemFlag.ItemIsEnabled)
                 self.ui.tableWidget.setItem(row, column, item)
 
         # Set custom column widths
@@ -322,7 +320,7 @@ class OverviewScreen(BaseScreen):
                                 self.last_stored_lon = current_lon
                         except (sqlite3.ProgrammingError, AttributeError) as e:
                             logger.debug(f"Database operation failed (possibly closed): {e}")
-                            # Don't return here - continue to update UI even if storage fails
+                            return
                     else:
                         new_data = [True, tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
                                     lat, lon, speed, bearing, "-", self.api.user_name, tag['LastSeenTimestampUTC'],
@@ -336,15 +334,12 @@ class OverviewScreen(BaseScreen):
             # one-line debug for real-time processing
             # logger.debug(f"TAG {tag['EPC-96']} ant={tag['AntennaID']} rssi={tag['PeakRSSI']} pos=({lat:.7f},{lon:.7f}) speed={speed} heading={bearing}")
 
-            # UI updates - always update table regardless of storage success/failure
-            try:
-                table_data = [get_date_from_utc(tag['LastSeenTimestampUTC']), tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
-                             f"{lat:.7f}".rstrip('0').rstrip('.') + ", " + f"{lon:.7f}".rstrip('0').rstrip('.'),
-                             f"{speed:.4f}".rstrip('0').rstrip('.'), f"{bearing}"]
-                # logger.debug(f"Updating table with data: {table_data}")
-                self._refresh_table(table_data)
-            except Exception as e:
-                logger.error(f"Error updating table UI: {e}", exc_info=True)
+            # UI updates
+            table_data = [get_date_from_utc(tag['LastSeenTimestampUTC']), tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
+                         f"{lat:.7f}".rstrip('0').rstrip('.') + ", " + f"{lon:.7f}".rstrip('0').rstrip('.'),
+                         f"{speed:.4f}".rstrip('0').rstrip('.'), f"{bearing}"]
+            # logger.debug(f"Updating table with data: {table_data}")
+            self._refresh_table(table_data)
             self.ui.last_rfid_read.setText(tag['EPC-96'])
             self.ui.last_rfid_time.setText(get_date_from_utc(tag['LastSeenTimestampUTC']))
             self.ui.last_gps_read.setText(f"{lat:.7f}, {lon:.7f}")
@@ -360,34 +355,12 @@ class OverviewScreen(BaseScreen):
             # logger.info(f"Tag processed and displayed: {tag['EPC-96']} at {get_date_from_utc(tag['LastSeenTimestampUTC'])}")
 
     def _refresh_table(self, new_data):
-        try:
-            # Ensure new_data has the correct number of columns
-            if len(new_data) != self.ui.tableWidget.columnCount():
-                logger.warning(f"Table data length mismatch: expected {self.ui.tableWidget.columnCount()} columns, got {len(new_data)}")
-                return
-            
-            # Shift existing rows down
-            for row in range(self.ui.tableWidget.rowCount() - 2, -1, -1):
-                for column in range(self.ui.tableWidget.columnCount()):
-                    item = self.ui.tableWidget.item(row, column)
-                    if item is not None:
-                        item_text = item.text()
-                    else:
-                        item_text = ""
-                    new_item = QTableWidgetItem(item_text)
-                    # Set flags to match initialization (non-editable, non-selectable, but enabled for display)
-                    new_item.setFlags(new_item.flags() & ~Qt.ItemFlag.ItemIsSelectable & ~Qt.ItemFlag.ItemIsEditable)
-                    self.ui.tableWidget.setItem(row + 1, column, new_item)
-            
-            # Insert new data at row 0
+        for row in range(self.ui.tableWidget.rowCount() - 2, -1, -1):
             for column in range(self.ui.tableWidget.columnCount()):
-                if column < len(new_data):
-                    new_item = QTableWidgetItem(str(new_data[column]))
-                    # Set flags to match initialization (non-editable, non-selectable, but enabled for display)
-                    new_item.setFlags(new_item.flags() & ~Qt.ItemFlag.ItemIsSelectable & ~Qt.ItemFlag.ItemIsEditable)
-                    self.ui.tableWidget.setItem(0, column, new_item)
-        except Exception as e:
-            logger.error(f"Error refreshing table: {e}", exc_info=True)
+                item = self.ui.tableWidget.item(row, column).text()
+                self.ui.tableWidget.setItem(row + 1, column, QTableWidgetItem(item))
+        for column in range(self.ui.tableWidget.columnCount()):
+            self.ui.tableWidget.setItem(0, column, QTableWidgetItem(new_data[column]))
 
     def _check_gps_timeout(self):
         """Check if GPS has been disconnected for too long and enable GPS if needed"""
