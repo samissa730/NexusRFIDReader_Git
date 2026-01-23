@@ -1,5 +1,5 @@
 from PySide6.QtCore import Qt, QTimer, QThread, Signal
-from PySide6.QtWidgets import QTableWidgetItem, QLabel
+from PySide6.QtWidgets import QTableWidgetItem
 
 from screens.base import BaseScreen
 from ui.screens.ui_overview import Ui_OverviewScreen
@@ -9,11 +9,11 @@ from utils.gps import GPS
 from utils.common import extract_from_gps, get_date_from_utc, pre_config_gps, find_gps_port, get_processor_id, enable_gps_at_command
 from utils.data_storage import DataStorage
 from utils.api_client import ApiClient
-from widgets.waiting_spinner import QtWaitingSpinner
 import settings
 from settings import API_CONFIG, FILTER_CONFIG, DATABASE_CONFIG, reload_config
 import time
 import subprocess
+import sqlite3
 import platform
 from ping3 import ping
 
@@ -120,17 +120,7 @@ class OverviewScreen(BaseScreen):
         # Initialize RFID with GPS getter function to always access current GPS instance
         self.rfid = RFID(gps=None, gps_getter=lambda: self.gps)
         self.rfid.sig_msg.connect(self._on_rfid_status)
-        self.rfid.sig_arp_scan_status.connect(self._on_arp_scan_status)
         self.rfid.start()
-        
-        # Initialize spinner for arp-scan
-        self.arp_scan_spinner = QtWaitingSpinner(self.ui.tableWidget, center_on_parent=True, disable_parent_when_spinning=False)
-        
-        # Initialize label for waiting message
-        self.waiting_label = QLabel("Waiting for RFID Reader to connect...", self.ui.tableWidget)
-        self.waiting_label.setStyleSheet("color: #00ff00; font-size: 14px; font-weight: bold; background-color: transparent;")
-        self.waiting_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.waiting_label.hide()
 
         # Schedulers
         self.health_timer = QTimer(self)
@@ -176,10 +166,6 @@ class OverviewScreen(BaseScreen):
             self.gps_timeout_timer.stop()
         if hasattr(self, 'config_reload_timer'):
             self.config_reload_timer.stop()
-        if hasattr(self, 'arp_scan_spinner'):
-            self.arp_scan_spinner.stop()
-        if hasattr(self, 'waiting_label'):
-            self.waiting_label.hide()
         self.storage.close()
 
     def _set_gps_status(self, text, ok):
@@ -205,36 +191,6 @@ class OverviewScreen(BaseScreen):
             self.gps_connection_start_time = time.time()
             self.gps_timeout_timer.start()
             self._start_gps_scan()
-
-    def _on_arp_scan_status(self, is_scanning):
-        """Handle arp-scan status changes - show/hide spinner"""
-        if is_scanning:
-            self.arp_scan_spinner.start()
-            self._update_waiting_label_position()
-            self.waiting_label.show()
-            logger.debug("ARP-scan started - showing spinner")
-        else:
-            self.arp_scan_spinner.stop()
-            self.waiting_label.hide()
-            logger.debug("ARP-scan completed - hiding spinner")
-    
-    def _update_waiting_label_position(self):
-        """Update the position of the waiting label to be below the spinner"""
-        if self.ui.tableWidget:
-            # Get table widget center in local coordinates
-            table_rect = self.ui.tableWidget.rect()
-            center_x = table_rect.center().x()
-            center_y = table_rect.center().y()
-            
-            # Spinner size is approximately 60x60 (innerRadius + lineLength) * 2
-            spinner_size = 60
-            # Position label below the spinner, centered horizontally
-            label_width = 300
-            label_height = 30
-            label_x = center_x - label_width // 2
-            label_y = center_y + spinner_size // 2 + 20  # Below spinner with spacing
-            self.waiting_label.move(label_x, label_y)
-            self.waiting_label.resize(label_width, label_height)
 
     def _on_rfid_status(self, status):
         # logger.debug(f"RFID status received: {status}")
@@ -264,20 +220,19 @@ class OverviewScreen(BaseScreen):
 
             storage_flag = True
             
-            # Filter records for storage based on GPS data and filter settings
-            # Skip storage if GPS data is invalid (lat=0, lon=0, speed=0)
-            if (lat == 0 and lon == 0) or speed == 0:
+            # Store and display tag data even without GPS data, but mark GPS as invalid
+            # Only skip upload to server if GPS data is invalid
+            if lat == 0 and lon == 0:
                 storage_flag = False
                 # logger.debug(f"Tag detected but no GPS data: TAG {tag['EPC-96']} ant={tag['AntennaID']} rssi={tag['PeakRSSI']} (lat=0, lon=0, speed=0)")
             
-            # Apply filters from settings for storage
+            # Apply filters from settings
             if storage_flag:
                 sp = FILTER_CONFIG.get('speed', {})
                 if sp.get('enabled'):
                     min_s = sp.get('min')
                     max_s = sp.get('max')
                     if min_s is not None and max_s is not None and (speed < min_s or speed > max_s):
-                        logger.debug(f"Skipping storage: speed {speed} is not in range {min_s} to {max_s}")
                         storage_flag = False
 
             if storage_flag:
@@ -286,7 +241,6 @@ class OverviewScreen(BaseScreen):
                     min_r = rs.get('min')
                     max_r = rs.get('max')
                     if min_r is not None and max_r is not None and (tag['PeakRSSI'] < min_r or tag['PeakRSSI'] > max_r):
-                        logger.debug(f"Skipping storage: RSSI {tag['PeakRSSI']} is not in range {min_r} to {max_r}")
                         storage_flag = False
 
             if storage_flag:
@@ -297,20 +251,15 @@ class OverviewScreen(BaseScreen):
                     try:
                         epc = int(tag['EPC-96'])
                         if min_t is not None and max_t is not None and (epc < min_t or epc > max_t):
-                            logger.debug(f"Skipping storage: EPC {epc} is not in range {min_t} to {max_t}")
                             storage_flag = False
                     except Exception:
-                        logger.debug(f"Skipping storage: EPC {tag['EPC-96']} is not an integer")
                         storage_flag = False
 
-            # Skip storage if storage_flag is False
+            # Always store tag data locally, regardless of GPS validity
+            # Check if current values are different from last stored values
             if not storage_flag:
-                # Don't store records that don't pass filters, but still update UI
-                # logger.info(f"Skipping storage: filters failed for tag {tag['EPC-96']}")
                 pass
             else:
-                # Store tag data locally if it passes all filters
-                # Check if current values are different from last stored values
                 current_rfid = tag['EPC-96']
                 current_lat = lat
                 current_lon = lon
@@ -323,35 +272,46 @@ class OverviewScreen(BaseScreen):
                     pass
                 else:
                     # Values are different, proceed with storage
+                    # Check if storage is still valid before using it
+                    if self._is_leaving or not self.storage:
+                        return
+                    
                     if self.storage.use_db:
+                        # Check if database connection is still valid
+                        if not self.storage.db_connection or not self.storage.db_cursor:
+                            logger.debug("Database connection closed, skipping storage")
+                            return
+                        
                         # Prevent duplicates within configured time window
                         duplicate_window_seconds = DATABASE_CONFIG.get('duplicate_detection_seconds', 3)
                         duplicate_window_microseconds = duplicate_window_seconds * 1_000_000
-                        assert self.storage.db_cursor
-                        self.storage.db_cursor.execute('''
-                            SELECT * FROM records
-                            WHERE rfidTag = ?
-                            AND (
-                                ABS(timestamp - ?) < ?
-                                OR (latitude = ? AND longitude = ?)
-                            )
-                        ''', (tag['EPC-96'], tag['LastSeenTimestampUTC'], duplicate_window_microseconds, lat, lon))
-                        rows = self.storage.db_cursor.fetchall()
-                        if not rows:
-                            # Prepare record list with explicit id
-                            assert self.storage.db_cursor
-                            self.storage.db_cursor.execute('SELECT id FROM records ORDER BY id ASC')
-                            used_ids = self.storage.db_cursor.fetchall()
-                            rec = [
-                                calculate_next_id(used_ids), tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
-                                lat, lon, speed, bearing, "-", self.api.user_name, tag['LastSeenTimestampUTC'],
-                                "", "", "", "", "", "", "", ""
-                            ]
-                            self.storage.add_record(rec)
-                            # Update last stored values after successful storage
-                            self.last_stored_rfid = current_rfid
-                            self.last_stored_lat = current_lat
-                            self.last_stored_lon = current_lon
+                        try:
+                            self.storage.db_cursor.execute('''
+                                SELECT * FROM records
+                                WHERE rfidTag = ?
+                                AND (
+                                    ABS(timestamp - ?) < ?
+                                    OR (latitude = ? AND longitude = ?)
+                                )
+                            ''', (tag['EPC-96'], tag['LastSeenTimestampUTC'], duplicate_window_microseconds, lat, lon))
+                            rows = self.storage.db_cursor.fetchall()
+                            if not rows:
+                                # Prepare record list with explicit id
+                                self.storage.db_cursor.execute('SELECT id FROM records ORDER BY id ASC')
+                                used_ids = self.storage.db_cursor.fetchall()
+                                rec = [
+                                    calculate_next_id(used_ids), tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
+                                    lat, lon, speed, bearing, "-", self.api.user_name, tag['LastSeenTimestampUTC'],
+                                    "", "", "", "", "", "", "", ""
+                                ]
+                                self.storage.add_record(rec)
+                                # Update last stored values after successful storage
+                                self.last_stored_rfid = current_rfid
+                                self.last_stored_lat = current_lat
+                                self.last_stored_lon = current_lon
+                        except (sqlite3.ProgrammingError, AttributeError) as e:
+                            logger.debug(f"Database operation failed (possibly closed): {e}")
+                            return
                     else:
                         new_data = [True, tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
                                     lat, lon, speed, bearing, "-", self.api.user_name, tag['LastSeenTimestampUTC'],
@@ -361,6 +321,54 @@ class OverviewScreen(BaseScreen):
                         self.last_stored_rfid = current_rfid
                         self.last_stored_lat = current_lat
                         self.last_stored_lon = current_lon
+            # current_rfid = tag['EPC-96']
+            # current_lat = lat
+            # current_lon = lon
+            
+            # # Skip storage if all values match the last stored values
+            # if (self.last_stored_rfid == current_rfid or ( self.last_stored_lat == current_lat and self.last_stored_lon == current_lon)):
+            #     # Values haven't changed, skip storage but still update UI
+            #     logger.debug(f"Skipping storage: same values as last stored (RFID: {current_rfid}, lat: {current_lat}, lon: {current_lon})")
+            # else:
+            #     # Values are different, proceed with storage
+            #     if self.storage.use_db:
+            #         # Prevent duplicates within configured time window
+            #         duplicate_window_seconds = DATABASE_CONFIG.get('duplicate_detection_seconds', 3)
+            #         duplicate_window_microseconds = duplicate_window_seconds * 1_000_000
+            #         assert self.storage.db_cursor
+            #         self.storage.db_cursor.execute('''
+            #             SELECT * FROM records
+            #             WHERE rfidTag = ?
+            #             AND (
+            #                 ABS(timestamp - ?) < ?
+            #                 OR (latitude = ? AND longitude = ?)
+            #             )
+            #         ''', (tag['EPC-96'], tag['LastSeenTimestampUTC'], duplicate_window_microseconds, lat, lon))
+            #         rows = self.storage.db_cursor.fetchall()
+            #         if not rows:
+            #             # Prepare record list with explicit id
+            #             assert self.storage.db_cursor
+            #             self.storage.db_cursor.execute('SELECT id FROM records ORDER BY id ASC')
+            #             used_ids = self.storage.db_cursor.fetchall()
+            #             rec = [
+            #                 calculate_next_id(used_ids), tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
+            #                 lat, lon, speed, bearing, "-", self.api.user_name, tag['LastSeenTimestampUTC'],
+            #                 "", "", "", "", "", "", "", ""
+            #             ]
+            #             self.storage.add_record(rec)
+            #             # Update last stored values after successful storage
+            #             self.last_stored_rfid = current_rfid
+            #             self.last_stored_lat = current_lat
+            #             self.last_stored_lon = current_lon
+            #     else:
+            #         new_data = [True, tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
+            #                     lat, lon, speed, bearing, "-", self.api.user_name, tag['LastSeenTimestampUTC'],
+            #                     "", "", "", "", "", "", "", ""]
+            #         self.storage.add_record(new_data)
+            #         # Update last stored values after successful storage
+            #         self.last_stored_rfid = current_rfid
+            #         self.last_stored_lat = current_lat
+            #         self.last_stored_lon = current_lon
 
             # one-line debug for real-time processing
             # logger.debug(f"TAG {tag['EPC-96']} ant={tag['AntennaID']} rssi={tag['PeakRSSI']} pos=({lat:.7f},{lon:.7f}) speed={speed} heading={bearing}")
@@ -479,7 +487,7 @@ class OverviewScreen(BaseScreen):
             response_time = ping("8.8.8.8", timeout=3)
             if response_time is not None:
                 self._set_internet_status("Connected", True)
-                # logger.debug(f"Internet ping successful: {response_time:.2f}ms")
+                logger.debug(f"Internet ping successful: {response_time:.2f}ms")
                 # Reset disconnection timer when connected
                 self.internet_disconnected_start = None
             else:
@@ -533,11 +541,11 @@ class OverviewScreen(BaseScreen):
         if self.config_reload_timer.isActive():
             self.config_reload_timer.stop()
         self.config_reload_timer.start(reload_interval_ms)
-        # logger.debug(f"Config reload timer started with interval: {reload_interval_ms}ms ({settings.INTERNET_LIMIT_TIME * 3} seconds)")
+        logger.debug(f"Config reload timer started with interval: {reload_interval_ms}ms ({settings.INTERNET_LIMIT_TIME * 3} seconds)")
 
     def _reload_config_and_update(self):
         """Reload configuration file and update all config values that depend on it"""
-        # logger.info("Reloading configuration from config.json...")
+        logger.info("Reloading configuration from config.json...")
         if reload_config():
             # Access updated values from settings module
             # Note: Dictionary configs (API_CONFIG, FILTER_CONFIG, etc.) are updated in-place
@@ -576,17 +584,29 @@ class OverviewScreen(BaseScreen):
             logger.error("Failed to reload configuration, using existing values")
 
     def _upload_records(self):
-        data = self.storage.fetch_all_records()
+        if self._is_leaving or not self.storage:
+            return
+        
+        if self.storage.use_db:
+            if not self.storage.db_connection or not self.storage.db_cursor:
+                return
+            
+        try:
+            data = self.storage.fetch_all_records()
+        except (sqlite3.ProgrammingError, AttributeError) as e:
+            logger.debug(f"Failed to fetch records (possibly closed): {e}")
+            return
+        
         if not data:
             return
         
-        # Get max_upload_records from API_CONFIG
+
         max_upload_records = API_CONFIG.get('max_upload_records', 10)
         device_id = get_processor_id()
         # Get site_id from API_CONFIG in settings (loaded from config.json)
         site_id = API_CONFIG.get('site_id', '')
         
-        # Filter out records with no GPS data first
+        
         valid_records = []
         for row in data:
             # Skip records with no GPS data (lat=0, lon=0, speed=0)
@@ -594,7 +614,7 @@ class OverviewScreen(BaseScreen):
             longitude = row[5] if row[5] else 0  
             speed = int(row[6]) if row[6] else 0
             
-            if latitude == 0 and longitude == 0 and speed == 0:
+            if latitude == 0 and longitude == 0:
                 continue  # Skip this record
             
             valid_records.append(row)
@@ -602,8 +622,6 @@ class OverviewScreen(BaseScreen):
         if not valid_records:
             return
         
-        # Process records in batches of max_upload_records
-        # Records are already sorted oldest first (timestamp ASC)
         total_records = len(valid_records)
         batch_number = 0
         
@@ -622,6 +640,7 @@ class OverviewScreen(BaseScreen):
                 longitude = row[5] if row[5] else 0  
                 speed = int(row[6]) if row[6] else 0
                 heading = row[7] if row[7] else 0  # heading (bearing) from GPS
+                rssi = int(row[3]) if row[3] else 0
                 
                 # adapt to new API format
                 record = {
@@ -633,6 +652,7 @@ class OverviewScreen(BaseScreen):
                     "deviceId": device_id,  # deviceId from get_processor_id()
                     "antenna": int(row[2]) if row[2] else 1,  # antenna number
                     "barrier": heading,  # heading (bearing) from GPS
+                    "rssi": str(rssi),
                     "isProcess": True  # isProcess (was isProcessed)
                 }
                 payload.append(record)
@@ -641,16 +661,25 @@ class OverviewScreen(BaseScreen):
             # Upload this batch
             if payload and self.api.upload_records(payload):
                 # Delete the successfully uploaded records
-                self.storage.delete_uploaded_records(uploaded_record_ids)
-                logger.debug(f"Successfully uploaded batch {batch_number + 1} with {len(uploaded_record_ids)} record(s)")
-                batch_number += 1
+                try:
+                    if not self._is_leaving and self.storage:
+                        self.storage.delete_uploaded_records(uploaded_record_ids)
+                    logger.debug(f"Successfully uploaded batch {batch_number + 1} with {len(uploaded_record_ids)} record(s)")
+                    batch_number += 1
+                except (sqlite3.ProgrammingError, AttributeError) as e:
+                    logger.debug(f"Failed to delete uploaded records (possibly closed): {e}")
+                    break
             else:
                 # Upload failed, stop processing remaining batches
                 logger.warning(f"Failed to upload batch {batch_number + 1}, stopping batch processing")
                 break
         
         # Also do best-effort pruning for any old records
-        self.storage.prune_old()
+        if not self._is_leaving and self.storage:
+            try:
+                self.storage.prune_old()
+            except (sqlite3.ProgrammingError, AttributeError) as e:
+                logger.debug(f"Failed to prune old records (possibly closed): {e}")
 
 
 def calculate_next_id(used_ids):
