@@ -9,6 +9,7 @@ from utils.gps import GPS
 from utils.common import extract_from_gps, get_date_from_utc, pre_config_gps, find_gps_port, get_processor_id, enable_gps_at_command
 from utils.data_storage import DataStorage
 from utils.api_client import ApiClient
+from widgets.waiting_spinner import QtWaitingSpinner
 import settings
 from settings import API_CONFIG, FILTER_CONFIG, DATABASE_CONFIG, reload_config
 import time
@@ -122,6 +123,9 @@ class OverviewScreen(BaseScreen):
         self.rfid.sig_msg.connect(self._on_rfid_status)
         self.rfid.start()
 
+        self.arp_scan_spinner = QtWaitingSpinner(self.ui.tableWidget, center_on_parent=True, disable_parent_when_spinning=False)
+        
+        # Waiting spinner init
         # Schedulers
         self.health_timer = QTimer(self)
         self.health_timer.timeout.connect(self._upload_health)
