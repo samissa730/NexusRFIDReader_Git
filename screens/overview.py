@@ -14,6 +14,7 @@ from settings import API_CONFIG, FILTER_CONFIG, DATABASE_CONFIG, reload_config
 import time
 import subprocess
 import platform
+import sqlite3
 from ping3 import ping
 
 
@@ -234,9 +235,17 @@ class OverviewScreen(BaseScreen):
                 if sp.get('enabled'):
                     min_s = sp.get('min')
                     max_s = sp.get('max')
-                    if min_s is not None and max_s is not None and (speed < min_s or speed > max_s):
-                        # logger.debug(f"Skipping storage: speed {speed} is not in range {min_s} to {max_s}")
-                        storage_flag = False
+                    if min_s is not None and max_s is not None:
+                        # Ensure speed is a numeric value for comparison
+                        try:
+                            speed_float = float(speed) if speed is not None else 0.0
+                            if speed_float < min_s or speed_float > max_s:
+                                logger.debug(f"Skipping storage: speed {speed_float} is not in range {min_s} to {max_s}")
+                                storage_flag = False
+                        except (ValueError, TypeError) as e:
+                            logger.debug(f"Error comparing speed value {speed}: {e}")
+                            # If speed cannot be converted, skip storage to be safe
+                            storage_flag = False
 
             if storage_flag:
                 rs = FILTER_CONFIG.get('rssi', {})
