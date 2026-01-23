@@ -96,6 +96,20 @@ if [ -f "${SERVICE_HOME}/.Xauthority" ]; then
     print_success "Xauthority file configured"
 fi
 
+# Ensure .nexusrfid directory exists and has proper permissions
+print_step "Setting up application data directory..."
+APP_DATA_DIR="${SERVICE_HOME}/.nexusrfid"
+if [ ! -d "${APP_DATA_DIR}" ]; then
+    print_warning "Application data directory not found, creating..."
+    mkdir -p "${APP_DATA_DIR}" 2>/dev/null || true
+fi
+if [ -d "${APP_DATA_DIR}" ]; then
+    # Fix ownership if directory exists but is owned by wrong user
+    sudo chown -R "${SERVICE_USER}:${SERVICE_USER}" "${APP_DATA_DIR}" 2>/dev/null || true
+    chmod 755 "${APP_DATA_DIR}" 2>/dev/null || true
+    print_success "Application data directory configured"
+fi
+
 print_step "Creating systemd service unit file..."
 sudo bash -c "cat > '${UNIT_PATH}'" <<UNIT
 [Unit]
