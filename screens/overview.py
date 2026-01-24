@@ -737,9 +737,9 @@ class OverviewScreen(BaseScreen):
                     "isProcess": True  # isProcess (was isProcessed)
                 }
 
-                logger.debug(f"Record: {record}")
-                logger.debug(f"Payload: {payload}")
-                logger.debug(f"Uploaded record IDs: {uploaded_record_ids}")
+                # logger.debug(f"Record: {record}")
+                # logger.debug(f"Payload: {payload}")
+                # logger.debug(f"Uploaded record IDs: {uploaded_record_ids}")
                 payload.append(record)
                 uploaded_record_ids.append(row[0])  # Track the record ID (first column)
             
@@ -749,10 +749,10 @@ class OverviewScreen(BaseScreen):
                 try:
                     if not self._is_leaving and self.storage:
                         self.storage.delete_uploaded_records(uploaded_record_ids)
-                    logger.debug(f"Successfully uploaded batch {batch_number + 1} with {len(uploaded_record_ids)} record(s)")
+                    # logger.debug(f"Successfully uploaded batch {batch_number + 1} with {len(uploaded_record_ids)} record(s)")
                     batch_number += 1
                 except (sqlite3.ProgrammingError, AttributeError) as e:
-                    logger.debug(f"Failed to delete uploaded records (possibly closed): {e}")
+                    # logger.debug(f"Failed to delete uploaded records (possibly closed): {e}")
                     break
             else:
                 # Upload failed, stop processing remaining batches
@@ -764,7 +764,7 @@ class OverviewScreen(BaseScreen):
             try:
                 self.storage.prune_old()
             except (sqlite3.ProgrammingError, AttributeError) as e:
-                logger.debug(f"Failed to prune old records (possibly closed): {e}")
+                # logger.debug(f"Failed to prune old records (possibly closed): {e}")
 
 
 def calculate_next_id(used_ids):
