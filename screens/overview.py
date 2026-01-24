@@ -764,7 +764,7 @@ class OverviewScreen(BaseScreen):
             try:
                 self.storage.prune_old()
             except (sqlite3.ProgrammingError, AttributeError) as e:
-                # logger.debug(f"Failed to prune old records (possibly closed): {e}")
+                logger.debug(f"Failed to prune old records (possibly closed): {e}")
 
 
 def calculate_next_id(used_ids):
