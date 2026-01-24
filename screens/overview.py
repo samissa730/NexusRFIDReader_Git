@@ -121,10 +121,11 @@ class OverviewScreen(BaseScreen):
         # Initialize RFID with GPS getter function to always access current GPS instance
         self.rfid = RFID(gps=None, gps_getter=lambda: self.gps)
         self.rfid.sig_msg.connect(self._on_rfid_status)
+        self.rfid.sig_arp_scan_status.connect(self._on_arp_scan_status)
         self.rfid.start()
 
         self.arp_scan_spinner = QtWaitingSpinner(self.ui.tableWidget, center_on_parent=True, disable_parent_when_spinning=False)
-        
+
         # Waiting spinner init
         # Schedulers
         self.health_timer = QTimer(self)

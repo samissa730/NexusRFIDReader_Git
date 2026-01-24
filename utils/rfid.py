@@ -42,6 +42,7 @@ def _convert_to_unicode(obj):
 class RFID(QThread):
 
     sig_msg = Signal(int)
+    sig_arp_scan_status = Signal(bool)
 
     def __init__(self, gps=None, gps_getter=None):
         super().__init__()
@@ -257,7 +258,11 @@ class RFID(QThread):
                 # If no default host connected, try arp-scan discovery
                 if not new_host:
                     logger.info("All default hosts failed to connect, running arp-scan discovery")
-                    new_host = discover_rfid_readers(interface="eth0", subnet="169.254.0.0/16")
+                    self.sig_arp_scan_status.emit(True)  # Signal that arp-scan is starting
+                    try:
+                        new_host = discover_rfid_readers(interface="eth0", subnet="169.254.0.0/16")
+                    finally:
+                        self.sig_arp_scan_status.emit(False)  # Signal that arp-scan is complete
                 
                 if new_host:
                     if new_host != self.host:
