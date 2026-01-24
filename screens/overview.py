@@ -417,10 +417,7 @@ class OverviewScreen(BaseScreen):
             self.ui.tableWidget.viewport().update()
             self.ui.tableWidget.repaint()
             
-            # Force Qt to process events to ensure UI updates (important for systemd service)
-            QApplication.processEvents()
-            
-            logger.debug(f"Table refreshed successfully with {len(new_data)} columns of data")
+            #logger.debug(f"Table refreshed successfully with {len(new_data)} columns of data")
         except Exception as e:
             logger.error(f"Error refreshing table: {e}")
 
