@@ -7,11 +7,38 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
-from azure.iot.device import (
-    IoTHubDeviceClient,
-    MethodResponse,
-    ProvisioningDeviceClient
-)
+
+# Custom stderr filter to suppress non-critical SDK background thread errors
+class StderrFilter:
+    """Filter stderr to suppress non-critical Azure IoT SDK background thread errors"""
+    def __init__(self, original_stderr):
+        self.original_stderr = original_stderr
+        self.suppress_patterns = [
+            "Exception caught in background thread",
+            "ConnectionDroppedError: Unexpected disconnection",
+            "HandlerManagerException"
+        ]
+    
+    def write(self, message):
+        # Only suppress if message matches known non-critical SDK errors
+        if any(pattern in message for pattern in self.suppress_patterns):
+            return  # Suppress this message
+        self.original_stderr.write(message)
+    
+    def flush(self):
+        self.original_stderr.flush()
+
+try:
+    from azure.iot.device import (
+        IoTHubDeviceClient,
+        MethodResponse,
+        ProvisioningDeviceClient
+    )
+    from azure.iot.device.exceptions import ConnectionDroppedError, ConnectionFailedError
+except ImportError:
+    print("ERROR: Azure IoT SDK not installed")
+    print("Install with: sudo pip3 install azure-iot-device")
+    sys.exit(1)
 
 CONFIG_PATH = Path("/etc/azureiotpnp/provisioning_config.json")
 LOG_PATH = Path("/var/log/azure-iot-service.log")
@@ -32,6 +59,8 @@ class AzureIoTService:
         self.client = None
         self.running = True
         self.updater_thread = None
+        self.client_lock = threading.Lock()  # Lock for thread-safe client operations
+        self.connected = False
         self._load_configuration()
         signal.signal(signal.SIGTERM, self._signal_handler)
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -126,95 +155,122 @@ class AzureIoTService:
 
     def connect_to_iot_hub(self):
         """Connect to IoT Hub"""
-        try:
-            if self.client:
-                self.client.disconnect()
-            
-            self.client = IoTHubDeviceClient.create_from_symmetric_key(
-                symmetric_key=self.symmetric_key,
-                hostname=self.assigned_hub,
-                device_id=self.device_id
-            )
-            
-            self._register_direct_method_handler()
-            self.client.on_method_request_received = self.method_request_handler
-            self.client.connect()
-            # logger.info("✓ Connected to IoT Hub")
-            # Report tags to device twin (reported properties)
-            self._update_reported_tags()
-            return True
-        except Exception as e:
-            # logger.error(f"Connection failed: {e}")
-            return False
+        with self.client_lock:
+            try:
+                if self.client:
+                    try:
+                        self.client.disconnect()
+                    except:
+                        pass
+                
+                self.client = IoTHubDeviceClient.create_from_symmetric_key(
+                    symmetric_key=self.symmetric_key,
+                    hostname=self.assigned_hub,
+                    device_id=self.device_id
+                )
+                
+                self._register_direct_method_handler()
+                self.client.on_method_request_received = self.method_request_handler
+                
+                # Note: Connection state callback disabled to avoid HandlerManagerException errors
+                # The SDK handles reconnection automatically, and _send_message_safe handles retries
+                
+                self.client.connect()
+                self.connected = True
+                # logger.info("✓ Connected to IoT Hub")
+                # Report tags to device twin (reported properties)
+                self._update_reported_tags()
+                return True
+            except Exception as e:
+                self.connected = False
+                # logger.error(f"Connection failed: {e}")
+                return False
 
     def run(self):
         """Main service loop"""
-        if not self.provision_device():
-            return
-        if not self.connect_to_iot_hub():
-            return
-
-        # Start background updater that runs download.py every 5 minutes
+        # Install stderr filter to suppress non-critical SDK background thread errors
+        original_stderr = sys.stderr
+        sys.stderr = StderrFilter(original_stderr)
+        
         try:
-            if not self.updater_thread or not self.updater_thread.is_alive():
-                self.updater_thread = threading.Thread(target=self._background_update_worker, daemon=True)
-                self.updater_thread.start()
-        except Exception:
-            pass
+            if not self.provision_device():
+                return
+            if not self.connect_to_iot_hub():
+                return
 
-        # Send initial connection message with device info
-        initial_msg = json.dumps({
-            "event": "device_connected",
-            "deviceId": self.device_id,
-            "registrationId": self.registration_id,
-            "siteName": self.nexus_locate.get('siteName'),
-            "truckNumber": self.nexus_locate.get('truckNumber'),
-            "timestamp": int(time.time())
-        })
-        self.client.send_message(initial_msg)
-        # logger.info("Sent initial connection message")
+            # Start background updater that runs download.py every 5 minutes
+            try:
+                if not self.updater_thread or not self.updater_thread.is_alive():
+                    self.updater_thread = threading.Thread(target=self._background_update_worker, daemon=True)
+                    self.updater_thread.start()
+            except Exception:
+                pass
 
-        try:
-            while self.running:
-                # Send periodic heartbeat with device info
-                heartbeat = json.dumps({
-                    "event": "heartbeat",
-                    "deviceId": self.device_id,
-                    "registrationId": self.registration_id,
-                    "siteName": self.nexus_locate.get('siteName'),
-                    "truckNumber": self.nexus_locate.get('truckNumber'),
-                    "timestamp": int(time.time()),
-                    "status": "alive"
-                })
-                
-                try:
-                    self.client.send_message(heartbeat)
-                    # logger.info("Sent heartbeat")
-                except Exception as e:
-                    # logger.error(f"Heartbeat failed: {e}")
-                    if not self.connect_to_iot_hub():
-                        time.sleep(30)
-                        continue
+            # Send initial connection message with device info
+            initial_msg = json.dumps({
+                "event": "device_connected",
+                "deviceId": self.device_id,
+                "registrationId": self.registration_id,
+                "siteName": self.nexus_locate.get('siteName'),
+                "truckNumber": self.nexus_locate.get('truckNumber'),
+                "timestamp": int(time.time())
+            })
+            if self._send_message_safe(initial_msg):
+                # logger.info("Sent initial connection message")
+                pass
+            else:
+                # logger.warning("Failed to send initial connection message")
+                pass
 
-                # Sleep in small increments to respond to shutdown signals
-                for _ in range(60):
-                    if not self.running:
-                        break
-                    time.sleep(1)
-        finally:
-            if self.client:
-                try:
-                    disconnect_msg = json.dumps({
-                        "event": "device_disconnecting",
+            try:
+                while self.running:
+                    # Send periodic heartbeat with device info
+                    heartbeat = json.dumps({
+                        "event": "heartbeat",
                         "deviceId": self.device_id,
-                        "timestamp": int(time.time())
+                        "registrationId": self.registration_id,
+                        "siteName": self.nexus_locate.get('siteName'),
+                        "truckNumber": self.nexus_locate.get('truckNumber'),
+                        "timestamp": int(time.time()),
+                        "status": "alive"
                     })
-                    self.client.send_message(disconnect_msg)
-                    self.client.disconnect()
-                    # logger.info("✓ Disconnected from IoT Hub")
-                except Exception as e:
-                    pass
-                    # logger.error(f"Error during disconnect: {e}")
+                    
+                    if not self._send_message_safe(heartbeat):
+                        # If heartbeat fails, try to reconnect
+                        if not self.connect_to_iot_hub():
+                            time.sleep(30)
+                            continue
+                        # logger.warning("Heartbeat failed, reconnected")
+
+                    # Sleep in small increments to respond to shutdown signals
+                    for _ in range(60):
+                        if not self.running:
+                            break
+                        time.sleep(1)
+            finally:
+                if self.client:
+                    try:
+                        disconnect_msg = json.dumps({
+                            "event": "device_disconnecting",
+                            "deviceId": self.device_id,
+                            "timestamp": int(time.time())
+                        })
+                        # Try to send disconnect message, but don't fail if it doesn't work
+                        try:
+                            with self.client_lock:
+                                if self.connected:
+                                    self.client.send_message(disconnect_msg)
+                        except:
+                            pass
+                        with self.client_lock:
+                            self.client.disconnect()
+                        # logger.info("✓ Disconnected from IoT Hub")
+                    except Exception as e:
+                        pass
+                        # logger.error(f"Error during disconnect: {e}")
+        finally:
+            # Restore original stderr
+            sys.stderr = original_stderr
 
     def _background_update_worker(self):
         """Run download.py every 5 minutes independent of the IoT loop."""
@@ -253,6 +309,41 @@ class AzureIoTService:
         except Exception as e:
             pass
             # logger.error(f"Failed to report tags: {e}")
+
+    def _send_message_safe(self, message_json):
+        """Send message to IoT Hub with automatic reconnection on failure"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                with self.client_lock:
+                    if not self.client or not self.connected:
+                        # Try to reconnect
+                        if not self.connect_to_iot_hub():
+                            if attempt < max_retries - 1:
+                                time.sleep(2)
+                                continue
+                            return False
+                    
+                    # Send message
+                    self.client.send_message(message_json)
+                    return True
+                    
+            except (ConnectionDroppedError, ConnectionFailedError) as e:
+                # logger.warning(f"Connection error on attempt {attempt + 1}: {e}")
+                self.connected = False
+                if attempt < max_retries - 1:
+                    time.sleep(2)
+                    # Try to reconnect
+                    if not self.connect_to_iot_hub():
+                        continue
+                else:
+                    # logger.error(f"Failed to send message after {max_retries} attempts")
+                    return False
+            except Exception as e:
+                # logger.error(f"Unexpected error sending message: {e}")
+                return False
+        
+        return False
 
 if __name__ == "__main__":
     try:
