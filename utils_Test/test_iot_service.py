@@ -20,6 +20,7 @@ try:
         MethodResponse,
         ProvisioningDeviceClient
     )
+    from azure.iot.device.exceptions import ConnectionDroppedError, ConnectionFailedError
 except ImportError:
     print("ERROR: Azure IoT SDK not installed")
     print("Install with: sudo pip3 install azure-iot-device")
@@ -35,6 +36,8 @@ class TestAzureIoTService:
         self.socket_server = None
         self.socket_thread = None
         self.message_count = 0
+        self.client_lock = threading.Lock()  # Lock for thread-safe client operations
+        self.connected = False
         self._load_configuration()
         signal.signal(signal.SIGTERM, self._signal_handler)
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -86,27 +89,50 @@ class TestAzureIoTService:
         print(f"✓ Device ID: {self.device_id}")
         return True
 
+    def _connection_state_callback(self, connection_state):
+        """Handle connection state changes"""
+        if connection_state == "connected":
+            self.connected = True
+            print("✓ IoT Hub connection state: Connected")
+        elif connection_state == "disconnected":
+            self.connected = False
+            print("⚠ IoT Hub connection state: Disconnected")
+        elif connection_state == "disconnected_retrying":
+            print("⚠ IoT Hub connection state: Retrying...")
+        elif connection_state == "disconnected_failed":
+            self.connected = False
+            print("✗ IoT Hub connection state: Failed")
+
     def connect_to_iot_hub(self):
         """Connect to IoT Hub"""
-        try:
-            if self.client:
-                self.client.disconnect()
-            
-            self.client = IoTHubDeviceClient.create_from_symmetric_key(
-                symmetric_key=self.symmetric_key,
-                hostname=self.assigned_hub,
-                device_id=self.device_id
-            )
-            
-            self.client.connect()
-            print("✓ Connected to IoT Hub")
-            
-            # Report tags to device twin
-            self._update_reported_tags()
-            return True
-        except Exception as e:
-            print(f"✗ Connection failed: {e}")
-            return False
+        with self.client_lock:
+            try:
+                if self.client:
+                    try:
+                        self.client.disconnect()
+                    except:
+                        pass
+                
+                self.client = IoTHubDeviceClient.create_from_symmetric_key(
+                    symmetric_key=self.symmetric_key,
+                    hostname=self.assigned_hub,
+                    device_id=self.device_id
+                )
+                
+                # Set connection state callback to handle disconnections
+                self.client.on_connection_state_change = self._connection_state_callback
+                
+                self.client.connect()
+                self.connected = True
+                print("✓ Connected to IoT Hub")
+                
+                # Report tags to device twin
+                self._update_reported_tags()
+                return True
+            except Exception as e:
+                self.connected = False
+                print(f"✗ Connection failed: {e}")
+                return False
 
     def _update_reported_tags(self):
         """Report configuration tags to device twin"""
@@ -194,6 +220,41 @@ class TestAzureIoTService:
             conn.close()
             print("Client disconnected")
 
+    def _send_message_safe(self, message_json):
+        """Send message to IoT Hub with automatic reconnection on failure"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                with self.client_lock:
+                    if not self.client or not self.connected:
+                        # Try to reconnect
+                        if not self.connect_to_iot_hub():
+                            if attempt < max_retries - 1:
+                                time.sleep(2)
+                                continue
+                            return False
+                    
+                    # Send message
+                    self.client.send_message(message_json)
+                    return True
+                    
+            except (ConnectionDroppedError, ConnectionFailedError) as e:
+                print(f"⚠ Connection error on attempt {attempt + 1}: {e}")
+                self.connected = False
+                if attempt < max_retries - 1:
+                    time.sleep(2)
+                    # Try to reconnect
+                    if not self.connect_to_iot_hub():
+                        continue
+                else:
+                    print(f"✗ Failed to send message after {max_retries} attempts")
+                    return False
+            except Exception as e:
+                print(f"✗ Unexpected error sending message: {e}")
+                return False
+        
+        return False
+
     def _process_message(self, message_str):
         """Process received scan message and send to IoT Hub"""
         try:
@@ -215,14 +276,15 @@ class TestAzureIoTService:
                     }
                 }
                 
-                # Send to Azure IoT Hub
+                # Send to Azure IoT Hub with automatic reconnection
                 iot_message = json.dumps(enriched_data)
-                self.client.send_message(iot_message)
-                self.message_count += 1
-                
-                print(f"✓ [{self.message_count}] Sent scan to IoT Hub: {scan_data.get('tagName')}")
-                print(f"   Location: ({scan_data.get('latitude')}, {scan_data.get('longitude')})")
-                print(f"   Site: {self.nexus_locate.get('siteName')}, Truck: {self.nexus_locate.get('truckNumber')}")
+                if self._send_message_safe(iot_message):
+                    self.message_count += 1
+                    print(f"✓ [{self.message_count}] Sent scan to IoT Hub: {scan_data.get('tagName')}")
+                    print(f"   Location: ({scan_data.get('latitude')}, {scan_data.get('longitude')})")
+                    print(f"   Site: {self.nexus_locate.get('siteName')}, Truck: {self.nexus_locate.get('truckNumber')}")
+                else:
+                    print(f"✗ Failed to send scan: {scan_data.get('tagName')}")
                 
         except json.JSONDecodeError as e:
             print(f"✗ Invalid JSON message: {e}")
@@ -256,8 +318,10 @@ class TestAzureIoTService:
             "truckNumber": self.nexus_locate.get('truckNumber'),
             "timestamp": int(time.time())
         })
-        self.client.send_message(initial_msg)
-        print("✓ Sent initial connection message")
+        if self._send_message_safe(initial_msg):
+            print("✓ Sent initial connection message")
+        else:
+            print("⚠ Failed to send initial connection message")
         
         print()
         print("=" * 60)
@@ -292,8 +356,15 @@ class TestAzureIoTService:
                         "timestamp": int(time.time()),
                         "messages_sent": self.message_count
                     })
-                    self.client.send_message(disconnect_msg)
-                    self.client.disconnect()
+                    # Try to send disconnect message, but don't fail if it doesn't work
+                    try:
+                        with self.client_lock:
+                            if self.connected:
+                                self.client.send_message(disconnect_msg)
+                    except:
+                        pass
+                    with self.client_lock:
+                        self.client.disconnect()
                     print("✓ Disconnected from IoT Hub")
                 except Exception as e:
                     print(f"Warning: Error during disconnect: {e}")
