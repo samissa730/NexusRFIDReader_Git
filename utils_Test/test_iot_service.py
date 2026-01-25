@@ -12,7 +12,28 @@ import subprocess
 import sys
 import threading
 import socket
+import io
 from pathlib import Path
+
+# Custom stderr filter to suppress non-critical SDK background thread errors
+class StderrFilter:
+    """Filter stderr to suppress non-critical Azure IoT SDK background thread errors"""
+    def __init__(self, original_stderr):
+        self.original_stderr = original_stderr
+        self.suppress_patterns = [
+            "Exception caught in background thread",
+            "ConnectionDroppedError: Unexpected disconnection",
+            "HandlerManagerException"
+        ]
+    
+    def write(self, message):
+        # Only suppress if message matches known non-critical SDK errors
+        if any(pattern in message for pattern in self.suppress_patterns):
+            return  # Suppress this message
+        self.original_stderr.write(message)
+    
+    def flush(self):
+        self.original_stderr.flush()
 
 try:
     from azure.iot.device import (
@@ -308,83 +329,115 @@ class TestAzureIoTService:
 
     def run(self):
         """Main service loop"""
-        print()
-        print("=" * 60)
-        print("Test Azure IoT Service with IPC Support")
-        print("=" * 60)
-        print()
-        
-        # Provision and connect
-        if not self.provision_device():
-            return
-        if not self.connect_to_iot_hub():
-            return
-        
-        # Start socket server for scan data
-        print()
-        self._start_socket_server()
-        
-        # Send initial connection message
-        initial_msg = json.dumps({
-            "event": "test_service_connected",
-            "deviceId": self.device_id,
-            "registrationId": self.registration_id,
-            "siteName": self.nexus_locate.get('siteName'),
-            "truckNumber": self.nexus_locate.get('truckNumber'),
-            "timestamp": int(time.time())
-        })
-        if self._send_message_safe(initial_msg):
-            print("✓ Sent initial connection message")
-        else:
-            print("⚠ Failed to send initial connection message")
-        
-        print()
-        print("=" * 60)
-        print("Service is running and ready to receive scan data")
-        print("Run test_iot_publisher.py to send test scans")
-        print("Press Ctrl+C to stop")
-        print("=" * 60)
-        print()
+        # Install stderr filter to suppress non-critical SDK background thread errors
+        original_stderr = sys.stderr
+        sys.stderr = StderrFilter(original_stderr)
         
         try:
-            # Keep service alive
+            print()
+            print("=" * 60)
+            print("Test Azure IoT Service with IPC Support")
+            print("=" * 60)
+            print()
+            
+            # Provision and connect
+            if not self.provision_device():
+                return
+            if not self.connect_to_iot_hub():
+                return
+        
+            # Start socket server for scan data
+            print()
+            self._start_socket_server()
+            
+            # Send initial connection message
+            initial_msg = json.dumps({
+                "event": "test_service_connected",
+                "deviceId": self.device_id,
+                "registrationId": self.registration_id,
+                "siteName": self.nexus_locate.get('siteName'),
+                "truckNumber": self.nexus_locate.get('truckNumber'),
+                "timestamp": int(time.time())
+            })
+            if self._send_message_safe(initial_msg):
+                print("✓ Sent initial connection message")
+            else:
+                print("⚠ Failed to send initial connection message")
+            
+            print()
+            print("=" * 60)
+            print("Service is running and ready to receive scan data")
+            print("Run test_iot_publisher.py to send test scans")
+            print("Press Ctrl+C to stop")
+            print("=" * 60)
+            print()
+            
+            try:
+            # Keep service alive and send periodic heartbeats to maintain connection
+            heartbeat_interval = 60  # Send heartbeat every 60 seconds
+            last_heartbeat = time.time()
+            
             while self.running:
-                time.sleep(1)
-        finally:
-            # Cleanup
-            print("\nShutting down...")
-            
-            if self.socket_server:
-                try:
-                    self.socket_server.close()
-                    if Path(SOCKET_PATH).exists():
-                        Path(SOCKET_PATH).unlink()
-                    print("✓ Socket server closed")
-                except:
-                    pass
-            
-            if self.client:
-                try:
-                    disconnect_msg = json.dumps({
-                        "event": "test_service_disconnecting",
+                current_time = time.time()
+                
+                # Send heartbeat periodically to keep connection alive
+                if current_time - last_heartbeat >= heartbeat_interval:
+                    heartbeat = json.dumps({
+                        "event": "heartbeat",
                         "deviceId": self.device_id,
-                        "timestamp": int(time.time()),
-                        "messages_sent": self.message_count
+                        "registrationId": self.registration_id,
+                        "siteName": self.nexus_locate.get('siteName'),
+                        "truckNumber": self.nexus_locate.get('truckNumber'),
+                        "timestamp": int(current_time),
+                        "status": "alive"
                     })
-                    # Try to send disconnect message, but don't fail if it doesn't work
+                    
+                    if self._send_message_safe(heartbeat):
+                        last_heartbeat = current_time
+                    else:
+                        # If heartbeat fails, try to reconnect
+                        if not self.connect_to_iot_hub():
+                            time.sleep(5)  # Wait before retrying
+                
+                time.sleep(1)
+            finally:
+                # Cleanup
+                print("\nShutting down...")
+                
+                if self.socket_server:
                     try:
-                        with self.client_lock:
-                            if self.connected:
-                                self.client.send_message(disconnect_msg)
+                        self.socket_server.close()
+                        if Path(SOCKET_PATH).exists():
+                            Path(SOCKET_PATH).unlink()
+                        print("✓ Socket server closed")
                     except:
                         pass
-                    with self.client_lock:
-                        self.client.disconnect()
-                    print("✓ Disconnected from IoT Hub")
-                except Exception as e:
-                    print(f"Warning: Error during disconnect: {e}")
-            
-            print(f"\nTotal messages sent: {self.message_count}")
+                
+                if self.client:
+                    try:
+                        disconnect_msg = json.dumps({
+                            "event": "test_service_disconnecting",
+                            "deviceId": self.device_id,
+                            "timestamp": int(time.time()),
+                            "messages_sent": self.message_count
+                        })
+                        # Try to send disconnect message, but don't fail if it doesn't work
+                        try:
+                            with self.client_lock:
+                                if self.connected:
+                                    self.client.send_message(disconnect_msg)
+                        except:
+                            pass
+                        with self.client_lock:
+                            self.client.disconnect()
+                        print("✓ Disconnected from IoT Hub")
+                    except Exception as e:
+                        print(f"Warning: Error during disconnect: {e}")
+                
+                print(f"\nTotal messages sent: {self.message_count}")
+        finally:
+            # Restore original stderr
+            sys.stderr = original_stderr
 
 
 if __name__ == "__main__":
