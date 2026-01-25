@@ -373,33 +373,33 @@ class TestAzureIoTService:
             print()
             
             try:
-            # Keep service alive and send periodic heartbeats to maintain connection
-            heartbeat_interval = 60  # Send heartbeat every 60 seconds
-            last_heartbeat = time.time()
-            
-            while self.running:
-                current_time = time.time()
+                # Keep service alive and send periodic heartbeats to maintain connection
+                heartbeat_interval = 60  # Send heartbeat every 60 seconds
+                last_heartbeat = time.time()
                 
-                # Send heartbeat periodically to keep connection alive
-                if current_time - last_heartbeat >= heartbeat_interval:
-                    heartbeat = json.dumps({
-                        "event": "heartbeat",
-                        "deviceId": self.device_id,
-                        "registrationId": self.registration_id,
-                        "siteName": self.nexus_locate.get('siteName'),
-                        "truckNumber": self.nexus_locate.get('truckNumber'),
-                        "timestamp": int(current_time),
-                        "status": "alive"
-                    })
+                while self.running:
+                    current_time = time.time()
                     
-                    if self._send_message_safe(heartbeat):
-                        last_heartbeat = current_time
-                    else:
-                        # If heartbeat fails, try to reconnect
-                        if not self.connect_to_iot_hub():
-                            time.sleep(5)  # Wait before retrying
-                
-                time.sleep(1)
+                    # Send heartbeat periodically to keep connection alive
+                    if current_time - last_heartbeat >= heartbeat_interval:
+                        heartbeat = json.dumps({
+                            "event": "heartbeat",
+                            "deviceId": self.device_id,
+                            "registrationId": self.registration_id,
+                            "siteName": self.nexus_locate.get('siteName'),
+                            "truckNumber": self.nexus_locate.get('truckNumber'),
+                            "timestamp": int(current_time),
+                            "status": "alive"
+                        })
+                        
+                        if self._send_message_safe(heartbeat):
+                            last_heartbeat = current_time
+                        else:
+                            # If heartbeat fails, try to reconnect
+                            if not self.connect_to_iot_hub():
+                                time.sleep(5)  # Wait before retrying
+                    
+                    time.sleep(1)
             finally:
                 # Cleanup
                 print("\nShutting down...")
