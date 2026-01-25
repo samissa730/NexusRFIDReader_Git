@@ -29,12 +29,39 @@ class GPSScannerThread(QThread):
         self._stop_requested = False
         
     def run(self):
-        """Scan for GPS ports in background"""
-        baud = pre_config_gps()
-        port = find_gps_port(baud)
+        """Scan for GPS ports in background with multi-baud rate fallback"""
+        # List of baud rates to try (matching test file logic)
+        baud_rates = [115200, 9600, 4800, 38400]
+        
+        # Step 1: Pre-configure GPS to get initial baud rate
+        detected_baud = pre_config_gps()
+        logger.debug(f"GPS pre-config detected baud rate: {detected_baud}")
+        
+        # Step 2: Try to find GPS port at the detected baud rate first
+        port = find_gps_port(detected_baud)
         if port is not None and not self._stop_requested:
-            self.gps_found.emit(port, baud)
-        elif not self._stop_requested:
+            logger.info(f"GPS found on {port} at {detected_baud} baud (detected rate)")
+            self.gps_found.emit(port, detected_baud)
+            return
+        
+        # Step 3: If not found, try other baud rates (fallback)
+        if not self._stop_requested:
+            logger.debug(f"GPS not found at {detected_baud} baud, trying other baud rates...")
+            for baud_rate in baud_rates:
+                if self._stop_requested:
+                    break
+                if baud_rate == detected_baud:
+                    continue  # Already tried this one
+                logger.debug(f"Trying baud rate: {baud_rate}")
+                port = find_gps_port(baud_rate)
+                if port is not None and not self._stop_requested:
+                    logger.info(f"GPS found on {port} at {baud_rate} baud (fallback)")
+                    self.gps_found.emit(port, baud_rate)
+                    return
+        
+        # GPS not found at any baud rate
+        if not self._stop_requested:
+            logger.warning("GPS not found on any port at any baud rate")
             self.gps_not_found.emit()
     
     def stop(self):
