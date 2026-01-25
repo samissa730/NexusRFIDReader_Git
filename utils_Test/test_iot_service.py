@@ -90,18 +90,31 @@ class TestAzureIoTService:
         return True
 
     def _connection_state_callback(self, connection_state):
-        """Handle connection state changes"""
-        if connection_state == "connected":
-            self.connected = True
-            print("✓ IoT Hub connection state: Connected")
-        elif connection_state == "disconnected":
-            self.connected = False
-            print("⚠ IoT Hub connection state: Disconnected")
-        elif connection_state == "disconnected_retrying":
-            print("⚠ IoT Hub connection state: Retrying...")
-        elif connection_state == "disconnected_failed":
-            self.connected = False
-            print("✗ IoT Hub connection state: Failed")
+        """Handle connection state changes - wrapped in try/except to prevent SDK background thread errors"""
+        try:
+            # Validate input
+            if not connection_state or not isinstance(connection_state, str):
+                return
+            
+            # Don't use locks in callbacks - they're called from SDK background threads
+            # Just update the flag and log - keep it simple and fast
+            state_lower = connection_state.lower()
+            if state_lower == "connected":
+                self.connected = True
+                print("✓ IoT Hub connection state: Connected")
+            elif state_lower == "disconnected":
+                self.connected = False
+                print("⚠ IoT Hub connection state: Disconnected")
+            elif "retrying" in state_lower:
+                print("⚠ IoT Hub connection state: Retrying...")
+            elif "failed" in state_lower:
+                self.connected = False
+                print("✗ IoT Hub connection state: Failed")
+        except (AttributeError, TypeError, Exception):
+            # Silently handle any exceptions in callback to prevent SDK background thread errors
+            # The SDK will handle reconnection automatically
+            # Don't print here to avoid recursion or additional errors
+            pass
 
     def connect_to_iot_hub(self):
         """Connect to IoT Hub"""
@@ -119,8 +132,10 @@ class TestAzureIoTService:
                     device_id=self.device_id
                 )
                 
-                # Set connection state callback to handle disconnections
-                self.client.on_connection_state_change = self._connection_state_callback
+                # Note: Connection state callback disabled to avoid HandlerManagerException errors
+                # The SDK handles reconnection automatically, and _send_message_safe handles retries
+                # Uncomment the line below if you want connection state monitoring (may cause background thread errors)
+                # self.client.on_connection_state_change = self._connection_state_callback
                 
                 self.client.connect()
                 self.connected = True
