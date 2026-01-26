@@ -88,6 +88,44 @@ def get_mac_address():
     return formatted_mac_address
 
 
+def _is_port_available(port):
+    """
+    Check if a serial port is available (not in use by another process).
+    Returns True if port is available, False otherwise.
+    Uses a non-intrusive check that doesn't leave the port locked.
+    """
+    try:
+        # First check if port file exists (Linux) or is accessible
+        if platform.system() == 'Linux':
+            if not os.path.exists(port):
+                return False
+        
+        # Try to open the port briefly to check if it's available
+        # Use a very short timeout to minimize impact
+        test_ser = None
+        try:
+            test_ser = serial.Serial(port=port, baudrate=115200, timeout=0.05)
+            # If we can open it, it's available
+            return True
+        except (serial.SerialException, OSError, PermissionError) as e:
+            # Port is busy or not accessible
+            if "busy" in str(e).lower() or "resource busy" in str(e).lower() or "[Errno 16]" in str(e):
+                return False
+            # For other errors, assume port might be available (let the actual open handle it)
+            return True
+        finally:
+            # Always close the test connection if it was opened
+            if test_ser is not None and test_ser.is_open:
+                try:
+                    test_ser.close()
+                    time.sleep(0.05)  # Small delay to ensure port is fully released
+                except Exception:
+                    pass
+    except Exception:
+        # If any error occurs during check, assume port might be available
+        # (let the actual operation handle the error)
+        return True
+
 def enable_gps_at_command():
     """
     Send AT+QGPS=1 command to ttyUSB2 to enable GPS.
@@ -97,8 +135,17 @@ def enable_gps_at_command():
     baud_rate = 115200
     command = 'AT+QGPS=1'
     wait_time = 2.0
+    ser = None
     
     try:
+        # Check if port is available before trying to open it
+        if not _is_port_available(port):
+            logger.warning(f"Port {port} is busy, waiting 0.5 seconds before retry...")
+            time.sleep(0.5)
+            if not _is_port_available(port):
+                logger.warning(f"Port {port} is still busy, skipping GPS enable command")
+                return False
+        
         logger.info(f"Opening serial connection to {port} at {baud_rate} baud...")
         ser = serial.Serial(
             port=port,
@@ -148,9 +195,6 @@ def enable_gps_at_command():
         else:
             logger.debug("No response received (this may be normal)")
         
-        # Close connection
-        ser.close()
-        logger.info(f"✓ Connection closed")
         logger.info("GPS enable command completed successfully")
         
         return True
@@ -164,6 +208,15 @@ def enable_gps_at_command():
     except (OSError, Exception) as e:
         logger.warning(f"Failed to send AT+QGPS=1 command to {port}: {e}")
         return False
+    finally:
+        # Always close the port, even if an exception occurred
+        if ser is not None and ser.is_open:
+            try:
+                ser.close()
+                logger.info(f"✓ Connection closed for {port}")
+                time.sleep(0.1)  # Small delay to ensure port is fully released
+            except Exception as e:
+                logger.debug(f"Error closing port {port}: {e}")
 
 def pre_config_gps():
     """
@@ -184,7 +237,13 @@ def pre_config_gps():
     
     logger.info("Attempting to enable GPS on all ports with AT+QGPS=1 command...")
     for port in serial_ports:
+        ser = None
         try:
+            # Check if port is available before trying to open it
+            if not _is_port_available(port):
+                logger.debug(f"Port {port} is busy, skipping...")
+                continue
+            
             logger.debug(f"Trying port: {port} at {try_rate} baud...")
             ser = serial.Serial(
                 port=port,
@@ -233,10 +292,7 @@ def pre_config_gps():
             else:
                 logger.debug(f"No response from {port} (this may be normal)")
             
-            # Close connection
-            ser.close()
             logger.info(f"✓ Successfully sent AT+QGPS=1 to {port}")
-            logger.debug(f"✓ Connection closed for {port}")
             
             return try_rate
             
@@ -249,6 +305,15 @@ def pre_config_gps():
         except (OSError, Exception) as e:
             logger.debug(f"Port {port} error: {e}")
             pass
+        finally:
+            # Always close the port, even if an exception occurred
+            if ser is not None and ser.is_open:
+                try:
+                    ser.close()
+                    logger.debug(f"✓ Connection closed for {port}")
+                    time.sleep(0.1)  # Small delay to ensure port is fully released
+                except Exception as e:
+                    logger.debug(f"Error closing port {port}: {e}")
     
     logger.debug("No port responded to AT command, using default baud rate")
     return settings.GPS_CONFIG.get('baud_rate', settings.BAUD_RATE_DON) or settings.BAUD_RATE_DON
@@ -260,6 +325,11 @@ def find_gps_port(baud_rate):
     
     # Try each port multiple times to ensure we catch GPS data
     for port in serial_ports:
+        # Check if port is available before trying to open it
+        if not _is_port_available(port):
+            logger.debug(f"Port {port} is busy, skipping...")
+            continue
+            
         try:
             with serial.Serial(port, baudrate=baud_rate, timeout=1, rtscts=True, dsrdtr=True) as ser:
                 # Try multiple reads to catch GPS data
@@ -276,6 +346,9 @@ def find_gps_port(baud_rate):
         except (OSError, serial.SerialException) as e:
             logger.debug(f"Port {port} error: {e}")
             pass
+        finally:
+            # Small delay to ensure port is fully released
+            time.sleep(0.1)
     logger.info("No GPS port found")
     return None
 

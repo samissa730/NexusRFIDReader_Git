@@ -9,6 +9,7 @@ from utils.gps import GPS
 from utils.common import extract_from_gps, get_date_from_utc, pre_config_gps, find_gps_port, get_processor_id, enable_gps_at_command
 from utils.data_storage import DataStorage
 from utils.api_client import ApiClient
+from utils.iot_client import IoTClient
 from widgets.waiting_spinner import QtWaitingSpinner
 import settings
 from settings import API_CONFIG, FILTER_CONFIG, DATABASE_CONFIG, reload_config
@@ -102,13 +103,16 @@ class OverviewScreen(BaseScreen):
         )
         
         # Set device ID using processor ID
-        device_id = get_processor_id()
-        self.ui.device_id.setText(device_id)
-        self.ui.truck_number.setText(device_id)
+        self.device_id = get_processor_id()
+        self.ui.device_id.setText(self.device_id)
+        self.ui.truck_number.setText(self.device_id)
         
         # Set site ID from API_CONFIG
-        site_id = API_CONFIG.get('site_id', 'N/A')
-        self.ui.site_id.setText(site_id)
+        self.site_id = API_CONFIG.get('site_id', 'N/A')
+        self.ui.site_id.setText(self.site_id)
+        
+        # Initialize IoT client for sending scan data to Azure IoT service
+        self.iot_client = IoTClient()
 
         # GPS init
         self.last_lat = None
@@ -198,11 +202,54 @@ class OverviewScreen(BaseScreen):
             self.gps_display_timer.stop()
         if hasattr(self, 'internet_timer'):
             self.internet_timer.stop()
+        # Close IoT client connection
+        if hasattr(self, 'iot_client'):
+            self.iot_client.close()
         if hasattr(self, 'gps_timeout_timer'):
             self.gps_timeout_timer.stop()
         if hasattr(self, 'config_reload_timer'):
             self.config_reload_timer.stop()
         self.storage.close()
+
+    def _send_scan_to_iot(self, tag, lat, lon, speed, bearing, antenna, rssi, timestamp):
+        """
+        Send scan data to Azure IoT service via Unix socket
+        
+        Args:
+            tag: RFID tag EPC (string)
+            lat: GPS latitude (float)
+            lon: GPS longitude (float)
+            speed: Vehicle speed (float)
+            bearing: Heading/bearing (float)
+            antenna: Antenna number (int/string)
+            rssi: RSSI value (int)
+            timestamp: Timestamp in microseconds (int)
+        """
+        try:
+            # Format scan record matching C# Azure Function format
+            scan_record = {
+                "siteId": self.site_id,
+                "tagName": tag,
+                "latitude": float(lat),
+                "longitude": float(lon),
+                "speed": float(speed),
+                "deviceId": self.device_id,
+                "antenna": str(antenna),
+                "barrier": float(bearing),
+                "rssi": str(rssi) if rssi else "0",
+                "metadata": {
+                    "timestamp": int(timestamp) if timestamp else int(time.time() * 1_000_000)
+                }
+            }
+            
+            # Send to IoT service
+            if self.iot_client.send_scan(scan_record):
+                logger.debug(f"Sent scan to IoT service: {tag}")
+            else:
+                # Silently fail - IoT service may not be running
+                logger.debug(f"IoT service unavailable for scan: {tag}")
+        except Exception as e:
+            logger.debug(f"Failed to send scan to IoT service: {e}")
 
     def _set_gps_status(self, text, ok):
         self.ui.gps_connection_status.setStyleSheet("""color: #00ff00;""" if ok else """color: #ff0000;""")
@@ -369,6 +416,18 @@ class OverviewScreen(BaseScreen):
                                     self.last_stored_lat = current_lat
                                     self.last_stored_lon = current_lon
                                     logger.info(f"Storage SUCCESS: Tag {tag['EPC-96']} stored to database (lat: {lat:.7f}, lon: {lon:.7f})")
+                                    
+                                    # Send scan data to Azure IoT service
+                                    self._send_scan_to_iot(
+                                        tag=tag['EPC-96'],
+                                        lat=lat,
+                                        lon=lon,
+                                        speed=speed,
+                                        bearing=bearing,
+                                        antenna=tag['AntennaID'],
+                                        rssi=tag['PeakRSSI'],
+                                        timestamp=tag['LastSeenTimestampUTC']
+                                    )
                                 else:
                                     logger.debug(f"Storage skipped: duplicate record detected for tag {tag['EPC-96']} within {duplicate_window_seconds}s window")
                             except (sqlite3.ProgrammingError, AttributeError) as e:
@@ -385,6 +444,18 @@ class OverviewScreen(BaseScreen):
                             self.last_stored_lat = current_lat
                             self.last_stored_lon = current_lon
                             logger.info(f"Storage SUCCESS: Tag {tag['EPC-96']} stored to memory (lat: {lat:.7f}, lon: {lon:.7f})")
+                            
+                            # Send scan data to Azure IoT service
+                            self._send_scan_to_iot(
+                                tag=tag['EPC-96'],
+                                lat=lat,
+                                lon=lon,
+                                speed=speed,
+                                bearing=bearing,
+                                antenna=tag['AntennaID'],
+                                rssi=tag['PeakRSSI'],
+                                timestamp=tag['LastSeenTimestampUTC']
+                            )
                         except Exception as e:
                             logger.error(f"Storage FAILED: Memory storage error for tag {tag['EPC-96']}: {e}")
 
@@ -471,6 +542,12 @@ class OverviewScreen(BaseScreen):
         if self.gps_scanner and self.gps_scanner.isRunning():
             return  # Already scanning
         
+        # If GPS is currently running, stop it first to release the port
+        if self.gps and self.gps.isRunning():
+            logger.debug("Stopping current GPS connection before scanning for new port...")
+            self.gps.stop()
+            time.sleep(0.3)  # Wait for port to be fully released
+        
         # Start timeout tracking when scanning for GPS
         if self.gps_connection_start_time is None:
             self.gps_connection_start_time = time.time()
@@ -502,6 +579,7 @@ class OverviewScreen(BaseScreen):
     def _start_external_gps(self, port, baud):
         if self.gps and self.gps.isRunning():
             self.gps.stop()
+            time.sleep(0.3)  # Wait for port to be fully released before starting new GPS
         self.gps = GPS(port=port, baud_rate=baud)
         self.gps.sig_msg.connect(self._on_gps_status)
         self.gps.start()

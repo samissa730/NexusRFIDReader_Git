@@ -96,7 +96,11 @@ class GPS(QThread):
 
     def _close_serial(self):
         if self._ser and self._ser.is_open:
-            self._ser.close()
+            try:
+                self._ser.close()
+                time.sleep(0.2)  # Small delay to ensure port is fully released
+            except Exception as e:
+                logger.debug(f"Error closing GPS serial port: {e}")
         self._ser = None
 
     def is_alive(self):
