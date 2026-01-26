@@ -69,14 +69,14 @@ def run_checks():
     print("All encryption/decryption checks passed.")
 
     # 3) Detailed step-by-step for provided credentials
-    # provided_values = {
-    #     "client_id": "dC1zM4ghLvr8eipSOlmRhAelHRXdtvNC",
-    #     "client_secret": "M__OTtIL7Pw754RBKIEEOCrXsxTef61vWny57keAXqwNN6mvylhg5Yc4XNtajqk4",
-    # }
     provided_values = {
-        "client_id": "pBwSiPtKmklfuqgZ7KUE05GPYkmySNiT",
-        "client_secret": "C2AOzwrW1HxJ4t1gAUa8tdvZnhomVINUNDzj6hLtPxK_KTq5JIt4pHRMgl2m3-dd",
+        "client_id": "dC1zM4ghLvr8eipSOlmRhAelHRXdtvNC",
+        "client_secret": "M__OTtIL7Pw754RBKIEEOCrXsxTef61vWny57keAXqwNN6mvylhg5Yc4XNtajqk4",
     }
+    # provided_values = {
+    #     "client_id": "pBwSiPtKmklfuqgZ7KUE05GPYkmySNiT",
+    #     "client_secret": "C2AOzwrW1HxJ4t1gAUa8tdvZnhomVINUNDzj6hLtPxK_KTq5JIt4pHRMgl2m3-dd",
+    # }
 
     for label, plain in provided_values.items():
         print("\n==== STEP-BY-STEP:", label, "====")

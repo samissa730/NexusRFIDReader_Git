@@ -6,6 +6,7 @@ import signal
 import subprocess
 import sys
 import threading
+import socket
 from pathlib import Path
 
 # Custom stderr filter to suppress non-critical SDK background thread errors
@@ -42,6 +43,7 @@ except ImportError:
 
 CONFIG_PATH = Path("/etc/azureiotpnp/provisioning_config.json")
 LOG_PATH = Path("/var/log/azure-iot-service.log")
+SOCKET_PATH = "/var/run/nexus-iot.sock"
 
 # Configure logging
 # logging.basicConfig(
@@ -59,6 +61,9 @@ class AzureIoTService:
         self.client = None
         self.running = True
         self.updater_thread = None
+        self.socket_server = None
+        self.socket_thread = None
+        self.message_count = 0
         self.client_lock = threading.Lock()  # Lock for thread-safe client operations
         self.connected = False
         self._load_configuration()
@@ -198,6 +203,9 @@ class AzureIoTService:
             if not self.connect_to_iot_hub():
                 return
 
+            # Start socket server for scan data from main app
+            self._start_socket_server()
+
             # Start background updater that runs download.py every 5 minutes
             try:
                 if not self.updater_thread or not self.updater_thread.is_alive():
@@ -248,12 +256,23 @@ class AzureIoTService:
                             break
                         time.sleep(1)
             finally:
+                # Cleanup socket server
+                if self.socket_server:
+                    try:
+                        self.socket_server.close()
+                        if Path(SOCKET_PATH).exists():
+                            Path(SOCKET_PATH).unlink()
+                        # logger.info("Socket server closed")
+                    except:
+                        pass
+                
                 if self.client:
                     try:
                         disconnect_msg = json.dumps({
                             "event": "device_disconnecting",
                             "deviceId": self.device_id,
-                            "timestamp": int(time.time())
+                            "timestamp": int(time.time()),
+                            "messages_sent": self.message_count
                         })
                         # Try to send disconnect message, but don't fail if it doesn't work
                         try:
@@ -309,6 +328,121 @@ class AzureIoTService:
         except Exception as e:
             pass
             # logger.error(f"Failed to report tags: {e}")
+
+    def _start_socket_server(self):
+        """Start Unix socket server to receive scan data from main app"""
+        try:
+            # Remove old socket file if exists
+            if Path(SOCKET_PATH).exists():
+                Path(SOCKET_PATH).unlink()
+                # logger.info("Removed old socket file")
+            
+            # Create Unix socket server
+            self.socket_server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            self.socket_server.bind(SOCKET_PATH)
+            self.socket_server.listen(5)
+            
+            # Set permissions so main app can connect
+            import os
+            os.chmod(SOCKET_PATH, 0o666)
+            
+            # logger.info(f"Socket server listening on {SOCKET_PATH}")
+            
+            # Start accepting connections in background thread
+            self.socket_thread = threading.Thread(
+                target=self._handle_socket_connections,
+                daemon=True
+            )
+            self.socket_thread.start()
+            
+        except Exception as e:
+            # logger.error(f"Failed to start socket server: {e}")
+            raise
+
+    def _handle_socket_connections(self):
+        """Accept and handle incoming socket connections"""
+        # logger.info("Socket server ready to accept connections...")
+        while self.running:
+            try:
+                # Set timeout to check self.running periodically
+                self.socket_server.settimeout(1.0)
+                try:
+                    conn, _ = self.socket_server.accept()
+                    # logger.debug("New client connected")
+                    # Handle each connection in separate thread
+                    client_thread = threading.Thread(
+                        target=self._handle_client,
+                        args=(conn,),
+                        daemon=True
+                    )
+                    client_thread.start()
+                except socket.timeout:
+                    continue
+            except Exception as e:
+                if self.running:
+                    # logger.error(f"Socket server error: {e}")
+                    pass
+
+    def _handle_client(self, conn):
+        """Handle messages from a connected client"""
+        buffer = ""
+        try:
+            while self.running:
+                data = conn.recv(4096)
+                if not data:
+                    break
+                
+                buffer += data.decode('utf-8')
+                
+                # Process complete messages (newline-delimited)
+                while '\n' in buffer:
+                    line, buffer = buffer.split('\n', 1)
+                    if line:
+                        self._process_message(line)
+                        
+        except Exception as e:
+            # logger.error(f"Client handler error: {e}")
+            pass
+        finally:
+            conn.close()
+            # logger.debug("Client disconnected")
+
+    def _process_message(self, message_str):
+        """Process received scan message and send to IoT Hub"""
+        try:
+            message = json.loads(message_str)
+            msg_type = message.get("type")
+            
+            if msg_type == "scan":
+                scan_data = message.get("data", {})
+                
+                # Add device identification from config
+                enriched_data = {
+                    **scan_data,
+                    "deviceInfo": {
+                        "registrationId": self.registration_id,
+                        "deviceId": self.device_id,
+                        "siteName": self.nexus_locate.get('siteName'),
+                        "truckNumber": self.nexus_locate.get('truckNumber'),
+                        "deviceSerial": self.nexus_locate.get('deviceSerial')
+                    }
+                }
+                
+                # Send to Azure IoT Hub with automatic reconnection
+                iot_message = json.dumps(enriched_data)
+                if self._send_message_safe(iot_message):
+                    self.message_count += 1
+                    # logger.info(f"[{self.message_count}] Sent scan to IoT Hub: {scan_data.get('tagName')}")
+                else:
+                    # logger.warning(f"Failed to send scan: {scan_data.get('tagName')}")
+                    pass
+                
+        except json.JSONDecodeError as e:
+            # logger.error(f"Invalid JSON message: {e}")
+            pass
+        except Exception as e:
+            # logger.error(f"Failed to process message: {e}")
+            pass
 
     def _send_message_safe(self, message_json):
         """Send message to IoT Hub with automatic reconnection on failure"""
