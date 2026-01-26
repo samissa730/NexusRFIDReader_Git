@@ -194,14 +194,11 @@ class ApiClient:
         record_count = len(payload) if isinstance(payload, list) else 1
         payload_size = len(json.dumps(payload).encode('utf-8'))
         
-        # Use tuple timeout: (connect_timeout, read_timeout)
-        # connect_timeout: 2-3 seconds (fails fast if server unreachable)
-        # read_timeout: 5-10 seconds (allows time for data transfer, scales with payload size)
-        connect_timeout = 3  # Fast failure on connection issues
-        read_timeout = min(10, max(5, 5 + (record_count // 50) * 1))  # Scales with payload size
-        timeout_seconds = (connect_timeout, read_timeout)
+        # Use longer timeout for large payloads: base 15s + 2s per 50 records, max 60s
+        # This accounts for slow upload speeds on networks
+        timeout_seconds = min(60, max(15, 15 + (record_count // 50) * 2))
         
-        logger.debug(f"Uploading {record_count} record(s), payload size: {payload_size / 1024:.2f} KB, timeout: (connect={connect_timeout}s, read={read_timeout}s)")
+        logger.debug(f"Uploading {record_count} record(s), payload size: {payload_size / 1024:.2f} KB, timeout: {timeout_seconds}s")
         
         http = self._session()
         try:
@@ -227,8 +224,7 @@ class ApiClient:
             return success
         except requests.exceptions.Timeout as e:
             # Specific handling for timeout errors with payload details
-            timeout_str = f"connect={timeout_seconds[0]}s, read={timeout_seconds[1]}s" if isinstance(timeout_seconds, tuple) else f"{timeout_seconds}s"
-            logger.error(f"Uploading records failed: Timeout ({timeout_str}) - {record_count} record(s), payload size: {payload_size / 1024:.2f} KB - {str(e)}")
+            logger.error(f"Uploading records failed: Timeout after {timeout_seconds}s - {record_count} record(s), payload size: {payload_size / 1024:.2f} KB - {str(e)}")
         except requests.exceptions.HTTPError as e:
             # HTTP error (4xx, 5xx)
             try:
