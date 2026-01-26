@@ -9,7 +9,13 @@ from utils.gps import GPS
 from utils.common import extract_from_gps, get_date_from_utc, pre_config_gps, find_gps_port, get_processor_id, enable_gps_at_command
 from utils.data_storage import DataStorage
 from utils.api_client import ApiClient
-from utils.iot_client import IoTClient
+# Optional IoT client - may not be available on all deployments
+try:
+    from utils.iot_client import IoTClient
+    IOT_CLIENT_AVAILABLE = True
+except ImportError:
+    IOT_CLIENT_AVAILABLE = False
+    logger.warning("IoT client module not available - IoT functionality disabled")
 from widgets.waiting_spinner import QtWaitingSpinner
 import settings
 from settings import API_CONFIG, FILTER_CONFIG, DATABASE_CONFIG, reload_config
@@ -111,8 +117,11 @@ class OverviewScreen(BaseScreen):
         self.site_id = API_CONFIG.get('site_id', 'N/A')
         self.ui.site_id.setText(self.site_id)
         
-        # Initialize IoT client for sending scan data to Azure IoT service
-        self.iot_client = IoTClient()
+        # Initialize IoT client for sending scan data to Azure IoT service (if available)
+        if IOT_CLIENT_AVAILABLE:
+            self.iot_client = IoTClient()
+        else:
+            self.iot_client = None
 
         # GPS init
         self.last_lat = None
@@ -203,7 +212,7 @@ class OverviewScreen(BaseScreen):
         if hasattr(self, 'internet_timer'):
             self.internet_timer.stop()
         # Close IoT client connection
-        if hasattr(self, 'iot_client'):
+        if hasattr(self, 'iot_client') and self.iot_client is not None:
             self.iot_client.close()
         if hasattr(self, 'gps_timeout_timer'):
             self.gps_timeout_timer.stop()
@@ -242,10 +251,10 @@ class OverviewScreen(BaseScreen):
                 }
             }
             
-            # Send to IoT service
-            if self.iot_client.send_scan(scan_record):
+            # Send to IoT service (if available)
+            if self.iot_client and self.iot_client.send_scan(scan_record):
                 logger.debug(f"Sent scan to IoT service: {tag}")
-            else:
+            elif self.iot_client:
                 # Silently fail - IoT service may not be running
                 logger.debug(f"IoT service unavailable for scan: {tag}")
         except Exception as e:
