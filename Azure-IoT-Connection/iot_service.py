@@ -66,6 +66,7 @@ class AzureIoTService:
         self.message_count = 0
         self.client_lock = threading.Lock()  # Lock for thread-safe client operations
         self.connected = False
+        self.last_message_time = 0  # Track last successful message send time
         self._load_configuration()
         signal.signal(signal.SIGTERM, self._signal_handler)
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -182,6 +183,7 @@ class AzureIoTService:
                 
                 self.client.connect()
                 self.connected = True
+                self.last_message_time = time.time()  # Update last message time on connection
                 # logger.info("✓ Connected to IoT Hub")
                 # Report tags to device twin (reported properties)
                 self._update_reported_tags()
@@ -190,6 +192,42 @@ class AzureIoTService:
                 self.connected = False
                 # logger.error(f"Connection failed: {e}")
                 return False
+
+    def _check_connection_health(self):
+        """Verify IoT Hub connection is still active"""
+        with self.client_lock:
+            if not self.client:
+                return False
+            
+            # If we sent a message recently (within last 30 seconds), connection is likely healthy
+            # This avoids unnecessary get_twin calls
+            if time.time() - self.last_message_time < 30:
+                return self.connected
+            
+            try:
+                # Try to get device twin to verify connection
+                # This is a lightweight operation that confirms connection
+                if hasattr(self.client, 'get_twin'):
+                    try:
+                        self.client.get_twin()
+                        return True
+                    except Exception:
+                        # Connection is not healthy
+                        self.connected = False
+                        return False
+                # If get_twin not available, check if client exists and connected flag
+                return self.connected
+            except Exception:
+                # Connection is not healthy
+                self.connected = False
+                return False
+
+    def _ensure_connected(self):
+        """Ensure connection to IoT Hub is active, reconnect if needed"""
+        if not self.connected or not self._check_connection_health():
+            # Connection lost, attempt to reconnect
+            return self.connect_to_iot_hub()
+        return True
 
     def run(self):
         """Main service loop"""
@@ -231,30 +269,44 @@ class AzureIoTService:
                 pass
 
             try:
+                # Connection monitoring loop - check every 15 seconds
+                connection_check_interval = 15  # Check connection every 15 seconds
+                heartbeat_interval = 60  # Send heartbeat every 60 seconds
+                last_connection_check = time.time()
+                last_heartbeat = time.time()
+                
                 while self.running:
-                    # Send periodic heartbeat with device info
-                    heartbeat = json.dumps({
-                        "event": "heartbeat",
-                        "deviceId": self.device_id,
-                        "registrationId": self.registration_id,
-                        "siteName": self.nexus_locate.get('siteName'),
-                        "truckNumber": self.nexus_locate.get('truckNumber'),
-                        "timestamp": int(time.time()),
-                        "status": "alive"
-                    })
+                    current_time = time.time()
                     
-                    if not self._send_message_safe(heartbeat):
-                        # If heartbeat fails, try to reconnect
-                        if not self.connect_to_iot_hub():
-                            time.sleep(30)
+                    # Proactively check connection health every 15 seconds
+                    if current_time - last_connection_check >= connection_check_interval:
+                        if not self._ensure_connected():
+                            # Connection lost, wait before retrying
+                            time.sleep(5)
+                            last_connection_check = time.time()
                             continue
-                        # logger.warning("Heartbeat failed, reconnected")
+                        last_connection_check = current_time
+                    
+                    # Send periodic heartbeat every 60 seconds
+                    if current_time - last_heartbeat >= heartbeat_interval:
+                        heartbeat = json.dumps({
+                            "event": "heartbeat",
+                            "deviceId": self.device_id,
+                            "registrationId": self.registration_id,
+                            "siteName": self.nexus_locate.get('siteName'),
+                            "truckNumber": self.nexus_locate.get('truckNumber'),
+                            "timestamp": int(current_time),
+                            "status": "alive"
+                        })
+                        
+                        if self._send_message_safe(heartbeat):
+                            last_heartbeat = current_time
+                        else:
+                            # Heartbeat failed, connection check will handle reconnection
+                            pass
 
                     # Sleep in small increments to respond to shutdown signals
-                    for _ in range(60):
-                        if not self.running:
-                            break
-                        time.sleep(1)
+                    time.sleep(1)
             finally:
                 # Cleanup socket server
                 if self.socket_server:
@@ -449,17 +501,24 @@ class AzureIoTService:
         max_retries = 3
         for attempt in range(max_retries):
             try:
+                # Ensure connection is active before sending
+                if not self._ensure_connected():
+                    if attempt < max_retries - 1:
+                        time.sleep(2)
+                        continue
+                    return False
+                
                 with self.client_lock:
+                    # Double-check connection is still valid
                     if not self.client or not self.connected:
-                        # Try to reconnect
-                        if not self.connect_to_iot_hub():
-                            if attempt < max_retries - 1:
-                                time.sleep(2)
-                                continue
-                            return False
+                        if attempt < max_retries - 1:
+                            time.sleep(2)
+                            continue
+                        return False
                     
                     # Send message
                     self.client.send_message(message_json)
+                    self.last_message_time = time.time()  # Update last successful message time
                     return True
                     
             except (ConnectionDroppedError, ConnectionFailedError) as e:
