@@ -407,8 +407,8 @@ class TestAzureIoTService:
                 if self.socket_server:
                     try:
                         self.socket_server.close()
-                        if Path(SOCKET_PATH).exists():
-                            Path(SOCKET_PATH).unlink()
+                        # if Path(SOCKET_PATH).exists():
+                        #     Path(SOCKET_PATH).unlink()
                         print("✓ Socket server closed")
                     except:
                         pass
