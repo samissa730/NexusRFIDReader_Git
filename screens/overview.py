@@ -9,13 +9,7 @@ from utils.gps import GPS
 from utils.common import extract_from_gps, get_date_from_utc, pre_config_gps, find_gps_port, get_processor_id, enable_gps_at_command
 from utils.data_storage import DataStorage
 from utils.api_client import ApiClient
-# Optional IoT client - may not be available on all deployments
-try:
-    from utils.iot_client import IoTClient
-    IOT_CLIENT_AVAILABLE = True
-except ImportError:
-    IOT_CLIENT_AVAILABLE = False
-    logger.warning("IoT client module not available - IoT functionality disabled")
+from utils.iot_client import IoTClient
 from widgets.waiting_spinner import QtWaitingSpinner
 import settings
 from settings import API_CONFIG, FILTER_CONFIG, DATABASE_CONFIG, reload_config
@@ -117,11 +111,8 @@ class OverviewScreen(BaseScreen):
         self.site_id = API_CONFIG.get('site_id', 'N/A')
         self.ui.site_id.setText(self.site_id)
         
-        # Initialize IoT client for sending scan data to Azure IoT service (if available)
-        if IOT_CLIENT_AVAILABLE:
-            self.iot_client = IoTClient()
-        else:
-            self.iot_client = None
+        # Initialize IoT client for sending scan data to Azure IoT service
+        self.iot_client = IoTClient()
 
         # GPS init
         self.last_lat = None
@@ -212,7 +203,7 @@ class OverviewScreen(BaseScreen):
         if hasattr(self, 'internet_timer'):
             self.internet_timer.stop()
         # Close IoT client connection
-        if hasattr(self, 'iot_client') and self.iot_client is not None:
+        if hasattr(self, 'iot_client'):
             self.iot_client.close()
         if hasattr(self, 'gps_timeout_timer'):
             self.gps_timeout_timer.stop()
@@ -251,10 +242,10 @@ class OverviewScreen(BaseScreen):
                 }
             }
             
-            # Send to IoT service (if available)
-            if self.iot_client and self.iot_client.send_scan(scan_record):
+            # Send to IoT service
+            if self.iot_client.send_scan(scan_record):
                 logger.debug(f"Sent scan to IoT service: {tag}")
-            elif self.iot_client:
+            else:
                 # Silently fail - IoT service may not be running
                 logger.debug(f"IoT service unavailable for scan: {tag}")
         except Exception as e:
@@ -551,12 +542,6 @@ class OverviewScreen(BaseScreen):
         if self.gps_scanner and self.gps_scanner.isRunning():
             return  # Already scanning
         
-        # If GPS is currently running, stop it first to release the port
-        if self.gps and self.gps.isRunning():
-            logger.debug("Stopping current GPS connection before scanning for new port...")
-            self.gps.stop()
-            time.sleep(0.3)  # Wait for port to be fully released
-        
         # Start timeout tracking when scanning for GPS
         if self.gps_connection_start_time is None:
             self.gps_connection_start_time = time.time()
@@ -588,7 +573,6 @@ class OverviewScreen(BaseScreen):
     def _start_external_gps(self, port, baud):
         if self.gps and self.gps.isRunning():
             self.gps.stop()
-            time.sleep(0.3)  # Wait for port to be fully released before starting new GPS
         self.gps = GPS(port=port, baud_rate=baud)
         self.gps.sig_msg.connect(self._on_gps_status)
         self.gps.start()
@@ -823,51 +807,73 @@ class OverviewScreen(BaseScreen):
             end_idx = min(start_idx + max_upload_records, total_records)
             batch_records = valid_records[start_idx:end_idx]
             
-            # Build payload for this batch
-            payload = []
-            uploaded_record_ids = []  # Track IDs of records to be uploaded in this batch
+            # Track successful sends to IoT Hub
+            successfully_sent_ids = []
+            
+            # COMMENTED OUT: Original API upload functionality
+            # payload = []
+            # uploaded_record_ids = []  # Track IDs of records to be uploaded in this batch
             
             for row in batch_records:
                 latitude = row[4] if row[4] else 0
                 longitude = row[5] if row[5] else 0  
-                speed = int(row[6]) if row[6] else 0
-                heading = row[7] if row[7] else 0  # heading (bearing) from GPS
+                speed = float(row[6]) if row[6] else 0.0
+                heading = float(row[7]) if row[7] else 0.0  # heading (bearing) from GPS
                 rssi = int(row[3]) if row[3] else 0
+                tag_name = row[1] if row[1] else ""
+                antenna = int(row[2]) if row[2] else 1
+                # Timestamp is at index 10 (after username at index 9)
+                timestamp = row[10] if len(row) > 10 and row[10] else int(time.time() * 1_000_000)
                 
-                # adapt to new API format
-                record = {
-                    "siteId": site_id,  # siteId from settings
-                    "tagName": row[1],  # tagName (was rfidTag)
-                    "latitude": latitude,  # latitude
-                    "longitude": longitude,  # longitude
-                    "speed": speed,  # speed as integer
-                    "deviceId": device_id,  # deviceId from get_processor_id()
-                    "antenna": int(row[2]) if row[2] else 1,  # antenna number
-                    "barrier": heading,  # heading (bearing) from GPS
-                    "rssi":str(rssi),
-                    "isProcess": True  # isProcess (was isProcessed)
-                }
-
-                # logger.debug(f"Record: {record}")
-                # logger.debug(f"Payload: {payload}")
-                # logger.debug(f"Uploaded record IDs: {uploaded_record_ids}")
-                payload.append(record)
-                uploaded_record_ids.append(row[0])  # Track the record ID (first column)
+                # Send to Azure IoT Hub via IoT service
+                if self._send_scan_to_iot(
+                    tag=tag_name,
+                    lat=latitude,
+                    lon=longitude,
+                    speed=speed,
+                    bearing=heading,
+                    antenna=antenna,
+                    rssi=rssi,
+                    timestamp=timestamp
+                ):
+                    successfully_sent_ids.append(row[0])
+                    logger.info(f"Sent historical record to IoT Hub: Tag={tag_name}, ID={row[0]}")
+                else:
+                    logger.warning(f"Failed to send historical record to IoT Hub: Tag={tag_name}, ID={row[0]}")
             
-            # Upload this batch
-            if payload and self.api.upload_records(payload):
-                # Delete the successfully uploaded records
+            # COMMENTED OUT: Original API upload functionality
+            # # adapt to new API format
+            # record = {
+            #     "siteId": site_id,  # siteId from settings
+            #     "tagName": row[1],  # tagName (was rfidTag)
+            #     "latitude": latitude,  # latitude
+            #     "longitude": longitude,  # longitude
+            #     "speed": speed,  # speed as integer
+            #     "deviceId": device_id,  # deviceId from get_processor_id()
+            #     "antenna": int(row[2]) if row[2] else 1,  # antenna number
+            #     "barrier": heading,  # heading (bearing) from GPS
+            #     "rssi":str(rssi),
+            #     "isProcess": True  # isProcess (was isProcessed)
+            # }
+            # payload.append(record)
+            # uploaded_record_ids.append(row[0])  # Track the record ID (first column)
+            # 
+            # # Upload this batch
+            # if payload and self.api.upload_records(payload):
+            
+            # Delete successfully sent records from storage
+            if successfully_sent_ids:
                 try:
                     if not self._is_leaving and self.storage:
-                        self.storage.delete_uploaded_records(uploaded_record_ids)
-                    # logger.debug(f"Successfully uploaded batch {batch_number + 1} with {len(uploaded_record_ids)} record(s)")
+                        self.storage.delete_uploaded_records(successfully_sent_ids)
+                    logger.info(f"Successfully sent batch {batch_number + 1} to IoT Hub: {len(successfully_sent_ids)} record(s)")
                     batch_number += 1
                 except (sqlite3.ProgrammingError, AttributeError) as e:
-                    # logger.debug(f"Failed to delete uploaded records (possibly closed): {e}")
+                    logger.debug(f"Failed to delete sent records (possibly closed): {e}")
                     break
             else:
-                # Upload failed, stop processing remaining batches
-                logger.warning(f"Failed to upload batch {batch_number + 1}, stopping batch processing")
+                # No records were sent successfully, stop processing remaining batches
+                logger.warning(f"Failed to send any records in batch {batch_number + 1}, stopping batch processing")
                 break
         
         # Also do best-effort pruning for any old records

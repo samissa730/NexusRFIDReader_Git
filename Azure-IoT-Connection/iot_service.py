@@ -468,6 +468,9 @@ class AzureIoTService:
             if msg_type == "scan":
                 scan_data = message.get("data", {})
                 
+                # Log the received payload
+                print(f"[IoT Service] Received scan payload: {json.dumps(scan_data, indent=2)}")
+                
                 # Add device identification from config
                 enriched_data = {
                     **scan_data,
@@ -480,21 +483,23 @@ class AzureIoTService:
                     }
                 }
                 
+                # Log the enriched payload before sending
+                print(f"[IoT Service] Enriched payload (before sending to IoT Hub): {json.dumps(enriched_data, indent=2)}")
+                
                 # Send to Azure IoT Hub with automatic reconnection
                 iot_message = json.dumps(enriched_data)
                 if self._send_message_safe(iot_message):
                     self.message_count += 1
-                    # logger.info(f"[{self.message_count}] Sent scan to IoT Hub: {scan_data.get('tagName')}")
+                    print(f"[IoT Service] ✓ [{self.message_count}] Successfully sent scan to IoT Hub: Tag={scan_data.get('tagName')}, Site={scan_data.get('siteId')}")
                 else:
-                    # logger.warning(f"Failed to send scan: {scan_data.get('tagName')}")
-                    pass
+                    print(f"[IoT Service] ✗ Failed to send scan to IoT Hub: Tag={scan_data.get('tagName')}")
                 
         except json.JSONDecodeError as e:
-            # logger.error(f"Invalid JSON message: {e}")
-            pass
+            print(f"[IoT Service] ✗ Invalid JSON message: {e}")
+            print(f"[IoT Service] Raw message: {message_str}")
         except Exception as e:
-            # logger.error(f"Failed to process message: {e}")
-            pass
+            print(f"[IoT Service] ✗ Failed to process message: {e}")
+            print(f"[IoT Service] Raw message: {message_str}")
 
     def _send_message_safe(self, message_json):
         """Send message to IoT Hub with automatic reconnection on failure"""
