@@ -245,11 +245,14 @@ class OverviewScreen(BaseScreen):
             # Send to IoT service
             if self.iot_client.send_scan(scan_record):
                 logger.debug(f"Sent scan to IoT service: {tag}")
+                return True
             else:
                 # Silently fail - IoT service may not be running
                 logger.debug(f"IoT service unavailable for scan: {tag}")
+                return False
         except Exception as e:
             logger.debug(f"Failed to send scan to IoT service: {e}")
+            return False
 
     def _set_gps_status(self, text, ok):
         self.ui.gps_connection_status.setStyleSheet("""color: #00ff00;""" if ok else """color: #ff0000;""")
@@ -825,21 +828,34 @@ class OverviewScreen(BaseScreen):
                 # Timestamp is at index 10 (after username at index 9)
                 timestamp = row[10] if len(row) > 10 and row[10] else int(time.time() * 1_000_000)
                 
-                # Send to Azure IoT Hub via IoT service
-                if self._send_scan_to_iot(
-                    tag=tag_name,
-                    lat=latitude,
-                    lon=longitude,
-                    speed=speed,
-                    bearing=heading,
-                    antenna=antenna,
-                    rssi=rssi,
-                    timestamp=timestamp
-                ):
-                    successfully_sent_ids.append(row[0])
-                    logger.info(f"Sent historical record to IoT Hub: Tag={tag_name}, ID={row[0]}")
-                else:
-                    logger.warning(f"Failed to send historical record to IoT Hub: Tag={tag_name}, ID={row[0]}")
+                # Send to Azure IoT Hub via IoT service with retry
+                max_retries = 2
+                sent = False
+                for attempt in range(max_retries):
+                    if self._send_scan_to_iot(
+                        tag=tag_name,
+                        lat=latitude,
+                        lon=longitude,
+                        speed=speed,
+                        bearing=heading,
+                        antenna=antenna,
+                        rssi=rssi,
+                        timestamp=timestamp
+                    ):
+                        successfully_sent_ids.append(row[0])
+                        logger.info(f"Sent historical record to IoT Hub: Tag={tag_name}, ID={row[0]}")
+                        sent = True
+                        break
+                    else:
+                        if attempt < max_retries - 1:
+                            # Small delay before retry to allow socket to recover
+                            time.sleep(0.1)
+                
+                if not sent:
+                    logger.warning(f"Failed to send historical record to IoT Hub after {max_retries} attempts: Tag={tag_name}, ID={row[0]}")
+                
+                # Small delay between records to avoid overwhelming the socket
+                time.sleep(0.05)
             
             # COMMENTED OUT: Original API upload functionality
             # # adapt to new API format
