@@ -114,8 +114,8 @@ print_step "Creating systemd service unit file..."
 sudo bash -c "cat > '${UNIT_PATH}'" <<UNIT
 [Unit]
 Description=Nexus RFID Application
-After=graphical.target
-Wants=graphical.target
+After=azure-iot.service graphical.target
+Wants=azure-iot.service graphical.target
 
 [Service]
 Type=simple

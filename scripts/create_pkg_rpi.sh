@@ -85,8 +85,8 @@ echo -e "${YELLOW}Step 4: Creating systemd service file...${NC}"
 cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/etc/systemd/system/nexusrfid_production.service <<'EOL'
 [Unit]
 Description=Nexus RFID Application
-After=graphical.target
-Wants=graphical.target
+After=azure-iot.service graphical.target
+Wants=azure-iot.service graphical.target
 
 [Service]
 Type=simple
