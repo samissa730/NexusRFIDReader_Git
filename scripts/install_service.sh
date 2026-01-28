@@ -110,6 +110,41 @@ if [ -d "${APP_DATA_DIR}" ]; then
     print_success "Application data directory configured"
 fi
 
+# Install Azure IoT service so the socket exists when nexusrfid runs
+AZURE_IOT_UNIT="/etc/systemd/system/azure-iot.service"
+IOT_SCRIPT="${PROJECT_ROOT}/Azure-IoT-Connection/iot_service.py"
+if [ -f "${IOT_SCRIPT}" ]; then
+  print_step "Installing Azure IoT service (nexus-iot.sock)..."
+  sudo bash -c "cat > '${AZURE_IOT_UNIT}'" <<AZUREIOT
+[Unit]
+Description=Azure IoT Hub Connection Service
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=${PROJECT_ROOT}
+ExecStart=/usr/bin/python3 ${IOT_SCRIPT}
+Restart=always
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+AZUREIOT
+  if [ -f "${AZURE_IOT_UNIT}" ]; then
+    print_success "Azure IoT service unit installed at ${AZURE_IOT_UNIT}"
+  else
+    print_warning "Could not create azure-iot.service"
+  fi
+else
+  print_warning "Azure IoT script not found at ${IOT_SCRIPT}; nexus-iot.sock will not be created"
+fi
+
 print_step "Creating systemd service unit file..."
 sudo bash -c "cat > '${UNIT_PATH}'" <<UNIT
 [Unit]
@@ -155,6 +190,19 @@ else
     exit 1
 fi
 
+# Enable and start Azure IoT service first so /var/run/nexus-iot.sock exists
+if [ -f "${AZURE_IOT_UNIT}" ]; then
+    print_step "Enabling and starting Azure IoT service..."
+    sudo systemctl enable azure-iot.service 2>/dev/null || true
+    sudo systemctl start azure-iot.service 2>/dev/null || true
+    sleep 3
+    if systemctl is-active --quiet azure-iot.service 2>/dev/null; then
+        print_success "Azure IoT service is running (nexus-iot.sock created)"
+    else
+        print_warning "Azure IoT service may not have started; check: sudo systemctl status azure-iot.service"
+    fi
+fi
+
 print_step "Enabling service for automatic startup..."
 sudo systemctl enable "${SERVICE_NAME}.service"
 if systemctl is-enabled --quiet "${SERVICE_NAME}.service"; then
@@ -198,6 +246,13 @@ print_status "View logs:       sudo journalctl -u ${SERVICE_NAME}.service -f"
 print_status "Restart service: sudo systemctl restart ${SERVICE_NAME}.service"
 print_status "Stop service:    sudo systemctl stop ${SERVICE_NAME}.service"
 print_status "Disable service: sudo systemctl disable ${SERVICE_NAME}.service"
+if [ -f "${AZURE_IOT_UNIT}" ]; then
+echo ""
+print_status "Azure IoT (nexus-iot.sock):"
+print_status "  Status:  sudo systemctl status azure-iot.service"
+print_status "  Logs:    sudo journalctl -u azure-iot.service -f"
+print_status "  Restart: sudo systemctl restart azure-iot.service"
+fi
 echo ""
 print_success "Service will automatically start on system boot"
 echo "============================================================"
