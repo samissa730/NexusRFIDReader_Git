@@ -118,7 +118,7 @@ def _is_port_available(port):
             if test_ser is not None and test_ser.is_open:
                 try:
                     test_ser.close()
-                    time.sleep(0.05)  # Small delay to ensure port is fully released
+                    time.sleep(0.15)  # Delay so port is fully released before next open
                 except Exception:
                     pass
     except Exception:
@@ -138,14 +138,17 @@ def enable_gps_at_command():
     ser = None
     
     try:
-        # Check if port is available before trying to open it
+        # Retry with backoff when port is busy (e.g. just released by main.py or ModemManager)
+        retry_delays = [0.5, 1.0, 1.5, 2.0]
+        for attempt, delay in enumerate(retry_delays):
+            if _is_port_available(port):
+                break
+            logger.warning(f"Port {port} is busy, waiting {delay}s before retry ({attempt + 1}/{len(retry_delays)})...")
+            time.sleep(delay)
         if not _is_port_available(port):
-            logger.warning(f"Port {port} is busy, waiting 0.5 seconds before retry...")
-            time.sleep(0.5)
-            if not _is_port_available(port):
-                logger.warning(f"Port {port} is still busy, skipping GPS enable command")
-                return False
-        
+            logger.warning(f"Port {port} still busy after retries, skipping GPS enable command")
+            return False
+
         logger.info(f"Opening serial connection to {port} at {baud_rate} baud...")
         ser = serial.Serial(
             port=port,
@@ -214,7 +217,7 @@ def enable_gps_at_command():
             try:
                 ser.close()
                 logger.info(f"✓ Connection closed for {port}")
-                time.sleep(0.1)  # Small delay to ensure port is fully released
+                time.sleep(0.4)  # Ensure port is fully released before next open
             except Exception as e:
                 logger.debug(f"Error closing port {port}: {e}")
 
@@ -311,7 +314,7 @@ def pre_config_gps():
                 try:
                     ser.close()
                     logger.debug(f"✓ Connection closed for {port}")
-                    time.sleep(0.1)  # Small delay to ensure port is fully released
+                    time.sleep(0.4)  # Ensure port is fully released before next open
                 except Exception as e:
                     logger.debug(f"Error closing port {port}: {e}")
     

@@ -137,12 +137,9 @@ class OverviewScreen(BaseScreen):
         self.gps_timeout_timer.timeout.connect(self._check_gps_timeout)
         self.gps_timeout_timer.setInterval(10000)  # Check every 10 seconds
 
-        # Enable GPS on startup
-        logger.info("Attempting to enable GPS on startup...")
-        enable_gps_at_command()
-
+        # GPS enable is done once in main.py; delay scan so port is released before scanner thread opens it
         # Always attempt external; retry every 30s if not connected
-        self._start_gps_scan()
+        QTimer.singleShot(600, self._start_gps_scan)
 
         # RFID init
         # Initialize RFID connection status to "Disconnected" instead of "N/A"
@@ -159,9 +156,10 @@ class OverviewScreen(BaseScreen):
 
         # Waiting spinner init
         # Schedulers
-        self.health_timer = QTimer(self)
-        self.health_timer.timeout.connect(self._upload_health)
-        self.health_timer.start(int(API_CONFIG.get('health_interval_ms', 15000)))
+        # Heartbeat (health upload) commented out
+        # self.health_timer = QTimer(self)
+        # self.health_timer.timeout.connect(self._upload_health)
+        # self.health_timer.start(int(API_CONFIG.get('health_interval_ms', 15000)))
 
         self.upload_timer = QTimer(self)
         self.upload_timer.timeout.connect(self._upload_records)
@@ -420,17 +418,17 @@ class OverviewScreen(BaseScreen):
                                     self.last_stored_lon = current_lon
                                     logger.info(f"Storage SUCCESS: Tag {tag['EPC-96']} stored to database (lat: {lat:.7f}, lon: {lon:.7f})")
                                     
-                                    # Send scan data to Azure IoT service
-                                    self._send_scan_to_iot(
-                                        tag=tag['EPC-96'],
-                                        lat=lat,
-                                        lon=lon,
-                                        speed=speed,
-                                        bearing=bearing,
-                                        antenna=tag['AntennaID'],
-                                        rssi=tag['PeakRSSI'],
-                                        timestamp=tag['LastSeenTimestampUTC']
-                                    )
+                                    # COMMENTED OUT: Scan data upload via MQTT to Azure IoT Hub
+                                    # self._send_scan_to_iot(
+                                    #     tag=tag['EPC-96'],
+                                    #     lat=lat,
+                                    #     lon=lon,
+                                    #     speed=speed,
+                                    #     bearing=bearing,
+                                    #     antenna=tag['AntennaID'],
+                                    #     rssi=tag['PeakRSSI'],
+                                    #     timestamp=tag['LastSeenTimestampUTC']
+                                    # )
                                 else:
                                     logger.debug(f"Storage skipped: duplicate record detected for tag {tag['EPC-96']} within {duplicate_window_seconds}s window")
                             except (sqlite3.ProgrammingError, AttributeError) as e:
@@ -448,17 +446,17 @@ class OverviewScreen(BaseScreen):
                             self.last_stored_lon = current_lon
                             logger.info(f"Storage SUCCESS: Tag {tag['EPC-96']} stored to memory (lat: {lat:.7f}, lon: {lon:.7f})")
                             
-                            # Send scan data to Azure IoT service
-                            self._send_scan_to_iot(
-                                tag=tag['EPC-96'],
-                                lat=lat,
-                                lon=lon,
-                                speed=speed,
-                                bearing=bearing,
-                                antenna=tag['AntennaID'],
-                                rssi=tag['PeakRSSI'],
-                                timestamp=tag['LastSeenTimestampUTC']
-                            )
+                            # COMMENTED OUT: Scan data upload via MQTT to Azure IoT Hub
+                            # self._send_scan_to_iot(
+                            #     tag=tag['EPC-96'],
+                            #     lat=lat,
+                            #     lon=lon,
+                            #     speed=speed,
+                            #     bearing=bearing,
+                            #     antenna=tag['AntennaID'],
+                            #     rssi=tag['PeakRSSI'],
+                            #     timestamp=tag['LastSeenTimestampUTC']
+                            # )
                         except Exception as e:
                             logger.error(f"Storage FAILED: Memory storage error for tag {tag['EPC-96']}: {e}")
 
@@ -582,12 +580,13 @@ class OverviewScreen(BaseScreen):
         # RFID will access GPS through gps_getter function, so no need to update reference
         self._set_gps_status("External GPS Connected", True)
 
-    def _upload_health(self):
-        lat, lon = (0, 0)
-        if self.gps:
-            lat, lon = extract_from_gps(self.gps.get_data())
-        gps_text = self.ui.gps_connection_status.text()
-        self.api.upload_health(bool(self.rfid.connectivity), gps_text, lat, lon)
+    # Heartbeat (health upload) commented out
+    # def _upload_health(self):
+    #     lat, lon = (0, 0)
+    #     if self.gps:
+    #         lat, lon = extract_from_gps(self.gps.get_data())
+    #     gps_text = self.ui.gps_connection_status.text()
+    #     self.api.upload_health(bool(self.rfid.connectivity), gps_text, lat, lon)
 
     def _update_gps_display(self):
         """Update GPS display fields with current GPS data"""
@@ -682,11 +681,12 @@ class OverviewScreen(BaseScreen):
                 self.ui.site_id.setText(new_site_id)
                 logger.debug(f"Site ID updated to: {new_site_id}")
             
-            # Update health timer interval if it changed
-            new_health_interval = int(settings.API_CONFIG.get('health_interval_ms', 15000))
-            if self.health_timer.interval() != new_health_interval:
-                self.health_timer.setInterval(new_health_interval)
-                logger.debug(f"Health timer interval updated to: {new_health_interval}ms")
+            # Heartbeat (health timer) commented out
+            # # Update health timer interval if it changed
+            # new_health_interval = int(settings.API_CONFIG.get('health_interval_ms', 15000))
+            # if self.health_timer.interval() != new_health_interval:
+            #     self.health_timer.setInterval(new_health_interval)
+            #     logger.debug(f"Health timer interval updated to: {new_health_interval}ms")
             
             # Update upload timer interval if it changed
             new_upload_interval = int(settings.API_CONFIG.get('record_interval_ms', 7000))
@@ -810,12 +810,9 @@ class OverviewScreen(BaseScreen):
             end_idx = min(start_idx + max_upload_records, total_records)
             batch_records = valid_records[start_idx:end_idx]
             
-            # Track successful sends to IoT Hub
-            successfully_sent_ids = []
-            
-            # COMMENTED OUT: Original API upload functionality
-            # payload = []
-            # uploaded_record_ids = []  # Track IDs of records to be uploaded in this batch
+            # Original Scan upload API: build payload and upload via API
+            payload = []
+            uploaded_record_ids = []  # Track IDs of records to be uploaded in this batch
             
             for row in batch_records:
                 latitude = row[4] if row[4] else 0
@@ -825,71 +822,36 @@ class OverviewScreen(BaseScreen):
                 rssi = int(row[3]) if row[3] else 0
                 tag_name = row[1] if row[1] else ""
                 antenna = int(row[2]) if row[2] else 1
-                # Timestamp is at index 10 (after username at index 9)
-                timestamp = row[10] if len(row) > 10 and row[10] else int(time.time() * 1_000_000)
                 
-                # Send to Azure IoT Hub via IoT service with retry
-                max_retries = 2
-                sent = False
-                for attempt in range(max_retries):
-                    if self._send_scan_to_iot(
-                        tag=tag_name,
-                        lat=latitude,
-                        lon=longitude,
-                        speed=speed,
-                        bearing=heading,
-                        antenna=antenna,
-                        rssi=rssi,
-                        timestamp=timestamp
-                    ):
-                        successfully_sent_ids.append(row[0])
-                        logger.info(f"Sent historical record to IoT Hub: Tag={tag_name}, ID={row[0]}")
-                        sent = True
-                        break
-                    else:
-                        if attempt < max_retries - 1:
-                            # Small delay before retry to allow socket to recover
-                            time.sleep(0.1)
-                
-                if not sent:
-                    logger.warning(f"Failed to send historical record to IoT Hub after {max_retries} attempts: Tag={tag_name}, ID={row[0]}")
-                
-                # Small delay between records to avoid overwhelming the socket
-                time.sleep(0.05)
+                # Adapt to API format
+                record = {
+                    "siteId": site_id,
+                    "tagName": tag_name,
+                    "latitude": latitude,
+                    "longitude": longitude,
+                    "speed": speed,
+                    "deviceId": device_id,
+                    "antenna": antenna,
+                    "barrier": heading,
+                    "rssi": str(rssi),
+                    "isProcess": True
+                }
+                payload.append(record)
+                uploaded_record_ids.append(row[0])
             
-            # COMMENTED OUT: Original API upload functionality
-            # # adapt to new API format
-            # record = {
-            #     "siteId": site_id,  # siteId from settings
-            #     "tagName": row[1],  # tagName (was rfidTag)
-            #     "latitude": latitude,  # latitude
-            #     "longitude": longitude,  # longitude
-            #     "speed": speed,  # speed as integer
-            #     "deviceId": device_id,  # deviceId from get_processor_id()
-            #     "antenna": int(row[2]) if row[2] else 1,  # antenna number
-            #     "barrier": heading,  # heading (bearing) from GPS
-            #     "rssi":str(rssi),
-            #     "isProcess": True  # isProcess (was isProcessed)
-            # }
-            # payload.append(record)
-            # uploaded_record_ids.append(row[0])  # Track the record ID (first column)
-            # 
-            # # Upload this batch
-            # if payload and self.api.upload_records(payload):
-            
-            # Delete successfully sent records from storage
-            if successfully_sent_ids:
+            # Upload this batch via original Scan upload API
+            if payload and self.api.upload_records(payload):
                 try:
                     if not self._is_leaving and self.storage:
-                        self.storage.delete_uploaded_records(successfully_sent_ids)
-                    logger.info(f"Successfully sent batch {batch_number + 1} to IoT Hub: {len(successfully_sent_ids)} record(s)")
+                        self.storage.delete_uploaded_records(uploaded_record_ids)
+                    logger.info(f"Successfully sent batch {batch_number + 1} to API: {len(uploaded_record_ids)} record(s)")
                     batch_number += 1
                 except (sqlite3.ProgrammingError, AttributeError) as e:
                     logger.debug(f"Failed to delete sent records (possibly closed): {e}")
                     break
             else:
-                # No records were sent successfully, stop processing remaining batches
-                logger.warning(f"Failed to send any records in batch {batch_number + 1}, stopping batch processing")
+                # API upload failed, stop processing remaining batches
+                logger.warning(f"Failed to send batch {batch_number + 1} via API, stopping batch processing")
                 break
         
         # Also do best-effort pruning for any old records
