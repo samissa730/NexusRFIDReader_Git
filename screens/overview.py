@@ -418,17 +418,17 @@ class OverviewScreen(BaseScreen):
                                     self.last_stored_lon = current_lon
                                     logger.info(f"Storage SUCCESS: Tag {tag['EPC-96']} stored to database (lat: {lat:.7f}, lon: {lon:.7f})")
                                     
-                                    # COMMENTED OUT: Scan data upload via MQTT to Azure IoT Hub
-                                    # self._send_scan_to_iot(
-                                    #     tag=tag['EPC-96'],
-                                    #     lat=lat,
-                                    #     lon=lon,
-                                    #     speed=speed,
-                                    #     bearing=bearing,
-                                    #     antenna=tag['AntennaID'],
-                                    #     rssi=tag['PeakRSSI'],
-                                    #     timestamp=tag['LastSeenTimestampUTC']
-                                    # )
+                                    # Send scan data to Azure IoT service (forwards to Azure IoT Hub)
+                                    self._send_scan_to_iot(
+                                        tag=tag['EPC-96'],
+                                        lat=lat,
+                                        lon=lon,
+                                        speed=speed,
+                                        bearing=bearing,
+                                        antenna=tag['AntennaID'],
+                                        rssi=tag['PeakRSSI'],
+                                        timestamp=tag['LastSeenTimestampUTC']
+                                    )
                                 else:
                                     logger.debug(f"Storage skipped: duplicate record detected for tag {tag['EPC-96']} within {duplicate_window_seconds}s window")
                             except (sqlite3.ProgrammingError, AttributeError) as e:
@@ -446,17 +446,17 @@ class OverviewScreen(BaseScreen):
                             self.last_stored_lon = current_lon
                             logger.info(f"Storage SUCCESS: Tag {tag['EPC-96']} stored to memory (lat: {lat:.7f}, lon: {lon:.7f})")
                             
-                            # COMMENTED OUT: Scan data upload via MQTT to Azure IoT Hub
-                            # self._send_scan_to_iot(
-                            #     tag=tag['EPC-96'],
-                            #     lat=lat,
-                            #     lon=lon,
-                            #     speed=speed,
-                            #     bearing=bearing,
-                            #     antenna=tag['AntennaID'],
-                            #     rssi=tag['PeakRSSI'],
-                            #     timestamp=tag['LastSeenTimestampUTC']
-                            # )
+                            # Send scan data to Azure IoT service (forwards to Azure IoT Hub)
+                            self._send_scan_to_iot(
+                                tag=tag['EPC-96'],
+                                lat=lat,
+                                lon=lon,
+                                speed=speed,
+                                bearing=bearing,
+                                antenna=tag['AntennaID'],
+                                rssi=tag['PeakRSSI'],
+                                timestamp=tag['LastSeenTimestampUTC']
+                            )
                         except Exception as e:
                             logger.error(f"Storage FAILED: Memory storage error for tag {tag['EPC-96']}: {e}")
 
@@ -839,20 +839,21 @@ class OverviewScreen(BaseScreen):
                 payload.append(record)
                 uploaded_record_ids.append(row[0])
             
-            # Upload this batch via original Scan upload API
-            if payload and self.api.upload_records(payload):
-                try:
-                    if not self._is_leaving and self.storage:
-                        self.storage.delete_uploaded_records(uploaded_record_ids)
-                    logger.info(f"Successfully sent batch {batch_number + 1} to API: {len(uploaded_record_ids)} record(s)")
-                    batch_number += 1
-                except (sqlite3.ProgrammingError, AttributeError) as e:
-                    logger.debug(f"Failed to delete sent records (possibly closed): {e}")
-                    break
-            else:
-                # API upload failed, stop processing remaining batches
-                logger.warning(f"Failed to send batch {batch_number + 1} via API, stopping batch processing")
-                break
+            # COMMENTED OUT: Scan upload data API (batch upload to API endpoint)
+            # if payload and self.api.upload_records(payload):
+            #     try:
+            #         if not self._is_leaving and self.storage:
+            #             self.storage.delete_uploaded_records(uploaded_record_ids)
+            #         logger.info(f"Successfully sent batch {batch_number + 1} to API: {len(uploaded_record_ids)} record(s)")
+            #         batch_number += 1
+            #     except (sqlite3.ProgrammingError, AttributeError) as e:
+            #         logger.debug(f"Failed to delete sent records (possibly closed): {e}")
+            #         break
+            # else:
+            #     # API upload failed, stop processing remaining batches
+            #     logger.warning(f"Failed to send batch {batch_number + 1} via API, stopping batch processing")
+            #     break
+            break  # Skip batch upload while API upload is commented out
         
         # Also do best-effort pruning for any old records
         if not self._is_leaving and self.storage:
