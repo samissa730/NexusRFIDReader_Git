@@ -5,6 +5,9 @@
 
 set -e  # Exit on any error
 
+# Directory where this script lives (so it works when run from repo root or from Azure-IoT-Connection)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -115,39 +118,39 @@ create_directories() {
 copy_service_files() {
     print_status "Copying service files..."
     
-    # Copy the main service script
-    if [[ -f "iot_service.py" ]]; then
-        sudo cp iot_service.py /opt/azure-iot/
+    # Copy the main service script (from script directory, not cwd)
+    if [[ -f "$SCRIPT_DIR/iot_service.py" ]]; then
+        sudo cp "$SCRIPT_DIR/iot_service.py" /opt/azure-iot/
         sudo chmod +x /opt/azure-iot/iot_service.py
         print_success "IoT service script copied"
     else
-        print_error "iot_service.py not found in current directory"
+        print_error "iot_service.py not found in $SCRIPT_DIR"
         exit 1
     fi
     
     # Copy the device setup script
-    if [[ -f "device_setup.py" ]]; then
-        sudo cp device_setup.py /opt/azure-iot/
+    if [[ -f "$SCRIPT_DIR/device_setup.py" ]]; then
+        sudo cp "$SCRIPT_DIR/device_setup.py" /opt/azure-iot/
         sudo chmod +x /opt/azure-iot/device_setup.py
         print_success "Device setup script copied"
     else
-        print_error "device_setup.py not found in current directory"
+        print_error "device_setup.py not found in $SCRIPT_DIR"
         exit 1
     fi
     
     # Copy the download script
-    if [[ -f "download.py" ]]; then
-        sudo cp download.py /opt/azure-iot/
+    if [[ -f "$SCRIPT_DIR/download.py" ]]; then
+        sudo cp "$SCRIPT_DIR/download.py" /opt/azure-iot/
         sudo chmod +x /opt/azure-iot/download.py
         print_success "Download script copied"
     else
-        print_error "download.py not found in current directory"
+        print_error "download.py not found in $SCRIPT_DIR"
         exit 1
     fi
     
     # Copy env.json if present; otherwise device_setup will prompt and create it
-    if [[ -f "env.json" ]]; then
-        sudo cp env.json /opt/azure-iot/
+    if [[ -f "$SCRIPT_DIR/env.json" ]]; then
+        sudo cp "$SCRIPT_DIR/env.json" /opt/azure-iot/
         sudo chmod 600 /opt/azure-iot/env.json
         print_success "Environment configuration copied"
     else
@@ -155,11 +158,11 @@ copy_service_files() {
     fi
     
     # Copy the systemd service file
-    if [[ -f "azure-iot.service" ]]; then
-        sudo cp azure-iot.service /etc/systemd/system/
+    if [[ -f "$SCRIPT_DIR/azure-iot.service" ]]; then
+        sudo cp "$SCRIPT_DIR/azure-iot.service" /etc/systemd/system/
         print_success "Systemd service file copied"
     else
-        print_error "azure-iot.service not found in current directory"
+        print_error "azure-iot.service not found in $SCRIPT_DIR"
         exit 1
     fi
 }
