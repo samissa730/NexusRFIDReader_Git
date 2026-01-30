@@ -1,19 +1,36 @@
 #!/usr/bin/env python3
 """
-Test IoT Service - Extended version of iot_service.py with Unix socket server
-This version receives scan data via IPC and forwards to Azure IoT Hub
-Run this to test the IPC → IoT Hub flow
+Test IoT Service - Cross-platform (Windows + Raspberry Pi) with optional mock data.
+- By default sends mock scan data on a timer (no test_iot_publisher required).
+- Use --no-mock to listen for scan data via IPC (Unix socket on Pi, TCP on Windows).
 """
 
+import argparse
 import json
+import platform
 import time
 import signal
-import subprocess
 import sys
 import threading
 import socket
-import io
 from pathlib import Path
+
+# Cross-platform: config and IPC paths
+_IS_WINDOWS = platform.system() == "Windows"
+_SCRIPT_DIR = Path(__file__).resolve().parent
+
+# Config: Pi uses /etc, Windows uses script dir; fallback to script dir on both
+CONFIG_PATHS = []
+if not _IS_WINDOWS:
+    CONFIG_PATHS.append(Path("/etc/azureiotpnp/provisioning_config.json"))
+CONFIG_PATHS.append(_SCRIPT_DIR / "provisioning_config.json")
+
+# IPC: Pi = Unix socket, Windows = TCP host:port
+if _IS_WINDOWS:
+    SOCKET_TCP_HOST = "127.0.0.1"
+    SOCKET_TCP_PORT = 9999
+else:
+    SOCKET_PATH = "/var/run/nexus-iot.sock"
 
 # Custom stderr filter to suppress non-critical SDK background thread errors
 class StderrFilter:
@@ -47,11 +64,16 @@ except ImportError:
     print("Install with: sudo pip3 install azure-iot-device")
     sys.exit(1)
 
-CONFIG_PATH = Path("/etc/azureiotpnp/provisioning_config.json")
-SOCKET_PATH = "/var/run/nexus-iot.sock"
+def _resolve_config_path():
+    """Resolve provisioning config path for current OS."""
+    for p in CONFIG_PATHS:
+        if p.exists():
+            return p
+    return CONFIG_PATHS[-1]  # Return preferred fallback for error message
+
 
 class TestAzureIoTService:
-    def __init__(self):
+    def __init__(self, mock_mode=False, mock_interval_sec=10):
         self.client = None
         self.running = True
         self.socket_server = None
@@ -59,8 +81,13 @@ class TestAzureIoTService:
         self.message_count = 0
         self.client_lock = threading.Lock()  # Lock for thread-safe client operations
         self.connected = False
+        self.mock_mode = mock_mode
+        self.mock_interval_sec = max(5, mock_interval_sec)
         self._load_configuration()
-        signal.signal(signal.SIGTERM, self._signal_handler)
+        try:
+            signal.signal(signal.SIGTERM, self._signal_handler)
+        except (ValueError, OSError):
+            pass  # SIGTERM not available on Windows
         signal.signal(signal.SIGINT, self._signal_handler)
 
     def _signal_handler(self, signum, frame):
@@ -68,17 +95,21 @@ class TestAzureIoTService:
         self.running = False
 
     def _load_configuration(self):
-        """Load configuration from provisioning config"""
-        if not CONFIG_PATH.exists():
-            print(f"ERROR: Configuration file not found: {CONFIG_PATH}")
-            print("Please run device_setup.py first!")
+        """Load configuration from provisioning config (cross-platform path)."""
+        config_path = _resolve_config_path()
+        if not config_path.exists():
+            print(f"ERROR: Configuration file not found: {config_path}")
+            print("Tried: " + ", ".join(str(p) for p in CONFIG_PATHS))
+            print("Please run device_setup.py or place provisioning_config.json in utils_Test/")
             raise FileNotFoundError("Device not configured")
-        
-        config = json.loads(CONFIG_PATH.read_text())
+
+        config = json.loads(config_path.read_text())
         self.global_endpoint = config["globalEndpoint"]
         self.id_scope = config["idScope"]
         self.registration_id = config["registrationId"]
-        self.symmetric_key = config["symmetricKey"]
+        self.symmetric_key = config.get("symmetricKey") or config.get("group_key")
+        if not self.symmetric_key:
+            raise ValueError("provisioning_config must contain symmetricKey or group_key")
         
         # Load device tags
         tags_from_config = config.get("tags", {})
@@ -181,31 +212,31 @@ class TestAzureIoTService:
             print(f"Warning: Failed to report tags: {e}")
 
     def _start_socket_server(self):
-        """Start Unix socket server to receive scan data from main app"""
+        """Start IPC server: Unix socket on Raspberry Pi, TCP on Windows."""
         try:
-            # Remove old socket file if exists
-            if Path(SOCKET_PATH).exists():
-                Path(SOCKET_PATH).unlink()
-                print(f"✓ Removed old socket file")
-            
-            # Create Unix socket server
-            self.socket_server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            self.socket_server.bind(SOCKET_PATH)
-            self.socket_server.listen(5)
-            
-            # Set permissions so main app can connect
-            import os
-            os.chmod(SOCKET_PATH, 0o666)
-            
-            print(f"✓ Socket server listening on {SOCKET_PATH}")
-            
-            # Start accepting connections in background thread
+            if _IS_WINDOWS:
+                self.socket_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.socket_server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                self.socket_server.bind((SOCKET_TCP_HOST, SOCKET_TCP_PORT))
+                self.socket_server.listen(5)
+                print(f"✓ TCP server listening on {SOCKET_TCP_HOST}:{SOCKET_TCP_PORT}")
+            else:
+                if Path(SOCKET_PATH).exists():
+                    Path(SOCKET_PATH).unlink()
+                    print("✓ Removed old socket file")
+                self.socket_server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                self.socket_server.bind(SOCKET_PATH)
+                self.socket_server.listen(5)
+                import os
+                os.chmod(SOCKET_PATH, 0o666)
+                print(f"✓ Unix socket server listening on {SOCKET_PATH}")
+
             self.socket_thread = threading.Thread(
                 target=self._handle_socket_connections,
                 daemon=True
             )
             self.socket_thread.start()
-            
+
         except Exception as e:
             print(f"✗ Failed to start socket server: {e}")
             raise
@@ -291,6 +322,51 @@ class TestAzureIoTService:
         
         return False
 
+    def _create_mock_scan_record(self):
+        """Create a mock scan record (same format as test_iot_publisher / C# Azure Function)."""
+        test_tag = f"E20034120B1B0170{int(time.time()) % 100000000:08d}"
+        return {
+            "siteId": "019a9e1e-81ff-75ab-99fc-4115bb92fec6",
+            "tagName": test_tag,
+            "latitude": 37.7749 + (hash(test_tag) % 100) * 0.0001,
+            "longitude": -122.4194 + (hash(test_tag) % 100) * 0.0001,
+            "speed": 15.0,
+            "deviceId": getattr(self, "device_id", "1000000012345678"),
+            "antenna": "1",
+            "barrier": 270.0,
+            "comment": None,
+            "metadata": {
+                "siteName": self.nexus_locate.get("siteName", "MockSite"),
+                "truckNumber": self.nexus_locate.get("truckNumber", "MockTruck"),
+                "timestamp": int(time.time() * 1000000),
+            },
+        }
+
+    def _send_mock_scan(self):
+        """Generate and send one mock scan to IoT Hub (no test_iot_publisher needed)."""
+        scan_data = self._create_mock_scan_record()
+        enriched_data = {
+            **scan_data,
+            "deviceInfo": {
+                "registrationId": self.registration_id,
+                "deviceId": self.device_id,
+                "siteName": self.nexus_locate.get("siteName"),
+                "truckNumber": self.nexus_locate.get("truckNumber"),
+                "deviceSerial": self.nexus_locate.get("deviceSerial"),
+            },
+        }
+        iot_message = json.dumps(enriched_data)
+        if self._send_message_safe(iot_message):
+            self.message_count += 1
+            print(
+                f"✓ [Mock {self.message_count}] Sent scan to IoT Hub: {scan_data.get('tagName')}"
+            )
+            print(
+                f"   Location: ({scan_data.get('latitude')}, {scan_data.get('longitude')})"
+            )
+            return True
+        return False
+
     def _process_message(self, message_str):
         """Process received scan message and send to IoT Hub"""
         try:
@@ -336,7 +412,8 @@ class TestAzureIoTService:
         try:
             print()
             print("=" * 60)
-            print("Test Azure IoT Service with IPC Support")
+            print("Test Azure IoT Service (Windows + Raspberry Pi)")
+            print("Platform: {}".format(platform.system()))
             print("=" * 60)
             print()
             
@@ -345,11 +422,15 @@ class TestAzureIoTService:
                 return
             if not self.connect_to_iot_hub():
                 return
-        
-            # Start socket server for scan data
-            print()
-            self._start_socket_server()
-            
+
+            # IPC server only when not in mock mode (Pi: Unix socket, Windows: TCP)
+            if not self.mock_mode:
+                print()
+                self._start_socket_server()
+            else:
+                print()
+                print("✓ Mock mode: sending mock scan data (test_iot_publisher not required)")
+
             # Send initial connection message
             initial_msg = json.dumps({
                 "event": "test_service_connected",
@@ -366,20 +447,31 @@ class TestAzureIoTService:
             
             print()
             print("=" * 60)
-            print("Service is running and ready to receive scan data")
-            print("Run test_iot_publisher.py to send test scans")
+            if self.mock_mode:
+                print("Mock mode: sending mock scans every {}s".format(self.mock_interval_sec))
+            else:
+                print("Service is running and ready to receive scan data")
+                if _IS_WINDOWS:
+                    print("Run test_iot_publisher.py (TCP) to send test scans")
+                else:
+                    print("Run test_iot_publisher.py to send test scans")
             print("Press Ctrl+C to stop")
             print("=" * 60)
             print()
-            
+
             try:
-                # Keep service alive and send periodic heartbeats to maintain connection
-                heartbeat_interval = 60  # Send heartbeat every 60 seconds
+                heartbeat_interval = 60
                 last_heartbeat = time.time()
-                
+                last_mock = time.time()
+
                 while self.running:
                     current_time = time.time()
-                    
+
+                    # Mock mode: send mock scan at interval
+                    if self.mock_mode and (current_time - last_mock >= self.mock_interval_sec):
+                        self._send_mock_scan()
+                        last_mock = current_time
+
                     # Send heartbeat periodically to keep connection alive
                     if current_time - last_heartbeat >= heartbeat_interval:
                         heartbeat = json.dumps({
@@ -440,13 +532,34 @@ class TestAzureIoTService:
             sys.stderr = original_stderr
 
 
+def _parse_args():
+    parser = argparse.ArgumentParser(
+        description="Test Azure IoT Service (Windows + Raspberry Pi). Sends mock data by default."
+    )
+    parser.add_argument(
+        "--no-mock",
+        action="store_true",
+        help="Listen for scan data via IPC (Unix socket on Pi, TCP on Windows) instead of sending mock data",
+    )
+    parser.add_argument(
+        "--mock-interval",
+        type=int,
+        default=5,
+        metavar="SEC",
+        help="Seconds between mock scans when in mock mode (default: 10)",
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
+    args = _parse_args()
+    mock_mode = not args.no_mock
     try:
-        service = TestAzureIoTService()
+        service = TestAzureIoTService(mock_mode=mock_mode, mock_interval_sec=args.mock_interval)
         service.run()
     except FileNotFoundError:
         print("\nDevice setup required! Please ensure Azure IoT is configured.")
-        print("Check /etc/azureiotpnp/provisioning_config.json exists")
+        print("Config paths tried:", [str(p) for p in CONFIG_PATHS])
         sys.exit(1)
     except KeyboardInterrupt:
         print("\n\nService stopped by user")
