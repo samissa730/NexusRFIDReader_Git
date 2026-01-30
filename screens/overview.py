@@ -156,10 +156,9 @@ class OverviewScreen(BaseScreen):
 
         # Waiting spinner init
         # Schedulers
-        # Heartbeat (health upload) commented out
-        # self.health_timer = QTimer(self)
-        # self.health_timer.timeout.connect(self._upload_health)
-        # self.health_timer.start(int(API_CONFIG.get('health_interval_ms', 15000)))
+        self.health_timer = QTimer(self)
+        self.health_timer.timeout.connect(self._upload_health)
+        self.health_timer.start(int(API_CONFIG.get('health_interval_ms', 15000)))
 
         self.upload_timer = QTimer(self)
         self.upload_timer.timeout.connect(self._upload_records)
@@ -580,13 +579,12 @@ class OverviewScreen(BaseScreen):
         # RFID will access GPS through gps_getter function, so no need to update reference
         self._set_gps_status("External GPS Connected", True)
 
-    # Heartbeat (health upload) commented out
-    # def _upload_health(self):
-    #     lat, lon = (0, 0)
-    #     if self.gps:
-    #         lat, lon = extract_from_gps(self.gps.get_data())
-    #     gps_text = self.ui.gps_connection_status.text()
-    #     self.api.upload_health(bool(self.rfid.connectivity), gps_text, lat, lon)
+    def _upload_health(self):
+        lat, lon = (0, 0)
+        if self.gps:
+            lat, lon = extract_from_gps(self.gps.get_data())
+        gps_text = self.ui.gps_connection_status.text()
+        self.api.upload_health(bool(self.rfid.connectivity), gps_text, lat, lon)
 
     def _update_gps_display(self):
         """Update GPS display fields with current GPS data"""
@@ -681,12 +679,11 @@ class OverviewScreen(BaseScreen):
                 self.ui.site_id.setText(new_site_id)
                 logger.debug(f"Site ID updated to: {new_site_id}")
             
-            # Heartbeat (health timer) commented out
-            # # Update health timer interval if it changed
-            # new_health_interval = int(settings.API_CONFIG.get('health_interval_ms', 15000))
-            # if self.health_timer.interval() != new_health_interval:
-            #     self.health_timer.setInterval(new_health_interval)
-            #     logger.debug(f"Health timer interval updated to: {new_health_interval}ms")
+            # Update health timer interval if it changed
+            new_health_interval = int(settings.API_CONFIG.get('health_interval_ms', 15000))
+            if self.health_timer.interval() != new_health_interval:
+                self.health_timer.setInterval(new_health_interval)
+                logger.debug(f"Health timer interval updated to: {new_health_interval}ms")
             
             # Update upload timer interval if it changed
             new_upload_interval = int(settings.API_CONFIG.get('record_interval_ms', 7000))
