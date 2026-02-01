@@ -347,13 +347,6 @@ class TestAzureIoTService:
         scan_data = self._create_mock_scan_record()
         enriched_data = {
             **scan_data,
-            "deviceInfo": {
-                "registrationId": self.registration_id,
-                "deviceId": self.device_id,
-                "siteName": self.nexus_locate.get("siteName"),
-                "truckNumber": self.nexus_locate.get("truckNumber"),
-                "deviceSerial": self.nexus_locate.get("deviceSerial"),
-            },
         }
         iot_message = json.dumps(enriched_data)
         if self._send_message_safe(iot_message):

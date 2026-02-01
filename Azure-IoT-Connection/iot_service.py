@@ -474,13 +474,6 @@ class AzureIoTService:
                 # Add device identification from config
                 enriched_data = {
                     **scan_data,
-                    "deviceInfo": {
-                        "registrationId": self.registration_id,
-                        "deviceId": self.device_id,
-                        "siteName": self.nexus_locate.get('siteName'),
-                        "truckNumber": self.nexus_locate.get('truckNumber'),
-                        "deviceSerial": self.nexus_locate.get('deviceSerial')
-                    }
                 }
                 
                 # Log the enriched payload before sending
