@@ -8,5 +8,7 @@
       "siteName": "YOUR_SITE_NAME_HERE",
       "truckNumber": "YOUR_TRUCK_NUMBER_HERE"
     }
-  }
+  },
+  "batchSize": 10,
+  "batchIntervalSeconds": 5
 }

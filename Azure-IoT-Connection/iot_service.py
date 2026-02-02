@@ -67,6 +67,9 @@ class AzureIoTService:
         self.client_lock = threading.Lock()  # Lock for thread-safe client operations
         self.connected = False
         self.last_message_time = 0  # Track last successful message send time
+        self.scan_buffer = []  # Buffer scans for batch upload
+        self.batch_lock = threading.Lock()
+        self.last_batch_flush_time = 0  # When first item in current buffer was added
         self._load_configuration()
         signal.signal(signal.SIGTERM, self._signal_handler)
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -97,7 +100,9 @@ class AzureIoTService:
                 tags_from_config = {}
         self.tag = tags_from_config
         self.nexus_locate = self.tag.get("nexusLocate", {})
-        
+        # Batching: send multiple scans in one MQTT message
+        self.batch_size = max(1, int(config.get("batchSize", 10)))
+        self.batch_interval_seconds = max(0, float(config.get("batchIntervalSeconds", 5)))
         # logger.info(f"Loaded configuration for device: {self.registration_id}")
         # logger.info(f"Site: {self.nexus_locate.get('siteName', 'N/A')}")
         # logger.info(f"Truck: {self.nexus_locate.get('truckNumber', 'N/A')}")
@@ -305,9 +310,19 @@ class AzureIoTService:
                             # Heartbeat failed, connection check will handle reconnection
                             pass
 
+                    # Flush scan batch when interval elapsed and buffer has data
+                    if (self.batch_interval_seconds > 0 and
+                            current_time - self.last_batch_flush_time >= self.batch_interval_seconds):
+                        with self.batch_lock:
+                            has_buffered = bool(self.scan_buffer)
+                        if has_buffered:
+                            self._flush_scan_batch()
+
                     # Sleep in small increments to respond to shutdown signals
                     time.sleep(1)
             finally:
+                # Flush any buffered scans before disconnect
+                self._flush_scan_batch()
                 # Cleanup socket server
                 if self.socket_server:
                     try:
@@ -459,33 +474,40 @@ class AzureIoTService:
             conn.close()
             # logger.debug("Client disconnected")
 
+    def _flush_scan_batch(self):
+        """Send buffered scans to IoT Hub as a single batch message. Caller should hold batch_lock if needed for consistency with buffer updates."""
+        with self.batch_lock:
+            if not self.scan_buffer:
+                return
+            batch = list(self.scan_buffer)
+            self.scan_buffer.clear()
+        payload = {"type": "scan_batch", "scans": batch}
+        iot_message = json.dumps(payload)
+        if self._send_message_safe(iot_message):
+            self.message_count += len(batch)
+            print(f"[IoT Service] ✓ [{self.message_count}] Sent batch to IoT Hub: {len(batch)} scan(s)")
+        else:
+            # Re-queue failed batch (prepend so order preserved on retry)
+            with self.batch_lock:
+                self.scan_buffer[:0] = batch
+            print(f"[IoT Service] ✗ Failed to send batch to IoT Hub ({len(batch)} scan(s)), re-queued")
+
     def _process_message(self, message_str):
-        """Process received scan message and send to IoT Hub"""
+        """Process received scan message: buffer and send to IoT Hub in batches"""
         try:
             message = json.loads(message_str)
             msg_type = message.get("type")
             
             if msg_type == "scan":
                 scan_data = message.get("data", {})
-                
-                # Log the received payload
-                print(f"[IoT Service] Received scan payload: {json.dumps(scan_data, indent=2)}")
-                
-                # Add device identification from config
-                enriched_data = {
-                    **scan_data,
-                }
-                
-                # Log the enriched payload before sending
-                print(f"[IoT Service] Enriched payload (before sending to IoT Hub): {json.dumps(enriched_data, indent=2)}")
-                
-                # Send to Azure IoT Hub with automatic reconnection
-                iot_message = json.dumps(enriched_data)
-                if self._send_message_safe(iot_message):
-                    self.message_count += 1
-                    print(f"[IoT Service] ✓ [{self.message_count}] Successfully sent scan to IoT Hub: Tag={scan_data.get('tagName')}, Site={scan_data.get('siteId')}")
-                else:
-                    print(f"[IoT Service] ✗ Failed to send scan to IoT Hub: Tag={scan_data.get('tagName')}")
+                enriched_data = {**scan_data}
+                with self.batch_lock:
+                    if not self.scan_buffer:
+                        self.last_batch_flush_time = time.time()
+                    self.scan_buffer.append(enriched_data)
+                    count = len(self.scan_buffer)
+                if count >= self.batch_size:
+                    self._flush_scan_batch()
                 
         except json.JSONDecodeError as e:
             print(f"[IoT Service] ✗ Invalid JSON message: {e}")
