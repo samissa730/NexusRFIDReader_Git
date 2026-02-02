@@ -97,11 +97,6 @@ def create_test_scan_record():
         "antenna": "1",  # string in C# function
         "barrier": 270.0,  # double in C# function (bearing/heading)
         "comment": None,  # optional string
-        "metadata": {
-            "siteName": "Lazer",
-            "truckNumber": "TestTruck001",
-            "timestamp": int(time.time() * 1000000)  # Microseconds
-        }
     }
     
     return record

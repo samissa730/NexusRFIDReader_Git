@@ -536,6 +536,8 @@ class AzureIoTService:
                             continue
                         return False
                     
+                    # Debug: log uploaded payload to stdout for journalctl -u azure-iot.service -f
+                    print(f"[IoT Service] DEBUG upload: {message_json}", flush=True)
                     # Send message
                     self.client.send_message(message_json)
                     self.last_message_time = time.time()  # Update last successful message time

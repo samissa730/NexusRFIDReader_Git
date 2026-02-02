@@ -335,11 +335,6 @@ class TestAzureIoTService:
             "antenna": "1",
             "barrier": 270.0,
             "comment": None,
-            "metadata": {
-                "siteName": self.nexus_locate.get("siteName", "MockSite"),
-                "truckNumber": self.nexus_locate.get("truckNumber", "MockTruck"),
-                "timestamp": int(time.time() * 1000000),
-            },
         }
 
     def _send_mock_scan(self):
