@@ -234,9 +234,6 @@ class OverviewScreen(BaseScreen):
                 "antenna": str(antenna),
                 "barrier": float(bearing),
                 "rssi": str(rssi) if rssi else "0",
-                "metadata": {
-                    "timestamp": int(timestamp) if timestamp else int(time.time() * 1_000_000)
-                }
             }
             
             # Send to IoT service
