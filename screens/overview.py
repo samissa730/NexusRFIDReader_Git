@@ -1,5 +1,5 @@
 from PySide6.QtCore import Qt, QTimer, QThread, Signal
-from PySide6.QtWidgets import QTableWidgetItem, QLabel, QApplication
+from PySide6.QtWidgets import QTableWidgetItem, QLabel
 
 from screens.base import BaseScreen
 from ui.screens.ui_overview import Ui_OverviewScreen
@@ -834,13 +834,13 @@ class OverviewScreen(BaseScreen):
             uploaded_record_ids = []  # Track IDs of records to be uploaded in this batch
             
             for row in batch_records:
-                latitude = row[4] if row[4] else 0
-                longitude = row[5] if row[5] else 0  
-                speed = float(row[6]) if row[6] else 0.0
-                heading = float(row[7]) if row[7] else 0.0  # heading (bearing) from GPS
-                rssi = int(row[3]) if row[3] else 0
+                latitude = _safe_float(row[4])
+                longitude = _safe_float(row[5])
+                speed = _safe_float(row[6])
+                heading = _safe_float(row[7])  # heading (bearing) from GPS; safe against e.g. '$GP'
+                rssi = _safe_int(row[3])
                 tag_name = row[1] if row[1] else ""
-                antenna = int(row[2]) if row[2] else 1
+                antenna = _safe_int(row[2], 1)
                 
                 # Adapt to API format
                 record = {
@@ -880,6 +880,26 @@ class OverviewScreen(BaseScreen):
                 self.storage.prune_old()
             except (sqlite3.ProgrammingError, AttributeError) as e:
                 logger.debug(f"Failed to prune old records (possibly closed): {e}")
+
+
+def _safe_float(val, default=0.0):
+    """Convert value to float; return default on None, empty, or invalid (e.g. raw NMEA like '$GP')."""
+    if val is None or val == "":
+        return default
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return default
+
+
+def _safe_int(val, default=0):
+    """Convert value to int; return default on None, empty, or invalid."""
+    if val is None or val == "":
+        return default
+    try:
+        return int(float(val))
+    except (ValueError, TypeError):
+        return default
 
 
 def calculate_next_id(used_ids):
