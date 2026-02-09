@@ -223,7 +223,25 @@ class RFID(QThread):
         while not self._b_stop.is_set() and self.connectivity is False:
             try:
                 new_host = None
-                
+
+                # Check if original host is back before trying discovery (e.g. cable reconnected)
+                try:
+                    if ping(self.host, timeout=1) is not None:
+                        try:
+                            LLRPReaderClient.disconnect_all_readers()
+                            self.reader = None
+                            self._set_reader(self.host, True)
+                            self.reader.connect()
+                            self.connectivity = True
+                            self.sig_msg.emit(1)
+                            self.sig_arp_scan_status.emit(False)  # Ensure spinner hidden
+                            logger.info("Original RFID host back online - reconnected before discovery")
+                            break
+                        except Exception as e:
+                            logger.debug(f"Reconnect to original host failed: {e}")
+                except Exception:
+                    pass
+
                 # First, try default RFID hosts by attempting actual connection
                 logger.info(f"Trying default RFID hosts: {DEFAULT_RFID_HOSTS}")
                 for default_host in DEFAULT_RFID_HOSTS:
@@ -255,14 +273,44 @@ class RFID(QThread):
                     except Exception as e:
                         logger.debug(f"Default host {default_host} connection failed: {e}")
                 
-                # If no default host connected, try arp-scan discovery
+                # If no default host connected, try arp-scan discovery (in thread so we can
+                # detect original host coming back during the scan and reconnect immediately)
                 if not new_host:
                     logger.info("All default hosts failed to connect, running arp-scan discovery")
-                    self.sig_arp_scan_status.emit(True)  # Signal that arp-scan is starting
-                    try:
-                        new_host = discover_rfid_readers(interface="eth0", subnet="169.254.0.0/16")
-                    finally:
-                        self.sig_arp_scan_status.emit(False)  # Signal that arp-scan is complete
+                    arp_result = [None]  # mutable so thread can store result
+
+                    def run_arp_scan():
+                        arp_result[0] = discover_rfid_readers(interface="eth0", subnet="169.254.0.0/16")
+
+                    arp_scan_thread = threading.Thread(target=run_arp_scan)
+                    arp_scan_thread.start()
+                    self.sig_arp_scan_status.emit(True)  # Show spinner
+                    reconnected_during_scan = False
+                    while arp_scan_thread.is_alive() and not self._b_stop.is_set():
+                        try:
+                            response_time = ping(self.host, timeout=1)
+                            if response_time is not None:
+                                try:
+                                    LLRPReaderClient.disconnect_all_readers()
+                                    self.reader = None
+                                    self._set_reader(self.host, True)
+                                    self.reader.connect()
+                                    self.connectivity = True
+                                    self.sig_msg.emit(1)
+                                    self.sig_arp_scan_status.emit(False)  # Hide spinner immediately
+                                    reconnected_during_scan = True
+                                    logger.info("Original RFID host back online during arp-scan - reconnected")
+                                    break
+                                except Exception as e:
+                                    logger.debug(f"Reconnect to original host during arp-scan failed: {e}")
+                        except Exception:
+                            pass
+                        time.sleep(0.5)
+                    if reconnected_during_scan:
+                        break  # Exit discovery loop; status and spinner already updated
+                    arp_scan_thread.join()
+                    self.sig_arp_scan_status.emit(False)  # Hide spinner when arp-scan completes
+                    new_host = arp_result[0]
                 
                 if new_host:
                     if new_host != self.host:
