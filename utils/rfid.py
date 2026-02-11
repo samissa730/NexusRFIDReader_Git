@@ -126,7 +126,7 @@ class RFID(QThread):
             else:
                 tag_dict = converted_tags
             self.tag_data = [tag_dict, lat, lon, speed, bearing]
-            # logger.debug(f"Tag data: {self.tag_data}")
+            logger.info("[RFID flow] tag(s) received: %s", len(tags))
             self.sig_msg.emit(3)
         else:
             logger.debug("RFID callback called but no tags found")
@@ -181,32 +181,37 @@ class RFID(QThread):
             try:
                 response_time = ping(self.host, timeout=3)
                 if response_time is not None:
+                    # Host reachable: reconnect if we were disconnected
                     if self.connectivity is False:
-                        LLRPReaderClient.disconnect_all_readers()
-                        self.reader = None
-                        self._set_reader(self.host, True)
-                        self.reader.connect()
-                        self.sig_msg.emit(1)
-                        # Reset discovery tracking when connection is restored
-                        self._discovery_in_progress = False
+                        logger.info("[RFID flow] host reachable, reconnecting...")
+                        try:
+                            LLRPReaderClient.disconnect_all_readers()
+                            self.reader = None
+                            self._set_reader(self.host, False)
+                            self.reader.connect()
+                            self.connectivity = True
+                            self.sig_msg.emit(1)
+                            logger.info("[RFID flow] reconnected successfully")
+                            self._discovery_in_progress = False
+                        except Exception as e:
+                            logger.debug("[RFID flow] reconnect failed: %s", e)
+                            self.connectivity = False
+                    # else: connected and ping OK -> do nothing, stay connected
                 else:
+                    # Ping failed: mark disconnected only if we were connected
                     if self.connectivity is True:
                         self.connectivity = False
                         self.sig_msg.emit(2)
-                    # Check if we should trigger discovery: disconnected and ping failed
-                    elif self.connectivity is False:
-                        # Continuously attempt discovery if not already in progress
-                        if not self._discovery_in_progress:
-                            self._attempt_discovery()
-            except Exception:
+                        logger.info("[RFID flow] host unreachable (ping failed), marked disconnected")
+                    elif self.connectivity is False and not self._discovery_in_progress:
+                        self._attempt_discovery()
+            except Exception as e:
+                logger.debug("[RFID flow] ping check error: %s", e)
                 if self.connectivity is True:
                     self.connectivity = False
                     self.sig_msg.emit(2)
-                # Also check for discovery on ping exceptions
-                elif self.connectivity is False:
-                    # Continuously attempt discovery if not already in progress
-                    if not self._discovery_in_progress:
-                        self._attempt_discovery()
+                elif self.connectivity is False and not self._discovery_in_progress:
+                    self._attempt_discovery()
             time.sleep(.1)
 
     def _attempt_discovery(self):

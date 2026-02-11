@@ -106,7 +106,7 @@ class OverviewScreen(BaseScreen):
         self.gps_timeout_timer.setInterval(10000)  # Check every 10 seconds
 
         # Enable GPS on startup
-        logger.info("Attempting to enable GPS on startup...")
+        # logger.info("Attempting to enable GPS on startup...")
         enable_gps_at_command()
 
         # Always attempt external; retry every 30s if not connected
@@ -193,12 +193,14 @@ class OverviewScreen(BaseScreen):
     def _on_gps_status(self, status):
         # Called by external GPS worker
         if status:
+            logger.info("[GPS status] Connected")
             self._set_gps_status("External GPS Connected", True)
             # Reset timeout tracking when GPS connects
             self.gps_connection_start_time = None
             self.gps_timeout_timer.stop()
             # RFID accesses GPS through gps_getter function, so no manual update needed
         else:
+            logger.info("[GPS status] Disconnected")
             # External disconnected: update status and start GPS scan
             self._set_gps_status("Disconnected", False)
             # Start timeout tracking when GPS disconnects
@@ -212,11 +214,11 @@ class OverviewScreen(BaseScreen):
             self.arp_scan_spinner.start()
             self._update_waiting_label_position()
             self.waiting_label.show()
-            logger.debug("ARP-scan started - showing spinner")
+            # logger.debug("ARP-scan started - showing spinner")
         else:
             self.arp_scan_spinner.stop()
             self.waiting_label.hide()
-            logger.debug("ARP-scan completed - hiding spinner")
+            # logger.debug("ARP-scan completed - hiding spinner")
     
     def _update_waiting_label_position(self):
         """Update the position of the waiting label to be below the spinner"""
@@ -241,15 +243,15 @@ class OverviewScreen(BaseScreen):
         if status == 1:
             self.ui.rfid_connection_status.setStyleSheet("""color: #00ff00;""")
             self.ui.rfid_connection_status.setText("Connected")
-            logger.info("RFID reader connected")
+            logger.info("[RFID status] Connected")
         elif status == 2:
             self.ui.rfid_connection_status.setStyleSheet("""color: #ff0000;""")
             self.ui.rfid_connection_status.setText("Disconnected")
-            logger.warning("RFID reader disconnected")
+            logger.info("[RFID status] Disconnected")
         elif status == 3:
             # logger.debug("RFID tag detected, processing...")
             if not self.rfid.tag_data or len(self.rfid.tag_data) < 5:
-                logger.warning("RFID tag detected but no tag data available")
+                # logger.warning("RFID tag detected but no tag data available")
                 return
             tag = self.rfid.tag_data[0]
             lat = self.rfid.tag_data[1]
@@ -277,7 +279,7 @@ class OverviewScreen(BaseScreen):
                     min_s = sp.get('min')
                     max_s = sp.get('max')
                     if min_s is not None and max_s is not None and (speed < min_s or speed > max_s):
-                        logger.debug(f"Skipping storage: speed {speed} is not in range {min_s} to {max_s}")
+                        # logger.debug(f"Skipping storage: speed {speed} is not in range {min_s} to {max_s}")
                         storage_flag = False
 
             if storage_flag:
@@ -286,7 +288,7 @@ class OverviewScreen(BaseScreen):
                     min_r = rs.get('min')
                     max_r = rs.get('max')
                     if min_r is not None and max_r is not None and (tag['PeakRSSI'] < min_r or tag['PeakRSSI'] > max_r):
-                        logger.debug(f"Skipping storage: RSSI {tag['PeakRSSI']} is not in range {min_r} to {max_r}")
+                        # logger.debug(f"Skipping storage: RSSI {tag['PeakRSSI']} is not in range {min_r} to {max_r}")
                         storage_flag = False
 
             if storage_flag:
@@ -297,10 +299,10 @@ class OverviewScreen(BaseScreen):
                     try:
                         epc = int(tag['EPC-96'])
                         if min_t is not None and max_t is not None and (epc < min_t or epc > max_t):
-                            logger.debug(f"Skipping storage: EPC {epc} is not in range {min_t} to {max_t}")
+                            # logger.debug(f"Skipping storage: EPC {epc} is not in range {min_t} to {max_t}")
                             storage_flag = False
                     except Exception:
-                        logger.debug(f"Skipping storage: EPC {tag['EPC-96']} is not an integer")
+                        # logger.debug(f"Skipping storage: EPC {tag['EPC-96']} is not an integer")
                         storage_flag = False
 
             # Skip storage if storage_flag is False
@@ -366,6 +368,8 @@ class OverviewScreen(BaseScreen):
             # logger.debug(f"TAG {tag['EPC-96']} ant={tag['AntennaID']} rssi={tag['PeakRSSI']} pos=({lat:.7f},{lon:.7f}) speed={speed} heading={bearing}")
 
             # UI updates
+            logger.info("[RFID flow] tag read | EPC=%s antenna=%s rssi=%s | GPS lat=%.7f lon=%.7f speed=%.4f heading=%s" % (
+                tag['EPC-96'], tag['AntennaID'], tag['PeakRSSI'], lat, lon, speed, bearing))
             table_data = [get_date_from_utc(tag['LastSeenTimestampUTC']), tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
                          f"{lat:.7f}".rstrip('0').rstrip('.') + ", " + f"{lon:.7f}".rstrip('0').rstrip('.'),
                          f"{speed:.4f}".rstrip('0').rstrip('.'), f"{bearing}"]
@@ -402,14 +406,15 @@ class OverviewScreen(BaseScreen):
         disconnection_duration = current_time - self.gps_connection_start_time
         
         if disconnection_duration >= self.gps_timeout_seconds:
-            logger.warning(f"GPS disconnected for {disconnection_duration:.0f} seconds (timeout: {self.gps_timeout_seconds} seconds). Attempting to enable GPS...")
+            # logger.warning(f"GPS disconnected for {disconnection_duration:.0f} seconds (timeout: {self.gps_timeout_seconds} seconds). Attempting to enable GPS...")
+            logger.info("[GPS flow] timeout reached, attempting to enable GPS")
             enable_gps_at_command()
             # Reset timeout tracking after attempting to enable GPS
             self.gps_connection_start_time = None
             self.gps_timeout_timer.stop()
         else:
             remaining_time = self.gps_timeout_seconds - disconnection_duration
-            logger.debug(f"GPS still disconnected. {remaining_time:.0f} seconds remaining before GPS enable attempt")
+            # logger.debug(f"GPS still disconnected. {remaining_time:.0f} seconds remaining before GPS enable attempt")
 
     def _start_gps_scan(self):
         """Start GPS port scanning in background thread"""
@@ -425,13 +430,13 @@ class OverviewScreen(BaseScreen):
         self.gps_scanner.gps_found.connect(self._on_gps_found)
         self.gps_scanner.gps_not_found.connect(self._on_gps_not_found)
         self.gps_scanner.start()
-        logger.debug("Started GPS port scan in background")
+        logger.info("[GPS flow] port scan started")
 
     def _on_gps_found(self, port, baud):
         """Called when GPS port is found in background thread"""
         self._start_external_gps(port, baud)
         self.external_retry_timer.stop()
-        logger.info(f"GPS found on port {port}, starting connection")
+        logger.info("[GPS flow] port found port=%s baud=%s, connecting" % (port, baud))
 
     def _on_gps_not_found(self):
         """Called when no GPS port is found in background thread"""
@@ -442,7 +447,7 @@ class OverviewScreen(BaseScreen):
             self.gps_timeout_timer.start()
         if not self.external_retry_timer.isActive():
             self.external_retry_timer.start()
-        logger.debug("No GPS port found, will retry in 30 seconds")
+        logger.info("[GPS flow] no port found, retry in 30s")
 
     def _start_external_gps(self, port, baud):
         if self.gps and self.gps.isRunning():
@@ -484,11 +489,11 @@ class OverviewScreen(BaseScreen):
                 self.internet_disconnected_start = None
             else:
                 self._set_internet_status("Disconnected", False)
-                logger.debug("Internet ping failed: no response")
+                # logger.debug("Internet ping failed: no response")
                 self._handle_internet_disconnection()
         except Exception as e:
             self._set_internet_status("Disconnected", False)
-            logger.debug(f"Internet ping error: {e}")
+            # logger.debug(f"Internet ping error: {e}")
             self._handle_internet_disconnection()
 
     def _handle_internet_disconnection(self):
@@ -498,21 +503,21 @@ class OverviewScreen(BaseScreen):
         # Start tracking disconnection time if not already started
         if self.internet_disconnected_start is None:
             self.internet_disconnected_start = current_time
-            logger.warning("Internet disconnected, starting disconnection timer")
+            # logger.warning("Internet disconnected, starting disconnection timer")
             return
-        
+
         # Check if disconnection time exceeds the limit
         disconnection_duration = current_time - self.internet_disconnected_start
         if disconnection_duration >= self.internet_limit_seconds:
-            logger.critical(f"Internet disconnected for {disconnection_duration:.0f} seconds (limit: {self.internet_limit_seconds} seconds). Restarting device...")
+            # logger.critical(f"Internet disconnected for {disconnection_duration:.0f} seconds (limit: {self.internet_limit_seconds} seconds). Restarting device...")
             self._restart_device()
         else:
             remaining_time = self.internet_limit_seconds - disconnection_duration
-            logger.warning(f"Internet still disconnected. {remaining_time:.0f} seconds remaining before restart")
+            # logger.warning(f"Internet still disconnected. {remaining_time:.0f} seconds remaining before restart")
 
     def _restart_device(self):
         """Restart the device based on the operating system"""
-        logger.critical("Initiating device restart...")
+        # logger.critical("Initiating device restart...")
         try:
             if platform.system() == "Linux":
                 # For Linux/Raspberry Pi
@@ -521,11 +526,14 @@ class OverviewScreen(BaseScreen):
                 # For Windows
                 subprocess.run(["shutdown", "/r", "/t", "10"], check=True)
             else:
-                logger.error(f"Unsupported operating system for restart: {platform.system()}")
+                # logger.error(f"Unsupported operating system for restart: {platform.system()}")
+                pass
         except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to restart device: {e}")
+            # logger.error(f"Failed to restart device: {e}")
+            pass
         except Exception as e:
-            logger.error(f"Unexpected error during restart: {e}")
+            # logger.error(f"Unexpected error during restart: {e}")
+            pass
 
     def _start_config_reload_timer(self):
         """Start or restart the config reload timer with current internet_limit_time * 3"""
@@ -551,29 +559,30 @@ class OverviewScreen(BaseScreen):
             current_site_id = self.ui.site_id.text()
             if new_site_id != current_site_id:
                 self.ui.site_id.setText(new_site_id)
-                logger.debug(f"Site ID updated to: {new_site_id}")
-            
+                # logger.debug(f"Site ID updated to: {new_site_id}")
+
             # Update health timer interval if it changed
             new_health_interval = int(settings.API_CONFIG.get('health_interval_ms', 15000))
             if self.health_timer.interval() != new_health_interval:
                 self.health_timer.setInterval(new_health_interval)
-                logger.debug(f"Health timer interval updated to: {new_health_interval}ms")
-            
+                # logger.debug(f"Health timer interval updated to: {new_health_interval}ms")
+
             # Update upload timer interval if it changed
             new_upload_interval = int(settings.API_CONFIG.get('record_interval_ms', 7000))
             if self.upload_timer.interval() != new_upload_interval:
                 self.upload_timer.setInterval(new_upload_interval)
-                logger.debug(f"Upload timer interval updated to: {new_upload_interval}ms")
+                # logger.debug(f"Upload timer interval updated to: {new_upload_interval}ms")
             
             # Update API client cached values
             self.api.update_config()
             
             # Restart config reload timer with new interval (in case internet_limit_time changed)
             self._start_config_reload_timer()
-            
-            logger.info("The whole config is updated")
+
+            # logger.info("The whole config is updated")
         else:
-            logger.error("Failed to reload configuration, using existing values")
+            # logger.error("Failed to reload configuration, using existing values")
+            pass
 
     def _upload_records(self):
         data = self.storage.fetch_all_records()
@@ -593,14 +602,16 @@ class OverviewScreen(BaseScreen):
                 # Validate it's a GUID format (contains hyphens and is 36 chars)
                 if len(url_site_id) == 36 and url_site_id.count('-') == 4:
                     site_id = url_site_id
-                    logger.debug(f"Using siteId from URL: {site_id}")
+                    # logger.debug(f"Using siteId from URL: {site_id}")
                 else:
-                    logger.warning(f"URL siteId doesn't look like a GUID: {url_site_id}, using config value: {site_id}")
+                    # logger.warning(f"URL siteId doesn't look like a GUID: {url_site_id}, using config value: {site_id}")
+                    pass
             except Exception as e:
-                logger.warning(f"Failed to extract siteId from URL: {e}, using config value: {site_id}")
-        
+                # logger.warning(f"Failed to extract siteId from URL: {e}, using config value: {site_id}")
+                pass
+
         if not site_id:
-            logger.error("No siteId available - cannot upload records")
+            # logger.error("No siteId available - cannot upload records")
             return
         
         # Filter out records with no GPS data first
@@ -661,11 +672,11 @@ class OverviewScreen(BaseScreen):
             if payload and self.api.upload_records(payload):
                 # Delete the successfully uploaded records
                 self.storage.delete_uploaded_records(uploaded_record_ids)
-                logger.debug(f"Successfully uploaded batch {batch_number + 1} with {len(uploaded_record_ids)} record(s)")
+                # logger.debug(f"Successfully uploaded batch {batch_number + 1} with {len(uploaded_record_ids)} record(s)")
                 batch_number += 1
             else:
                 # Upload failed, stop processing remaining batches
-                logger.warning(f"Failed to upload batch {batch_number + 1}, stopping batch processing")
+                # logger.warning(f"Failed to upload batch {batch_number + 1}, stopping batch processing")
                 break
         
         # Also do best-effort pruning for any old records
