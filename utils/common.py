@@ -238,8 +238,6 @@ def pre_config_gps():
             logger.info(f"✓ Successfully sent AT+QGPS=1 to {port}")
             logger.debug(f"✓ Connection closed for {port}")
             
-            return try_rate
-            
         except serial.SerialException as e:
             logger.debug(f"Port {port} serial error: {e}")
             pass
@@ -250,8 +248,8 @@ def pre_config_gps():
             logger.debug(f"Port {port} error: {e}")
             pass
     
-    logger.debug("No port responded to AT command, using default baud rate")
-    return settings.GPS_CONFIG.get('baud_rate', settings.BAUD_RATE_DON) or settings.BAUD_RATE_DON
+    logger.debug("Finished sending AT+QGPS=1 to all ports (or none available), using probe baud rate")
+    return try_rate
 
 
 def find_gps_port(baud_rate):
@@ -262,17 +260,20 @@ def find_gps_port(baud_rate):
     for port in serial_ports:
         try:
             with serial.Serial(port, baudrate=baud_rate, timeout=1, rtscts=True, dsrdtr=True) as ser:
-                # Try multiple reads to catch GPS data
-                for attempt in range(5):
+                # Brief delay after open so NMEA stream can sync to line boundaries
+                time.sleep(0.3)
+                # Try multiple reads to catch GPS data (Quectel sends $G* and $PS*)
+                for attempt in range(8):
                     buffer = ser.in_waiting
                     if buffer < 80:
                         time.sleep(0.2)  # Wait a bit longer for data
                     line = ser.readline().decode('utf-8', errors='ignore').strip()
                     logger.debug(f"Port {port} attempt {attempt + 1}: {line[:50]}...")  # Log first 50 chars
-                    if line.startswith('$G'):
+                    # Accept standard NMEA ($G*) and Quectel proprietary ($P*) as GPS stream
+                    if line and len(line) > 6 and (line.startswith('$G') or line.startswith('$P')):
                         logger.info(f"GPS found on port: {port}")
                         return port
-                logger.debug(f"No GPS data found on port {port} after 5 attempts")
+                logger.debug(f"No GPS data found on port {port} after 8 attempts")
         except (OSError, serial.SerialException) as e:
             logger.debug(f"Port {port} error: {e}")
             pass
