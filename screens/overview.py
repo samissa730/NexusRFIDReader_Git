@@ -18,6 +18,25 @@ import platform
 from ping3 import ping
 
 
+def _tag_epc(tag):
+    """Get EPC string from tag dict; reader may use 'EPC-96', 'EPC', or other keys."""
+    for key in ('EPC-96', 'EPC', 'epc', 'TagID', 'tag', 'id'):
+        if isinstance(tag.get(key), (str, int, float)):
+            return str(tag[key])
+    for k, v in tag.items():
+        if isinstance(k, str) and 'epc' in k.lower() and isinstance(v, (str, int, float)):
+            return str(v)
+    return str(tag) if tag else ""
+
+
+def _tag_field(tag, *keys, default=""):
+    """Get first present key from tag dict."""
+    for key in keys:
+        if key in tag and tag[key] is not None:
+            return tag[key]
+    return default
+
+
 class GPSScannerThread(QThread):
     """Background thread for scanning GPS ports without blocking the main UI"""
     gps_found = Signal(str, int)  # port, baud_rate
@@ -258,7 +277,14 @@ class OverviewScreen(BaseScreen):
             lon = self.rfid.tag_data[2]
             speed = self.rfid.tag_data[3]
             bearing = self.rfid.tag_data[4]
-            # logger.debug(f"Processing tag: EPC={tag.get('EPC-96', 'N/A')}, Antenna={tag.get('AntennaID', 'N/A')}, RSSI={tag.get('PeakRSSI', 'N/A')}")
+            # Safe tag fields (reader may use EPC-96, EPC, or other keys)
+            epc = _tag_epc(tag)
+            antenna_id = _tag_field(tag, 'AntennaID', 'antenna_id', 'antenna', default="")
+            peak_rssi = _tag_field(tag, 'PeakRSSI', 'RSSI', 'rssi', 'peak_rssi', default="")
+            last_seen_utc = _tag_field(tag, 'LastSeenTimestampUTC', 'LastSeenTimestamp', default=0)
+            if last_seen_utc == "":
+                last_seen_utc = 0
+            # logger.debug(f"Processing tag: EPC={epc}, Antenna={antenna_id}, RSSI={peak_rssi}")
             if lat != 0 and lon != 0:
                 self.last_lat = lat
                 self.last_lon = lon
@@ -287,8 +313,11 @@ class OverviewScreen(BaseScreen):
                 if rs.get('enabled'):
                     min_r = rs.get('min')
                     max_r = rs.get('max')
-                    if min_r is not None and max_r is not None and (tag['PeakRSSI'] < min_r or tag['PeakRSSI'] > max_r):
-                        # logger.debug(f"Skipping storage: RSSI {tag['PeakRSSI']} is not in range {min_r} to {max_r}")
+                    try:
+                        rssi_val = float(peak_rssi) if peak_rssi != "" else 0
+                        if min_r is not None and max_r is not None and (rssi_val < min_r or rssi_val > max_r):
+                            storage_flag = False
+                    except (TypeError, ValueError):
                         storage_flag = False
 
             if storage_flag:
@@ -297,23 +326,22 @@ class OverviewScreen(BaseScreen):
                     min_t = tr.get('min')
                     max_t = tr.get('max')
                     try:
-                        epc = int(tag['EPC-96'])
-                        if min_t is not None and max_t is not None and (epc < min_t or epc > max_t):
-                            # logger.debug(f"Skipping storage: EPC {epc} is not in range {min_t} to {max_t}")
-                            storage_flag = False
-                    except Exception:
-                        # logger.debug(f"Skipping storage: EPC {tag['EPC-96']} is not an integer")
+                        epc_int = int(epc) if epc else 0
+                    except ValueError:
+                        try:
+                            epc_int = int(epc, 16)
+                        except (ValueError, TypeError):
+                            epc_int = 0
+                    if min_t is not None and max_t is not None and (epc_int < min_t or epc_int > max_t):
                         storage_flag = False
 
             # Skip storage if storage_flag is False
             if not storage_flag:
-                # Don't store records that don't pass filters, but still update UI
-                # logger.info(f"Skipping storage: filters failed for tag {tag['EPC-96']}")
                 pass
             else:
                 # Store tag data locally if it passes all filters
                 # Check if current values are different from last stored values
-                current_rfid = tag['EPC-96']
+                current_rfid = epc
                 current_lat = lat
                 current_lon = lon
                 
@@ -337,7 +365,7 @@ class OverviewScreen(BaseScreen):
                                 ABS(timestamp - ?) < ?
                                 OR (latitude = ? AND longitude = ?)
                             )
-                        ''', (tag['EPC-96'], tag['LastSeenTimestampUTC'], duplicate_window_microseconds, lat, lon))
+                        ''', (epc, last_seen_utc, duplicate_window_microseconds, lat, lon))
                         rows = self.storage.db_cursor.fetchall()
                         if not rows:
                             # Prepare record list with explicit id
@@ -345,8 +373,8 @@ class OverviewScreen(BaseScreen):
                             self.storage.db_cursor.execute('SELECT id FROM records ORDER BY id ASC')
                             used_ids = self.storage.db_cursor.fetchall()
                             rec = [
-                                calculate_next_id(used_ids), tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
-                                lat, lon, speed, bearing, "-", self.api.user_name, tag['LastSeenTimestampUTC'],
+                                calculate_next_id(used_ids), epc, f"{antenna_id}", f"{peak_rssi}",
+                                lat, lon, speed, bearing, "-", self.api.user_name, last_seen_utc,
                                 "", "", "", "", "", "", "", ""
                             ]
                             self.storage.add_record(rec)
@@ -355,8 +383,8 @@ class OverviewScreen(BaseScreen):
                             self.last_stored_lat = current_lat
                             self.last_stored_lon = current_lon
                     else:
-                        new_data = [True, tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
-                                    lat, lon, speed, bearing, "-", self.api.user_name, tag['LastSeenTimestampUTC'],
+                        new_data = [True, epc, f"{antenna_id}", f"{peak_rssi}",
+                                    lat, lon, speed, bearing, "-", self.api.user_name, last_seen_utc,
                                     "", "", "", "", "", "", "", ""]
                         self.storage.add_record(new_data)
                         # Update last stored values after successful storage
@@ -369,14 +397,13 @@ class OverviewScreen(BaseScreen):
 
             # UI updates
             logger.info("[RFID flow] tag read | EPC=%s antenna=%s rssi=%s | GPS lat=%.7f lon=%.7f speed=%.4f heading=%s" % (
-                tag['EPC-96'], tag['AntennaID'], tag['PeakRSSI'], lat, lon, speed, bearing))
-            table_data = [get_date_from_utc(tag['LastSeenTimestampUTC']), tag['EPC-96'], f"{tag['AntennaID']}", f"{tag['PeakRSSI']}",
+                epc, antenna_id, peak_rssi, lat, lon, speed, bearing))
+            table_data = [get_date_from_utc(last_seen_utc), epc, f"{antenna_id}", f"{peak_rssi}",
                          f"{lat:.7f}".rstrip('0').rstrip('.') + ", " + f"{lon:.7f}".rstrip('0').rstrip('.'),
                          f"{speed:.4f}".rstrip('0').rstrip('.'), f"{bearing}"]
-            # logger.debug(f"Updating table with data: {table_data}")
             self._refresh_table(table_data)
-            self.ui.last_rfid_read.setText(tag['EPC-96'])
-            self.ui.last_rfid_time.setText(get_date_from_utc(tag['LastSeenTimestampUTC']))
+            self.ui.last_rfid_read.setText(epc)
+            self.ui.last_rfid_time.setText(get_date_from_utc(last_seen_utc))
             self.ui.last_gps_read.setText(f"{lat:.7f}, {lon:.7f}")
             # Use actual GPS timestamp when available; otherwise use RFID timestamp
             if self.gps and self.gps.isRunning():
@@ -384,10 +411,9 @@ class OverviewScreen(BaseScreen):
                 if gps_timestamp:
                     self.ui.last_gps_time.setText(get_date_from_utc(gps_timestamp))
                 else:
-                    self.ui.last_gps_time.setText(get_date_from_utc(tag['LastSeenTimestampUTC']))
+                    self.ui.last_gps_time.setText(get_date_from_utc(last_seen_utc))
             else:
-                self.ui.last_gps_time.setText(get_date_from_utc(tag['LastSeenTimestampUTC']))
-            # logger.info(f"Tag processed and displayed: {tag['EPC-96']} at {get_date_from_utc(tag['LastSeenTimestampUTC'])}")
+                self.ui.last_gps_time.setText(get_date_from_utc(last_seen_utc))
 
     def _refresh_table(self, new_data):
         for row in range(self.ui.tableWidget.rowCount() - 2, -1, -1):
