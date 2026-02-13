@@ -11,9 +11,15 @@ echo "=========================================="
 echo "  Setting up step-ca EST Server"
 echo "=========================================="
 
-# Create directories
+# Create directories (secrets needed for password file before init)
 echo "Creating directories..."
-mkdir -p step-ca-data step-ca-config
+mkdir -p step-ca-data step-ca-data/secrets step-ca-config
+
+# Create password file so Docker container can read it (process substitution doesn't work inside container)
+STEPCA_PASSWORD="${STEPCA_PASSWORD:-changeme}"
+echo "Using CA password: ${STEPCA_PASSWORD}"
+printf '%s' "$STEPCA_PASSWORD" > step-ca-data/secrets/password
+chmod 600 step-ca-data/secrets/password
 
 # Check if CA is already initialized
 if [ -f "step-ca-data/config/ca.json" ]; then
@@ -22,51 +28,39 @@ if [ -f "step-ca-data/config/ca.json" ]; then
 else
     echo "Initializing step-ca..."
     echo ""
-    echo "You will be prompted for:"
-    echo "  - CA name (default: Nexus IoT CA)"
-    echo "  - DNS names (default: localhost)"
-    echo "  - Provisioner name (default: admin)"
-    echo "  - Provisioner password (default: changeme)"
-    echo ""
     
-    # Initialize CA using Docker
+    # Initialize CA using Docker (password from file - works inside container)
     docker run --rm -it \
         -v "$(pwd)/step-ca-data:/home/step" \
         smallstep/step-ca:latest \
         step ca init \
         --name "Nexus IoT CA" \
         --dns localhost \
-        --address :8443 \
+        --address ":8443" \
         --provisioner admin \
-        --password-file <(echo "changeme")
+        --password-file /home/step/secrets/password
     
     echo ""
     echo "✓ CA initialized"
 fi
 
-# Copy config to config directory
+# Copy config to config directory for reference
 if [ -f "step-ca-data/config/ca.json" ]; then
     echo "Copying configuration..."
-    cp step-ca-data/config/ca.json step-ca-config/ 2>/dev/null || true
-    
-    # Copy intermediate CA key if it exists
-    if [ -f "step-ca-data/secrets/intermediate_ca_key" ]; then
-        mkdir -p step-ca-config/secrets
-        cp step-ca-data/secrets/intermediate_ca_key step-ca-config/secrets/ 2>/dev/null || true
-    fi
-    
+    mkdir -p step-ca-config/config
+    cp step-ca-data/config/ca.json step-ca-config/config/ 2>/dev/null || true
     echo "✓ Configuration copied"
 fi
 
-# Enable EST in ca.json
+# Enable EST in ca.json (in step-ca-data - this is what the container uses)
 echo "Enabling EST in configuration..."
-if [ -f "step-ca-config/ca.json" ]; then
+if [ -f "step-ca-data/config/ca.json" ]; then
     # Use Python to add EST configuration
     python3 << 'PYTHON_SCRIPT'
 import json
 import sys
 
-config_path = "step-ca-config/ca.json"
+config_path = "step-ca-data/config/ca.json"
 try:
     with open(config_path, 'r') as f:
         config = json.load(f)
@@ -93,19 +87,29 @@ else
     exit 1
 fi
 
+# Ensure step-ca can read password when running (container uses /home/step)
+if [ ! -f "step-ca-data/secrets/password" ]; then
+    printf '%s' "${STEPCA_PASSWORD:-changeme}" > step-ca-data/secrets/password
+    chmod 600 step-ca-data/secrets/password
+    echo "✓ Password file created for container"
+fi
+
 echo ""
 echo "=========================================="
 echo "  Setup Complete!"
 echo "=========================================="
 echo ""
 echo "Next steps:"
-echo "1. Start the EST server:"
-echo "   docker-compose up -d"
+echo "1. If step-ca container is already running, stop it first:"
+echo "   docker compose down"
 echo ""
-echo "2. Check server status:"
-echo "   docker-compose logs -f step-ca"
+echo "2. Start the EST server:"
+echo "   docker compose up -d"
 echo ""
-echo "3. Test EST enrollment:"
+echo "3. Check server status:"
+echo "   docker compose logs -f step-ca"
+echo ""
+echo "4. Test EST enrollment:"
 echo "   python test_est_enrollment.py"
 echo ""
 echo "Bootstrap token: changeme"
