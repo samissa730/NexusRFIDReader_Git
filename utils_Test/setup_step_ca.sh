@@ -76,12 +76,18 @@ try:
             "enabled": True,
             "bootstrapToken": "changeme"
         }
-        
-        with open(config_path, 'w') as f:
-            json.dump(config, f, indent=2)
         print("✓ EST enabled in configuration")
     else:
         print("✓ EST already configured")
+    
+    # Raspberry Pi / ARM: avoid Badger "cannot allocate memory" (Docker Hub troubleshooting)
+    if "db" in config and config["db"].get("type") == "badger":
+        if config["db"].get("badgerFileLoadingMode") != "FileIO":
+            config["db"]["badgerFileLoadingMode"] = "FileIO"
+            print("✓ Badger db set to FileIO (Raspberry Pi / ARM)")
+        
+    with open(config_path, 'w') as f:
+        json.dump(config, f, indent=2)
         
 except Exception as e:
     print(f"Error updating config: {e}")
