@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  step-ca:
+    image: smallstep/step-ca:latest
+    container_name: step-ca-est-test
+    ports:
+      - "8443:8443"  # EST port
+    environment:
+      - STEP_CA_URL=https://localhost:8443
+      - STEP_CA_ADDRESS=:8443
+    volumes:
+      - ./step-ca-data:/home/step
+      - ./step-ca-config:/etc/step-ca
+    command: step-ca /etc/step-ca/config/ca.json
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "step", "ca", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
