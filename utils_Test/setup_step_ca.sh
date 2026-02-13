@@ -15,11 +15,12 @@ echo "=========================================="
 echo "Creating directories..."
 mkdir -p step-ca-data step-ca-data/secrets step-ca-config
 
-# Create password file so Docker container can read it (process substitution doesn't work inside container)
+# Create password file so Docker container can read it (process substitution doesn't work inside container).
+# Container runs as non-root user; if script is run with sudo, file would be root-only so use 644.
 STEPCA_PASSWORD="${STEPCA_PASSWORD:-changeme}"
 echo "Using CA password: ${STEPCA_PASSWORD}"
 printf '%s' "$STEPCA_PASSWORD" > step-ca-data/secrets/password
-chmod 600 step-ca-data/secrets/password
+chmod 644 step-ca-data/secrets/password
 
 # Check if CA is already initialized
 if [ -f "step-ca-data/config/ca.json" ]; then
@@ -90,7 +91,7 @@ fi
 # Ensure step-ca can read password when running (container uses /home/step)
 if [ ! -f "step-ca-data/secrets/password" ]; then
     printf '%s' "${STEPCA_PASSWORD:-changeme}" > step-ca-data/secrets/password
-    chmod 600 step-ca-data/secrets/password
+    chmod 644 step-ca-data/secrets/password
     echo "✓ Password file created for container"
 fi
 
