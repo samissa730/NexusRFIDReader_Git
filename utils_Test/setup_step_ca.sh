@@ -22,6 +22,10 @@ echo "Using CA password: ${STEPCA_PASSWORD}"
 printf '%s' "$STEPCA_PASSWORD" > step-ca-data/secrets/password
 chmod 644 step-ca-data/secrets/password
 
+# step-ca container runs as non-root (UID 1000); volume must be writable by that user
+echo "Setting volume ownership for container user (1000:1000)..."
+chown -R 1000:1000 step-ca-data
+
 # Check if CA is already initialized
 if [ -f "step-ca-data/config/ca.json" ]; then
     echo "✓ CA already initialized"
