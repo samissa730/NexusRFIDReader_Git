@@ -12,9 +12,9 @@ services:
       - STEP_CA_ADDRESS=:8443
     volumes:
       - ./step-ca-data:/home/step
-    # Bypass image entrypoint that tries to open /dev/tty (causes "Restarting" in detached mode)
+    # Bypass image entrypoint; pass password file so step-ca doesn't try to open /dev/tty
     entrypoint: ["step-ca"]
-    command: ["/home/step/config/ca.json"]
+    command: ["/home/step/config/ca.json", "--password-file", "/home/step/secrets/password"]
     tty: false
     stdin_open: false
     restart: unless-stopped
