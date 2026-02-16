@@ -45,8 +45,8 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request, ssl; ctx=ssl.create_default_context(); ctx.check_hostname=False; ctx.verify_mode=ssl.CERT_NONE; u=urllib.request.urlopen('https://127.0.0.1:9443/health', context=ctx, timeout=5); exit(0 if u.getcode()==200 and b'ok' in u.read() else 1)"]
+      test: ["CMD", "python3", "/app/healthcheck.py"]
       interval: 15s
       timeout: 10s
       retries: 3
-      start_period: 15s
+      start_period: 20s

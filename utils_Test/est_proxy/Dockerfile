@@ -7,7 +7,7 @@ RUN apk add --no-cache python3 py3-pip openssl wget \
     && pip3 install --break-system-packages flask cryptography gunicorn
 
 WORKDIR /app
-COPY app.py .
+COPY app.py healthcheck.py .
 
 # Self-signed cert for EST (HTTPS); clients use verify_ssl=False for local testing
 RUN openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes -subj "/CN=est-proxy"
