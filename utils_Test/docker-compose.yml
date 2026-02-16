@@ -28,7 +28,7 @@ services:
     build: ./est_proxy
     container_name: est-proxy-test
     entrypoint: []
-    command: ["python3", "-m", "gunicorn", "-b", "0.0.0.0:9443", "-w", "1", "--certfile", "/app/cert.pem", "--keyfile", "/app/key.pem", "app:app"]
+    command: ["python3", "-m", "gunicorn", "-b", "0.0.0.0:9443", "-w", "2", "--certfile", "/app/cert.pem", "--keyfile", "/app/key.pem", "app:app"]
     working_dir: /app
     ports:
       - "9443:9443"
