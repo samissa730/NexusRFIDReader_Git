@@ -96,8 +96,8 @@ def verify_certificate_issuance(cert_pem: bytes, expected_cn: str, ca_cert_pem: 
             "subject_cn": cn,
             "issuer": str(cert.issuer),
             "serial_number": str(cert.serial_number),
-            "not_valid_before": cert.not_valid_before_utc,
-            "not_valid_after": cert.not_valid_after_utc,
+            "not_valid_before": cert.not_valid_before,
+            "not_valid_after": cert.not_valid_after,
             "signature_algorithm": cert.signature_algorithm_oid._name if hasattr(cert.signature_algorithm_oid, '_name') else str(cert.signature_algorithm_oid),
         }
         
@@ -108,12 +108,12 @@ def verify_certificate_issuance(cert_pem: bytes, expected_cn: str, ca_cert_pem: 
         
         # Verify certificate validity period
         now = datetime.now(timezone.utc)
-        if cert.not_valid_after_utc < now:
+        if cert.not_valid_after < now:
             results["valid"] = False
-            results["errors"].append(f"Certificate expired: {cert.not_valid_after_utc}")
-        elif cert.not_valid_before_utc > now:
+            results["errors"].append(f"Certificate expired: {cert.not_valid_after}")
+        elif cert.not_valid_before > now:
             results["valid"] = False
-            results["errors"].append(f"Certificate not yet valid: {cert.not_valid_before_utc}")
+            results["errors"].append(f"Certificate not yet valid: {cert.not_valid_before}")
         
         # Verify certificate chain (if CA cert provided)
         if ca_cert_pem:
@@ -134,7 +134,7 @@ def verify_certificate_issuance(cert_pem: bytes, expected_cn: str, ca_cert_pem: 
                 results["warnings"].append(f"Could not verify against CA: {e}")
         
         # Check certificate validity period (should be reasonable)
-        validity_days = (cert.not_valid_after_utc - cert.not_valid_before_utc).days
+        validity_days = (cert.not_valid_after - cert.not_valid_before).days
         if validity_days < 1:
             results["valid"] = False
             results["errors"].append(f"Certificate validity period too short: {validity_days} days")

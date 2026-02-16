@@ -92,7 +92,7 @@ def generate_csr_and_key_pem(registration_id: str, key_size: int = 2048) -> tupl
 
 
 def get_cert_cn_and_expiry(cert_pem: bytes) -> tuple[str | None, datetime | None]:
-    """Parse PEM certificate and return (common_name, not_valid_after_utc)."""
+    """Parse PEM certificate and return (common_name, not_valid_after)."""
     if not _CRYPTO_AVAILABLE:
         return None, None
     cert = x509.load_pem_x509_certificate(cert_pem, default_backend())
@@ -101,7 +101,7 @@ def get_cert_cn_and_expiry(cert_pem: bytes) -> tuple[str | None, datetime | None
         if attr.oid == NameOID.COMMON_NAME:
             cn = attr.value
             break
-    return cn, cert.not_valid_after_utc
+    return cn, cert.not_valid_after
 
 
 def parse_est_env_config(env: dict) -> dict:

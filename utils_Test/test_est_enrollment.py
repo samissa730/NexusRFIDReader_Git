@@ -120,8 +120,8 @@ def test_est_enrollment():
             cert = x509.load_pem_x509_certificate(cert_pem, default_backend())
             print_info(f"Issuer: {cert.issuer}")
             print_info(f"Serial Number: {cert.serial_number}")
-            print_info(f"Valid From: {cert.not_valid_before_utc}")
-            print_info(f"Valid Until: {cert.not_valid_after_utc}")
+            print_info(f"Valid From: {cert.not_valid_before}")
+            print_info(f"Valid Until: {cert.not_valid_after}")
             
             # Verify CN matches registration_id
             cert_cn = None

@@ -160,7 +160,7 @@ def verify_certificate(cert_pem: bytes, ca_cert_pem: Optional[bytes] = None) -> 
         # Basic validation: check expiry
         from datetime import datetime, timezone
         now = datetime.now(timezone.utc)
-        if cert.not_valid_after_utc < now or cert.not_valid_before_utc > now:
+        if cert.not_valid_after < now or cert.not_valid_before > now:
             return False
         
         # If CA cert provided, verify chain
