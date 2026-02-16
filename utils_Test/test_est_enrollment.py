@@ -35,9 +35,9 @@ from utils_Test.est_client import (
     verify_certificate
 )
 
-# Configuration - Update these for your setup
-EST_SERVER_URL = "https://localhost:8443/est"
-BOOTSTRAP_TOKEN = "changeme"  # Update with your step-ca bootstrap token
+# Configuration - Use EST proxy (port 9443) when running docker-compose with est-proxy service
+EST_SERVER_URL = "https://localhost:9443/est"
+BOOTSTRAP_TOKEN = "changeme"  # Must match EST_BOOTSTRAP_TOKEN in docker-compose (est-proxy)
 REGISTRATION_ID = "test-device-001"  # Device registration ID (will be CN in certificate)
 OUTPUT_DIR = Path(__file__).parent / "est_test_output"
 

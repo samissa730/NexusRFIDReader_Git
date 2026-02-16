@@ -1,5 +1,6 @@
-# step-ca EST server for local testing
+# step-ca + EST proxy for local testing
 # Run ./setup_step_ca.sh first to initialize CA, then: docker compose up -d
+# EST proxy exposes /est/simpleenroll and /est/cacerts using step-ca as backend.
 
 services:
   step-ca:
@@ -12,7 +13,6 @@ services:
       - STEP_CA_ADDRESS=:8443
     volumes:
       - ./step-ca-data:/home/step
-    # Bypass image entrypoint; pass password file so step-ca doesn't try to open /dev/tty
     entrypoint: ["step-ca"]
     command: ["/home/step/config/ca.json", "--password-file", "/home/step/secrets/password"]
     tty: false
@@ -23,3 +23,21 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+
+  est-proxy:
+    build: ./est_proxy
+    container_name: est-proxy-test
+    ports:
+      - "9443:9443"
+    environment:
+      - EST_BOOTSTRAP_TOKEN=changeme
+      - STEP_CA_URL=https://step-ca:8443
+      - STEP_CA_PASSWORD_FILE=/home/step/secrets/password
+      - STEP_CA_ROOT_CERT=/home/step/certs/root_ca.crt
+      - STEPPATH=/home/step
+    volumes:
+      - ./step-ca-data:/home/step:ro
+    depends_on:
+      step-ca:
+        condition: service_healthy
+    restart: unless-stopped

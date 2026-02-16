@@ -37,8 +37,8 @@ try:
 except ImportError:
     _CRYPTO_AVAILABLE = False
 
-# Configuration
-EST_SERVER_URL = "https://localhost:8443/est"
+# Configuration - Use EST proxy (port 9443) when running docker-compose with est-proxy
+EST_SERVER_URL = "https://localhost:9443/est"
 BOOTSTRAP_TOKEN = "changeme"
 OUTPUT_DIR = Path(__file__).parent / "est_test_output"
 
