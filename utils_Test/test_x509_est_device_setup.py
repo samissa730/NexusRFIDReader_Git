@@ -84,7 +84,7 @@ def generate_csr_and_key_pem(registration_id: str, key_size: int = 2048) -> tupl
     )
     key_pem = key.private_bytes(
         encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.TraditionalOpenSSL,
+        format=serialization.PrivateFormat.PKCS8,
         encryption_algorithm=serialization.NoEncryption(),
     )
     csr_pem = csr.public_bytes(serialization.Encoding.PEM)
