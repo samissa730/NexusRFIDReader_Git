@@ -157,10 +157,10 @@ def verify_certificate(cert_pem: bytes, ca_cert_pem: Optional[bytes] = None) -> 
     try:
         cert = x509.load_pem_x509_certificate(cert_pem, default_backend())
         
-        # Basic validation: check expiry
+        # Basic validation: check expiry (cert times are naive UTC from cryptography)
         from datetime import datetime, timezone
-        now = datetime.now(timezone.utc)
-        if cert.not_valid_after < now or cert.not_valid_before > now:
+        now_utc_naive = datetime.now(timezone.utc).replace(tzinfo=None)
+        if cert.not_valid_after < now_utc_naive or cert.not_valid_before > now_utc_naive:
             return False
         
         # If CA cert provided, verify chain

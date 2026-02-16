@@ -106,12 +106,12 @@ def verify_certificate_issuance(cert_pem: bytes, expected_cn: str, ca_cert_pem: 
             results["valid"] = False
             results["errors"].append(f"CN mismatch: expected '{expected_cn}', got '{cn}'")
         
-        # Verify certificate validity period
-        now = datetime.now(timezone.utc)
-        if cert.not_valid_after < now:
+        # Verify certificate validity period (cert times are naive UTC from cryptography)
+        now_utc_naive = datetime.now(timezone.utc).replace(tzinfo=None)
+        if cert.not_valid_after < now_utc_naive:
             results["valid"] = False
             results["errors"].append(f"Certificate expired: {cert.not_valid_after}")
-        elif cert.not_valid_before > now:
+        elif cert.not_valid_before > now_utc_naive:
             results["valid"] = False
             results["errors"].append(f"Certificate not yet valid: {cert.not_valid_before}")
         
