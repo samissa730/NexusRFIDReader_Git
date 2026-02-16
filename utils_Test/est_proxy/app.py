@@ -79,12 +79,13 @@ def simpleenroll():
     ca_url = STEP_CA_URL
     pw_file = STEP_PASSWORD_FILE
 
+    step_env = {**os.environ, "STEPPATH": "/home/step"}
     with tempfile.TemporaryDirectory() as tmp:
         csr_path = Path(tmp) / "req.pem"
         crt_path = Path(tmp) / "cert.pem"
         csr_path.write_bytes(csr_pem)
 
-        # Get one-time token from step-ca
+        # Get one-time token (step reads provisioner from /home/step/config, may contact CA)
         try:
             result = subprocess.run(
                 [
@@ -99,10 +100,12 @@ def simpleenroll():
                 text=True,
                 timeout=30,
                 cwd="/home/step",
+                env=step_env,
             )
             if result.returncode != 0:
-                app.logger.warning("step ca token stderr: %s", result.stderr)
-                return Response(f"Token failed: {result.stderr}", status=502)
+                err = (result.stderr or result.stdout or "").strip()
+                app.logger.warning("step ca token failed: %s", err)
+                return Response(f"Token failed: {err}", status=502)
             ott = result.stdout.strip()
         except Exception as e:
             app.logger.exception("step ca token")
@@ -122,10 +125,12 @@ def simpleenroll():
                 text=True,
                 timeout=30,
                 cwd="/home/step",
+                env=step_env,
             )
             if result.returncode != 0:
-                app.logger.warning("step ca sign stderr: %s", result.stderr)
-                return Response(f"Sign failed: {result.stderr}", status=502)
+                err = (result.stderr or result.stdout or "").strip()
+                app.logger.warning("step ca sign failed: %s", err)
+                return Response(f"Sign failed: {err}", status=502)
         except Exception as e:
             app.logger.exception("step ca sign")
             return Response(str(e), status=502)

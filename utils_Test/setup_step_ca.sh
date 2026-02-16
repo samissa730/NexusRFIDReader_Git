@@ -41,6 +41,7 @@ else
         step ca init \
         --name "Nexus IoT CA" \
         --dns localhost \
+        --dns step-ca \
         --address ":8443" \
         --provisioner admin \
         --password-file /home/step/secrets/password

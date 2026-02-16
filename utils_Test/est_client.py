@@ -70,7 +70,10 @@ def enroll_certificate_via_est(
         )
         response.raise_for_status()
     except requests.exceptions.RequestException as e:
-        raise RuntimeError(f"EST enrollment failed: {e}") from e
+        msg = str(e)
+        if hasattr(e, "response") and e.response is not None and e.response.text:
+            msg += f" | Server: {e.response.text.strip()}"
+        raise RuntimeError(f"EST enrollment failed: {msg}") from e
     
     # EST returns DER format, convert to PEM
     cert_der = response.content
