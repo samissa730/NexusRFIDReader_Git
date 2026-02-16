@@ -27,6 +27,9 @@ services:
   est-proxy:
     build: ./est_proxy
     container_name: est-proxy-test
+    entrypoint: []
+    command: ["python3", "-m", "gunicorn", "-b", "0.0.0.0:9443", "-w", "1", "--certfile", "/app/cert.pem", "--keyfile", "/app/key.pem", "app:app"]
+    working_dir: /app
     ports:
       - "9443:9443"
     environment:
@@ -41,3 +44,9 @@ services:
       step-ca:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - https://127.0.0.1:9443/health --no-check-certificate | grep -q ok || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

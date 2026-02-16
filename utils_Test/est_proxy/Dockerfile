@@ -3,7 +3,7 @@
 FROM smallstep/step-ca:latest
 
 USER root
-RUN apk add --no-cache python3 py3-pip openssl \
+RUN apk add --no-cache python3 py3-pip openssl wget \
     && pip3 install --break-system-packages flask cryptography gunicorn
 
 WORKDIR /app
