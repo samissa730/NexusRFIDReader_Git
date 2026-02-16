@@ -66,7 +66,7 @@ def enroll_certificate_via_est(
             data=csr_pem,
             headers=headers,
             verify=verify,
-            timeout=30
+            timeout=45
         )
         response.raise_for_status()
     except requests.exceptions.RequestException as e:

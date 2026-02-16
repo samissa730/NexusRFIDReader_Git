@@ -53,6 +53,9 @@ def _csr_to_pem(csr_bytes: bytes) -> bytes:
     return csr.public_bytes(serialization.Encoding.PEM)
 
 
+# Subprocess timeout for step CLI (fail fast so client gets 502, not read timeout)
+STEP_CLI_TIMEOUT = 20
+
 @app.route("/est/simpleenroll", methods=["POST"])
 def simpleenroll():
     """EST simpleenroll: accept CSR, get token from step-ca, sign, return cert (DER)."""
@@ -71,6 +74,8 @@ def simpleenroll():
         cn = _get_cn_from_csr(csr_bytes)
     except Exception as e:
         return Response(f"Invalid CSR: {e}", status=400)
+
+    app.logger.info("simpleenroll request for CN=%s", cn)
 
     csr_pem = _csr_to_pem(csr_bytes)
     root = STEP_ROOT_CERT
@@ -98,15 +103,19 @@ def simpleenroll():
                 ],
                 capture_output=True,
                 text=True,
-                timeout=30,
+                timeout=STEP_CLI_TIMEOUT,
                 cwd="/home/step",
                 env=step_env,
+                start_new_session=True,
             )
             if result.returncode != 0:
                 err = (result.stderr or result.stdout or "").strip()
                 app.logger.warning("step ca token failed: %s", err)
                 return Response(f"Token failed: {err}", status=502)
             ott = result.stdout.strip()
+        except subprocess.TimeoutExpired as e:
+            app.logger.warning("step ca token timed out after %ss", STEP_CLI_TIMEOUT)
+            return Response(f"Token timed out after {STEP_CLI_TIMEOUT}s (check step-ca reachable from proxy)", status=502)
         except Exception as e:
             app.logger.exception("step ca token")
             return Response(str(e), status=502)
@@ -123,14 +132,18 @@ def simpleenroll():
                 ],
                 capture_output=True,
                 text=True,
-                timeout=30,
+                timeout=STEP_CLI_TIMEOUT,
                 cwd="/home/step",
                 env=step_env,
+                start_new_session=True,
             )
             if result.returncode != 0:
                 err = (result.stderr or result.stdout or "").strip()
                 app.logger.warning("step ca sign failed: %s", err)
                 return Response(f"Sign failed: {err}", status=502)
+        except subprocess.TimeoutExpired:
+            app.logger.warning("step ca sign timed out after %ss", STEP_CLI_TIMEOUT)
+            return Response(f"Sign timed out after {STEP_CLI_TIMEOUT}s (check step-ca reachable from proxy)", status=502)
         except Exception as e:
             app.logger.exception("step ca sign")
             return Response(str(e), status=502)

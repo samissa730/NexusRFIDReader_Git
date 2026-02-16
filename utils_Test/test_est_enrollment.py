@@ -35,8 +35,9 @@ from utils_Test.est_client import (
     verify_certificate
 )
 
-# Configuration - Use EST proxy (port 9443) when running docker-compose with est-proxy service
-EST_SERVER_URL = "https://localhost:9443/est"
+# Configuration - Use EST proxy (port 9443) when running docker-compose with est-proxy service.
+# Use 127.0.0.1 to avoid IPv6/localhost resolution issues on some hosts (e.g. Raspberry Pi).
+EST_SERVER_URL = "https://127.0.0.1:9443/est"
 BOOTSTRAP_TOKEN = "changeme"  # Must match EST_BOOTSTRAP_TOKEN in docker-compose (est-proxy)
 REGISTRATION_ID = "test-device-001"  # Device registration ID (will be CN in certificate)
 OUTPUT_DIR = Path(__file__).parent / "est_test_output"
