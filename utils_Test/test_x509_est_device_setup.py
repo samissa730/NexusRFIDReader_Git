@@ -112,6 +112,19 @@ def parse_est_env_config(env: dict) -> dict:
     }
 
 
+# Output directory from test_est_enrollment.py (device_cert.pem, device_key.pem, etc.)
+EST_TEST_OUTPUT_DIR = Path(__file__).resolve().parent / "est_test_output"
+EST_OUTPUT_CERT = EST_TEST_OUTPUT_DIR / "device_cert.pem"
+EST_OUTPUT_KEY = EST_TEST_OUTPUT_DIR / "device_key.pem"
+EST_OUTPUT_CHAIN = EST_TEST_OUTPUT_DIR / "device_chain.pem"
+EST_OUTPUT_CA = EST_TEST_OUTPUT_DIR / "ca_cert.pem"
+
+
+def _est_enrollment_output_available() -> bool:
+    """True if test_est_enrollment.py has been run and produced device cert + key."""
+    return EST_OUTPUT_CERT.is_file() and EST_OUTPUT_KEY.is_file()
+
+
 # --- Unittest classes ---
 
 
@@ -270,6 +283,59 @@ class TestEstEnvConfig(unittest.TestCase):
             parse_est_env_config({"est_server_url": "  ", "est_bootstrap_token": ""}),
             {"est_server_url": None, "est_bootstrap_token": None},
         )
+
+
+@unittest.skipIf(not _est_enrollment_output_available(), "Run test_est_enrollment.py first to generate device cert and key in est_test_output/")
+@unittest.skipIf(not _CRYPTO_AVAILABLE, "cryptography not installed")
+class TestX509UsingEstEnrollmentOutput(unittest.TestCase):
+    """Use certificates produced by test_est_enrollment.py (est_test_output/)."""
+
+    def test_device_cert_cn_and_expiry_from_est_output(self):
+        cert_pem = EST_OUTPUT_CERT.read_bytes()
+        cn, not_after = get_cert_cn_and_expiry(cert_pem)
+        self.assertIsNotNone(cn, "Device cert should have a CN")
+        self.assertIsNotNone(not_after, "Device cert should have not_valid_after")
+        # test_est_enrollment uses REGISTRATION_ID = test-device-001
+        self.assertEqual(cn, "test-device-001", "CN should match registration_id from test_est_enrollment")
+
+    def test_device_cert_not_expired(self):
+        cert_pem = EST_OUTPUT_CERT.read_bytes()
+        _, not_after = get_cert_cn_and_expiry(cert_pem)
+        now_utc_naive = datetime.now(timezone.utc).replace(tzinfo=None)
+        self.assertLess(now_utc_naive, not_after, "Device cert from EST enrollment should not be expired")
+
+    def test_x509_provisioning_config_with_est_output_paths(self):
+        config = build_x509_provisioning_config(
+            registration_id="test-device-001",
+            id_scope="0ne00000000",
+            cert_path=str(EST_OUTPUT_CERT),
+            key_path=str(EST_OUTPUT_KEY),
+            chain_path=str(EST_OUTPUT_CHAIN) if EST_OUTPUT_CHAIN.is_file() else None,
+        )
+        ok, msg = validate_x509_provisioning_config(config)
+        self.assertTrue(ok, msg)
+        self.assertEqual(config["certPath"], str(EST_OUTPUT_CERT))
+        self.assertEqual(config["keyPath"], str(EST_OUTPUT_KEY))
+
+    def test_config_roundtrip_json_with_est_output_paths(self):
+        config = build_x509_provisioning_config(
+            registration_id="test-device-001",
+            id_scope="0ne00000000",
+            cert_path=str(EST_OUTPUT_CERT),
+            key_path=str(EST_OUTPUT_KEY),
+        )
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(config, f, indent=2)
+            path = f.name
+        try:
+            with open(path) as f2:
+                loaded = json.load(f2)
+            ok, _ = validate_x509_provisioning_config(loaded)
+            self.assertTrue(ok)
+            self.assertEqual(Path(loaded["certPath"]).resolve(), EST_OUTPUT_CERT.resolve())
+            self.assertEqual(Path(loaded["keyPath"]).resolve(), EST_OUTPUT_KEY.resolve())
+        finally:
+            Path(path).unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
