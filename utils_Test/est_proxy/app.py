@@ -90,16 +90,18 @@ def simpleenroll():
         crt_path = Path(tmp) / "cert.pem"
         csr_path.write_bytes(csr_pem)
 
-        # Get one-time token (step reads provisioner from /home/step/config, may contact CA)
+        # Get one-time token (step reads provisioner from /home/step/config, may contact CA).
+        # Subject (CN) must be a single argument; pass it last so flags are not confused with it.
         try:
             result = subprocess.run(
                 [
-                    "step", "ca", "token", cn,
+                    "step", "ca", "token",
                     "--password-file", pw_file,
                     "--ca-url", ca_url,
                     "--root", root,
                     "--provisioner", STEP_PROVISIONER,
                     "--insecure",
+                    str(cn).strip(),
                 ],
                 capture_output=True,
                 text=True,
