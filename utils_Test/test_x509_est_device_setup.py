@@ -338,5 +338,74 @@ class TestX509UsingEstEnrollmentOutput(unittest.TestCase):
             Path(path).unlink(missing_ok=True)
 
 
+# Human-readable names for each test class (for client-facing summary)
+_TEST_SUITE_DESCRIPTIONS = {
+    "TestX509ProvisioningConfigStructure": "X.509 provisioning config structure and validation",
+    "TestCsrGenerationForEst": "CSR generation for EST enrollment (registration_id as CN)",
+    "TestCertificateParsing": "Certificate parsing (CN and expiry)",
+    "TestEstEnvConfig": "EST/bootstrap config parsing",
+    "TestX509UsingEstEnrollmentOutput": "Certificates from EST enrollment (est_test_output/)",
+}
+
+
+def _test_class_from_id(test_id: str) -> str | None:
+    """Extract test class name from unittest test id (e.g. __main__.TestX509...test_foo -> TestX509...)."""
+    if "." in test_id:
+        parts = test_id.split(".")
+        for p in parts:
+            if p.startswith("Test") and p in _TEST_SUITE_DESCRIPTIONS:
+                return p
+    return None
+
+
 if __name__ == "__main__":
-    unittest.main()
+    import sys
+
+    print("\n" + "=" * 64)
+    print("  X.509 / EST DEVICE SETUP VERIFICATION")
+    print("=" * 64)
+    print("  This run verifies:")
+    for _desc in _TEST_SUITE_DESCRIPTIONS.values():
+        print(f"    - {_desc}")
+    if not _est_enrollment_output_available():
+        print("    - [Partially skipped] EST enrollment output tests (run test_est_enrollment.py first)")
+    print("=" * 64 + "\n")
+
+    loader = unittest.TestLoader()
+    suite = loader.loadTestsFromModule(sys.modules[__name__])
+    runner = unittest.TextTestRunner(verbosity=2, stream=sys.stdout)
+    result = runner.run(suite)
+
+    # Client-facing summary: which classes failed, and which were skipped
+    failed_by_class = {}
+    for test, _ in list(result.failures) + list(result.errors):
+        cls = _test_class_from_id(test.id())
+        if cls:
+            failed_by_class[cls] = failed_by_class.get(cls, 0) + 1
+
+    def _skipped_reason(class_name: str) -> str | None:
+        if class_name == "TestX509UsingEstEnrollmentOutput" and not _est_enrollment_output_available():
+            return "Run test_est_enrollment.py first to generate est_test_output/"
+        if class_name in ("TestCsrGenerationForEst", "TestCertificateParsing", "TestX509UsingEstEnrollmentOutput"):
+            if not _CRYPTO_AVAILABLE:
+                return "cryptography not installed"
+        return None
+
+    print("\n" + "=" * 64)
+    print("  VERIFICATION SUMMARY")
+    print("=" * 64)
+    for class_name, desc in _TEST_SUITE_DESCRIPTIONS.items():
+        if class_name in failed_by_class:
+            print(f"  [FAILED] {desc} ({failed_by_class[class_name]} test(s) failed)")
+        elif _skipped_reason(class_name):
+            print(f"  [SKIPPED] {desc} ({_skipped_reason(class_name)})")
+        else:
+            print(f"  [PASSED] {desc}")
+    print("=" * 64)
+    if result.wasSuccessful():
+        print("  OVERALL: All checks PASSED. X.509/EST device setup is working as expected.")
+    else:
+        print(f"  OVERALL: {len(result.failures) + len(result.errors)} check(s) FAILED. See details above.")
+    print("=" * 64 + "\n")
+
+    sys.exit(0 if result.wasSuccessful() else 1)
