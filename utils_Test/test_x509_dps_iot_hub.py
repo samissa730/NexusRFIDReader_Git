@@ -178,23 +178,38 @@ def _run_x509_dps_and_iot_hub():
         traceback.print_exc()
         return False
 
-    _print_section("4. Sending messages every 5 seconds (Ctrl+C to stop)")
+    _print_section("4. Sending scan data every 5 seconds (Ctrl+C to stop)")
     _print_info("  Press Ctrl+C to stop and disconnect.")
     send_interval_sec = 5
     count = 0
     try:
         while True:
             count += 1
-            test_message = json.dumps({
-                "event": "x509_test",
-                "source": "test_x509_dps_iot_hub",
-                "registrationId": registration_id,
-                "deviceId": device_id,
-                "sequence": count,
-                "timestamp": int(time.time()),
-            })
-            client.send_message(test_message)
-            _print_ok(f"Message #{count} sent at {time.strftime('%H:%M:%S')}. Next in {send_interval_sec}s...")
+            ts = int(time.time())
+            # Scan data format (same shape as test_iot_service / production scan records)
+            test_tag = f"E20034120B1B0170{ts % 100000000:08d}"
+            scan_message = {
+                "type": "scan_batch",
+                "scans": [
+                    {
+                        "siteId": "019a9e1e-81ff-75ab-99fc-4115bb92fec6",
+                        "tagName": test_tag,
+                        "latitude": 37.7749 + (hash(test_tag) % 100) * 0.0001,
+                        "longitude": -122.4194 + (hash(test_tag) % 100) * 0.0001,
+                        "speed": 15.0,
+                        "deviceId": device_id,
+                        "registrationId": registration_id,
+                        "antenna": "1",
+                        "barrier": 270.0,
+                        "comment": None,
+                        "sequence": count,
+                        "timestamp": ts,
+                        "source": "test_x509_dps_iot_hub",
+                    }
+                ],
+            }
+            client.send_message(json.dumps(scan_message))
+            _print_ok(f"Scan #{count} (tag {test_tag[:20]}...) sent at {time.strftime('%H:%M:%S')}. Next in {send_interval_sec}s...")
             time.sleep(send_interval_sec)
     except KeyboardInterrupt:
         print("\n")
@@ -213,7 +228,7 @@ def _run_x509_dps_and_iot_hub():
     _print_section("VERIFICATION SUMMARY")
     _print_ok("DPS registration (X.509) using EST enrollment certificates: PASSED")
     _print_ok("IoT Hub connection (X.509): PASSED")
-    _print_ok(f"Sending data to IoT Hub: {count} message(s) sent. Stopped by user.")
+    _print_ok(f"Sending scan data to IoT Hub: {count} scan(s) sent. Stopped by user.")
     print("=" * 64 + "\n")
     return True
 
