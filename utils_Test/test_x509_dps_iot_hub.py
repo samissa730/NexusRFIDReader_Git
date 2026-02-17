@@ -178,31 +178,42 @@ def _run_x509_dps_and_iot_hub():
         traceback.print_exc()
         return False
 
-    _print_section("4. Sending test message")
+    _print_section("4. Sending messages every 5 seconds (Ctrl+C to stop)")
+    _print_info("  Press Ctrl+C to stop and disconnect.")
+    send_interval_sec = 5
+    count = 0
     try:
-        test_message = json.dumps({
-            "event": "x509_test",
-            "source": "test_x509_dps_iot_hub",
-            "registrationId": registration_id,
-            "deviceId": device_id,
-            "timestamp": int(time.time()),
-        })
-        client.send_message(test_message)
-        _print_ok("Test message sent to IoT Hub.")
-        client.disconnect()
-        _print_ok("Disconnected.")
+        while True:
+            count += 1
+            test_message = json.dumps({
+                "event": "x509_test",
+                "source": "test_x509_dps_iot_hub",
+                "registrationId": registration_id,
+                "deviceId": device_id,
+                "sequence": count,
+                "timestamp": int(time.time()),
+            })
+            client.send_message(test_message)
+            _print_ok(f"Message #{count} sent at {time.strftime('%H:%M:%S')}. Next in {send_interval_sec}s...")
+            time.sleep(send_interval_sec)
+    except KeyboardInterrupt:
+        print("\n")
+        _print_info("User stopped. Disconnecting...")
     except Exception as e:
         _print_fail(f"Send message failed: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
         try:
             client.disconnect()
+            _print_ok("Disconnected from IoT Hub.")
         except Exception:
             pass
-        return False
 
     _print_section("VERIFICATION SUMMARY")
     _print_ok("DPS registration (X.509) using EST enrollment certificates: PASSED")
     _print_ok("IoT Hub connection (X.509): PASSED")
-    _print_ok("Sending data to IoT Hub: PASSED")
+    _print_ok(f"Sending data to IoT Hub: {count} message(s) sent. Stopped by user.")
     print("=" * 64 + "\n")
     return True
 
