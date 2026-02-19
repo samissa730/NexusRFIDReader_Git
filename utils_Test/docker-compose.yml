@@ -1,8 +1,35 @@
-# step-ca + EST proxy for local testing
-# Run ./setup_step_ca.sh first to initialize CA, then: docker compose up -d
-# EST proxy exposes /est/simpleenroll and /est/cacerts using step-ca as backend.
+# step-ca + EST proxy for local testing.
+# Single command: docker compose up -d --build
+# No setup script, no est_proxy folder, no est_proxy_script.py. EST at https://localhost:9443/est (token: changeme)
+
+volumes:
+  step_ca_data:
 
 services:
+  step-ca-init:
+    build: ./runner
+    container_name: step-ca-init
+    restart: "no"
+    volumes:
+      - step_ca_data:/home/step
+    environment:
+      - STEPCA_PASSWORD=changeme
+    command: >
+      sh -c "
+      mkdir -p /home/step/secrets
+      && printf '%s' \"$$STEPCA_PASSWORD\" > /home/step/secrets/password
+      && ( [ -f /home/step/config/ca.json ] || step ca init
+        --name \"Nexus IoT CA\"
+        --dns localhost
+        --dns step-ca
+        --address \":8443\"
+        --provisioner admin
+        --password-file /home/step/secrets/password
+      )
+      && jq '.est = {\"enabled\": true, \"bootstrapToken\": \"changeme\"} | if .db.type == \"badger\" then .db.badgerFileLoadingMode = \"FileIO\" else . end' /home/step/config/ca.json > /tmp/ca.json
+      && mv /tmp/ca.json /home/step/config/ca.json
+      "
+
   step-ca:
     image: smallstep/step-ca:latest
     container_name: step-ca-est-test
@@ -12,12 +39,15 @@ services:
       - STEP_CA_URL=https://localhost:8443
       - STEP_CA_ADDRESS=:8443
     volumes:
-      - ./step-ca-data:/home/step
+      - step_ca_data:/home/step
     entrypoint: ["step-ca"]
     command: ["/home/step/config/ca.json", "--password-file", "/home/step/secrets/password"]
     tty: false
     stdin_open: false
     restart: unless-stopped
+    depends_on:
+      step-ca-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "step", "ca", "health"]
       interval: 10s
@@ -25,27 +55,161 @@ services:
       retries: 3
 
   est-proxy:
-    build: ./est_proxy
+    build: ./runner
     container_name: est-proxy-test
     entrypoint: []
-    command: ["python3", "-m", "gunicorn", "-b", "0.0.0.0:9443", "-w", "2", "--certfile", "/app/cert.pem", "--keyfile", "/app/key.pem", "app:app"]
     working_dir: /app
     ports:
       - "9443:9443"
     environment:
-      - EST_BOOTSTRAP_TOKEN=changeme
-      - STEP_CA_URL=https://step-ca:8443
-      - STEP_CA_PASSWORD_FILE=/home/step/secrets/password
-      - STEP_CA_ROOT_CERT=/home/step/certs/root_ca.crt
-      - STEPPATH=/home/step
+      EST_BOOTSTRAP_TOKEN: changeme
+      STEP_CA_URL: https://step-ca:8443
+      STEP_CA_PASSWORD_FILE: /home/step/secrets/password
+      STEP_CA_ROOT_CERT: /home/step/certs/root_ca.crt
+      STEPPATH: /home/step
+      EST_PROXY_SCRIPT: |
+        import os
+        import subprocess
+        import tempfile
+        from pathlib import Path
+
+        from flask import Flask, request, Response
+
+        try:
+            from cryptography import x509
+            from cryptography.x509.oid import NameOID
+            from cryptography.hazmat.primitives import serialization
+            from cryptography.hazmat.backends import default_backend
+            CRYPTO_AVAILABLE = True
+        except ImportError:
+            CRYPTO_AVAILABLE = False
+
+        app = Flask(__name__)
+
+        BOOTSTRAP_TOKEN = os.environ.get("EST_BOOTSTRAP_TOKEN", "changeme")
+        STEP_CA_URL = os.environ.get("STEP_CA_URL", "https://step-ca:8443")
+        STEP_PASSWORD_FILE = os.environ.get("STEP_CA_PASSWORD_FILE", "/home/step/secrets/password")
+        STEP_ROOT_CERT = os.environ.get("STEP_CA_ROOT_CERT", "/home/step/certs/root_ca.crt")
+        STEP_PROVISIONER = os.environ.get("STEP_CA_PROVISIONER", "admin")
+
+        def _get_cn_from_csr(csr_der):
+            if not CRYPTO_AVAILABLE:
+                raise RuntimeError("cryptography required")
+            try:
+                cert = x509.load_der_x509_csr(csr_der, default_backend())
+            except Exception:
+                cert = x509.load_pem_x509_csr(csr_der, default_backend())
+            for attr in cert.subject:
+                if attr.oid == NameOID.COMMON_NAME:
+                    return attr.value
+            raise ValueError("No CN in CSR")
+
+        def _csr_to_pem(csr_bytes):
+            if not CRYPTO_AVAILABLE:
+                return csr_bytes
+            if b"-----BEGIN" in csr_bytes:
+                return csr_bytes
+            csr = x509.load_der_x509_csr(csr_bytes, default_backend())
+            return csr.public_bytes(serialization.Encoding.PEM)
+
+        STEP_CLI_TIMEOUT = 20
+
+        @app.route("/est/simpleenroll", methods=["POST"])
+        def simpleenroll():
+            auth = request.headers.get("Authorization")
+            if not auth or not auth.startswith("Bearer "):
+                return Response("Unauthorized", status=401)
+            token = auth[7:].strip()
+            if token != BOOTSTRAP_TOKEN:
+                return Response("Forbidden", status=403)
+            if not request.data:
+                return Response("Missing CSR body", status=400)
+            csr_bytes = request.data
+            try:
+                cn = _get_cn_from_csr(csr_bytes)
+            except Exception as e:
+                return Response("Invalid CSR: %s" % e, status=400)
+            app.logger.info("simpleenroll request for CN=%s", cn)
+            csr_pem = _csr_to_pem(csr_bytes)
+            root = STEP_ROOT_CERT
+            if not Path(root).exists():
+                root = "/home/step/certs/root_ca.crt"
+            ca_url = STEP_CA_URL
+            pw_file = STEP_PASSWORD_FILE
+            step_env = dict(os.environ)
+            step_env["STEPPATH"] = "/home/step"
+            with tempfile.TemporaryDirectory() as tmp:
+                csr_path = Path(tmp) / "req.pem"
+                crt_path = Path(tmp) / "cert.pem"
+                csr_path.write_bytes(csr_pem)
+                try:
+                    result = subprocess.run(
+                        ["step", "ca", "token", "--password-file", pw_file, "--ca-url", ca_url,
+                         "--root", root, "--provisioner", STEP_PROVISIONER, str(cn).strip()],
+                        capture_output=True, text=True, timeout=STEP_CLI_TIMEOUT,
+                        cwd="/home/step", env=step_env, start_new_session=True,
+                    )
+                    if result.returncode != 0:
+                        err = (result.stderr or result.stdout or "").strip()
+                        app.logger.warning("step ca token failed: %s", err)
+                        return Response("Token failed: %s" % err, status=502)
+                    ott = result.stdout.strip()
+                except subprocess.TimeoutExpired:
+                    return Response("Token timed out (check step-ca reachable)", status=502)
+                except Exception as e:
+                    app.logger.exception("step ca token")
+                    return Response(str(e), status=502)
+                try:
+                    result = subprocess.run(
+                        ["step", "ca", "sign", str(csr_path), str(crt_path),
+                         "--token", ott, "--ca-url", ca_url, "--root", root],
+                        capture_output=True, text=True, timeout=STEP_CLI_TIMEOUT,
+                        cwd="/home/step", env=step_env, start_new_session=True,
+                    )
+                    if result.returncode != 0:
+                        err = (result.stderr or result.stdout or "").strip()
+                        app.logger.warning("step ca sign failed: %s", err)
+                        return Response("Sign failed: %s" % err, status=502)
+                except subprocess.TimeoutExpired:
+                    return Response("Sign timed out (check step-ca reachable)", status=502)
+                except Exception as e:
+                    app.logger.exception("step ca sign")
+                    return Response(str(e), status=502)
+                cert_pem = crt_path.read_bytes()
+                cert = x509.load_pem_x509_certificate(cert_pem, default_backend())
+                cert_der = cert.public_bytes(serialization.Encoding.DER)
+            return Response(cert_der, mimetype="application/pkcs7-mime; smime-type=certs-only")
+
+        def _load_first_pem_cert(pem_bytes):
+            return x509.load_pem_x509_certificate(pem_bytes, default_backend())
+
+        @app.route("/est/cacerts", methods=["GET"])
+        def cacerts():
+            auth = request.headers.get("Authorization")
+            if not auth or not auth.startswith("Bearer "):
+                return Response("Unauthorized", status=401)
+            if auth[7:].strip() != BOOTSTRAP_TOKEN:
+                return Response("Forbidden", status=403)
+            intermediate = Path("/home/step/certs/intermediate_ca.crt")
+            if not intermediate.exists():
+                return Response("CA certs not found", status=500)
+            pem = intermediate.read_bytes()
+            cert = _load_first_pem_cert(pem)
+            cert_der = cert.public_bytes(serialization.Encoding.DER)
+            return Response(cert_der, mimetype="application/pkcs7-mime; smime-type=certs-only")
+
+        @app.route("/health", methods=["GET"])
+        def health():
+            return Response('{"status":"ok"}', mimetype="application/json")
     volumes:
-      - ./step-ca-data:/home/step:ro
+      - step_ca_data:/home/step:ro
+    command: ["sh", "-c", "printf '%s' \"$EST_PROXY_SCRIPT\" > /tmp/app.py && PYTHONPATH=/tmp python3 -m gunicorn -b 0.0.0.0:9443 -w 2 --certfile /app/cert.pem --keyfile /app/key.pem app:app"]
     depends_on:
       step-ca:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python3", "/app/healthcheck.py"]
+      test: ["CMD", "curl", "-k", "-f", "https://127.0.0.1:9443/health"]
       interval: 15s
       timeout: 10s
       retries: 3
