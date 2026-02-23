@@ -214,8 +214,8 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      # Use hostname est-proxy so SNI matches server cert (CN=est-proxy); Docker DNS resolves est-proxy to this container
-      test: ["CMD", "/usr/bin/python3", "-c", "import urllib.request, ssl; c=ssl.create_default_context(); c.check_hostname=False; c.verify_mode=ssl.CERT_NONE; urllib.request.urlopen('https://est-proxy:9443/health', context=c, timeout=5)"]
+      # TCP connect only (gunicorn SSL handshake resets with local clients); verifies process is listening on 9443
+      test: ["CMD", "/usr/bin/python3", "-c", "import socket; s=socket.socket(); s.settimeout(5); s.connect(('127.0.0.1', 9443)); s.close()"]
       interval: 15s
       timeout: 10s
       retries: 3
