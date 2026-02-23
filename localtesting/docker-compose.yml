@@ -16,7 +16,8 @@ services:
       - STEPCA_PASSWORD=changeme
     command: >
       sh -c "
-      mkdir -p /home/step/secrets
+      export PATH=\"/usr/bin:/bin:$$PATH\"
+      && mkdir -p /home/step/secrets
       && printf '%s' \"$$STEPCA_PASSWORD\" > /home/step/secrets/password
       && ( [ -f /home/step/config/ca.json ] || step ca init
         --name \"Nexus IoT CA\"
