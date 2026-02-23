@@ -20,9 +20,9 @@ services:
       - -c
       - |
         set -e
-        export PATH="/usr/bin:/bin:$PATH"
+        export PATH="/usr/bin:/bin:$$PATH"
         mkdir -p /home/step/secrets
-        printf '%s' "$STEPCA_PASSWORD" > /home/step/secrets/password
+        printf '%s' "$$STEPCA_PASSWORD" > /home/step/secrets/password
         if [ ! -f /home/step/config/ca.json ]; then
           step ca init \
             --name "Nexus IoT CA" \
