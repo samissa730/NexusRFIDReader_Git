@@ -214,8 +214,8 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      # Runs inside this container where gunicorn listens on 9443; use /usr/bin/python3 (PATH may be minimal for step user)
-      test: ["CMD", "/usr/bin/python3", "-c", "import urllib.request, ssl; c=ssl.create_default_context(); c.check_hostname=False; c.verify_mode=ssl.CERT_NONE; urllib.request.urlopen('https://127.0.0.1:9443/health', context=c, timeout=5)"]
+      # Use hostname est-proxy so SNI matches server cert (CN=est-proxy); Docker DNS resolves est-proxy to this container
+      test: ["CMD", "/usr/bin/python3", "-c", "import urllib.request, ssl; c=ssl.create_default_context(); c.check_hostname=False; c.verify_mode=ssl.CERT_NONE; urllib.request.urlopen('https://est-proxy:9443/health', context=c, timeout=5)"]
       interval: 15s
       timeout: 10s
       retries: 3
