@@ -108,6 +108,24 @@ WantedBy=graphical.target
 EOL
 echo -e "   ${GREEN}SUCCESS${NC} Systemd service file created (will be configured during installation)"
 
+# Step 4b: Create USB tethering (usb0) bring-up service for boot
+cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/etc/systemd/system/nexus-usb0-network.service <<'EOL'
+[Unit]
+Description=Bring up USB tethering (usb0) for Nexus RFID at boot
+After=network-pre.target
+Before=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c '/sbin/dhclient usb0 2>/dev/null || /usr/sbin/dhclient usb0 2>/dev/null || true'
+RemainAfterExit=yes
+TimeoutStartSec=30
+
+[Install]
+WantedBy=multi-user.target
+EOL
+echo -e "   ${GREEN}SUCCESS${NC} nexus-usb0-network.service created"
+
 # Step 5: Create .desktop file for application menu
 echo -e "${YELLOW}Step 5: Creating desktop application entry...${NC}"
 cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/usr/share/applications/${PACKAGE_NAME}.desktop <<EOL
@@ -303,6 +321,11 @@ fi
 systemctl daemon-reload
 echo "Systemd daemon reloaded"
 
+# Enable and start USB tethering (usb0) so internet is up at boot
+systemctl enable nexus-usb0-network.service 2>/dev/null || true
+systemctl start nexus-usb0-network.service 2>/dev/null || true
+echo "nexus-usb0-network.service enabled and started (usb0 bring-up at boot)"
+
 # Enable the service
 systemctl enable nexusrfid_production.service
 echo "Service enabled to start on boot"
@@ -366,6 +389,14 @@ fi
 if systemctl is-enabled --quiet nexusrfid_production.service 2>/dev/null; then
     systemctl disable nexusrfid_production.service
     echo "Service disabled"
+fi
+
+# Stop and disable USB tethering (usb0) bring-up service
+if systemctl is-active --quiet nexus-usb0-network.service 2>/dev/null; then
+    systemctl stop nexus-usb0-network.service
+fi
+if systemctl is-enabled --quiet nexus-usb0-network.service 2>/dev/null; then
+    systemctl disable nexus-usb0-network.service
 fi
 
 # Reload systemd daemon

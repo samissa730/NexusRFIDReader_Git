@@ -118,8 +118,8 @@ if [ -f "${IOT_SCRIPT}" ]; then
   sudo bash -c "cat > '${AZURE_IOT_UNIT}'" <<AZUREIOT
 [Unit]
 Description=Azure IoT Hub Connection Service
-After=network-online.target
-Wants=network-online.target
+After=network-online.target nexus-usb0-network.service
+Wants=network-online.target nexus-usb0-network.service
 StartLimitIntervalSec=60
 StartLimitBurst=3
 
@@ -143,6 +143,30 @@ AZUREIOT
   fi
 else
   print_warning "Azure IoT script not found at ${IOT_SCRIPT}; nexus-iot.sock will not be created"
+fi
+
+# Install USB tethering (usb0) bring-up so internet is up at boot even if app service is down
+USB0_UNIT="/etc/systemd/system/nexus-usb0-network.service"
+print_step "Installing USB tethering (usb0) bring-up service..."
+sudo bash -c "cat > '${USB0_UNIT}'" <<USB0UNIT
+[Unit]
+Description=Bring up USB tethering (usb0) for Nexus RFID at boot
+After=network-pre.target
+Before=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c '/sbin/dhclient usb0 2>/dev/null || /usr/sbin/dhclient usb0 2>/dev/null || true'
+RemainAfterExit=yes
+TimeoutStartSec=30
+
+[Install]
+WantedBy=multi-user.target
+USB0UNIT
+if [ -f "${USB0_UNIT}" ]; then
+  print_success "nexus-usb0-network.service installed at ${USB0_UNIT}"
+else
+  print_warning "Could not create nexus-usb0-network.service"
 fi
 
 print_step "Creating systemd service unit file..."
@@ -188,6 +212,18 @@ if [ $? -eq 0 ]; then
 else
     print_error "Failed to reload systemd daemon"
     exit 1
+fi
+
+# Enable and start USB tethering (usb0) so internet is up at boot before app/IoT
+if [ -f "${USB0_UNIT}" ]; then
+    print_step "Enabling and starting nexus-usb0-network.service..."
+    sudo systemctl enable nexus-usb0-network.service 2>/dev/null || true
+    sudo systemctl start nexus-usb0-network.service 2>/dev/null || true
+    if systemctl is-active --quiet nexus-usb0-network.service 2>/dev/null; then
+        print_success "nexus-usb0-network.service started (usb0 bring-up at boot)"
+    else
+        print_warning "nexus-usb0-network.service may not have started (usb0 may not be present yet)"
+    fi
 fi
 
 # Enable and start Azure IoT service first so /var/run/nexus-iot.sock exists
@@ -252,6 +288,11 @@ print_status "Azure IoT (nexus-iot.sock):"
 print_status "  Status:  sudo systemctl status azure-iot.service"
 print_status "  Logs:    sudo journalctl -u azure-iot.service -f"
 print_status "  Restart: sudo systemctl restart azure-iot.service"
+fi
+if [ -f "${USB0_UNIT}" ]; then
+echo ""
+print_status "USB tethering (usb0 at boot):"
+print_status "  Status:  sudo systemctl status nexus-usb0-network.service"
 fi
 echo ""
 print_success "Service will automatically start on system boot"

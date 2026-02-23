@@ -39,6 +39,7 @@ print_step() {
 # Service configuration
 SERVICE_NAME="nexusrfid"
 UNIT_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
+USB0_UNIT="/etc/systemd/system/nexus-usb0-network.service"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 
@@ -90,6 +91,23 @@ else
     print_warning "Service unit file not found at ${UNIT_PATH}"
 fi
 
+# Stop, disable, and remove USB tethering (usb0) bring-up service
+print_step "Removing nexus-usb0-network.service..."
+if systemctl list-units --type=service --all 2>/dev/null | grep -q "nexus-usb0-network.service"; then
+    if systemctl is-active --quiet nexus-usb0-network.service 2>/dev/null; then
+        sudo systemctl stop nexus-usb0-network.service 2>/dev/null || true
+    fi
+    if systemctl is-enabled --quiet nexus-usb0-network.service 2>/dev/null; then
+        sudo systemctl disable nexus-usb0-network.service 2>/dev/null || true
+    fi
+fi
+if [ -f "${USB0_UNIT}" ]; then
+    sudo rm -f "${USB0_UNIT}"
+    print_success "nexus-usb0-network.service unit file removed"
+else
+    print_status "nexus-usb0-network.service unit file not found"
+fi
+
 # Reload systemd daemon
 print_step "Reloading systemd daemon..."
 sudo systemctl daemon-reload && print_success "Systemd daemon reloaded" || print_error "Failed to reload systemd daemon"
@@ -107,7 +125,7 @@ fi
 
 # Final verification
 print_step "Verifying uninstallation..."
-if ! systemctl list-units --type=service --all | grep -q "${SERVICE_NAME}.service" && [ ! -f "${UNIT_PATH}" ]; then
+if ! systemctl list-units --type=service --all | grep -q "${SERVICE_NAME}.service" && [ ! -f "${UNIT_PATH}" ] && [ ! -f "${USB0_UNIT}" ]; then
     echo ""
     echo "============================================================"
     print_header "Uninstallation Complete!"
@@ -121,5 +139,6 @@ else
     print_error "Uninstallation may not be complete. Please check manually:"
     print_status "Check service: systemctl status ${SERVICE_NAME}.service"
     print_status "Check unit file: ls -la ${UNIT_PATH}"
+    print_status "Check usb0 unit: ls -la ${USB0_UNIT}"
     exit 1
 fi
