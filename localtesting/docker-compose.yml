@@ -214,7 +214,8 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "/usr/bin/curl", "-k", "-f", "https://127.0.0.1:9443/health"]
+      # Use hostname est-proxy so SNI matches the server cert (CN=est-proxy); resolve to 127.0.0.1
+      test: ["CMD", "/usr/bin/curl", "-k", "-f", "--resolve", "est-proxy:9443:127.0.0.1", "https://est-proxy:9443/health"]
       interval: 15s
       timeout: 10s
       retries: 3
