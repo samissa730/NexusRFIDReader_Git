@@ -208,7 +208,7 @@ services:
             return Response('{"status":"ok"}', mimetype="application/json")
     volumes:
       - step_ca_data:/home/step:ro
-    command: ["sh", "-c", "printf '%s' \"$EST_PROXY_SCRIPT\" > /tmp/app.py && PYTHONPATH=/tmp python3 -m gunicorn -b 0.0.0.0:9443 -w 2 --certfile /app/cert.pem --keyfile /app/key.pem app:app"]
+    command: ["sh", "-c", "printf '%s' \"$$EST_PROXY_SCRIPT\" > /tmp/app.py && PYTHONPATH=/tmp python3 -m gunicorn -b 0.0.0.0:9443 -w 2 --certfile /app/cert.pem --keyfile /app/key.pem app:app"]
     depends_on:
       step-ca:
         condition: service_healthy
