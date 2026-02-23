@@ -214,8 +214,8 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      # Use hostname est-proxy so SNI matches the server cert (CN=est-proxy); resolve to 127.0.0.1
-      test: ["CMD", "/usr/bin/curl", "-k", "-f", "--resolve", "est-proxy:9443:127.0.0.1", "https://est-proxy:9443/health"]
+      # Python avoids curl TLS handshake issues with self-signed cert in-container
+      test: ["CMD", "python3", "-c", "import urllib.request, ssl; c=ssl.create_default_context(); c.check_hostname=False; c.verify_mode=ssl.CERT_NONE; urllib.request.urlopen('https://127.0.0.1:9443/health', context=c, timeout=5)"]
       interval: 15s
       timeout: 10s
       retries: 3
