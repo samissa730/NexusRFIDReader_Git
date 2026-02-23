@@ -15,22 +15,25 @@ services:
       - step_ca_data:/home/step
     environment:
       - STEPCA_PASSWORD=changeme
-    command: >
-      sh -c "
-      export PATH=\"/usr/bin:/bin:$$PATH\"
-      && mkdir -p /home/step/secrets
-      && printf '%s' \"$$STEPCA_PASSWORD\" > /home/step/secrets/password
-      && ( [ -f /home/step/config/ca.json ] || step ca init
-        --name \"Nexus IoT CA\"
-        --dns localhost
-        --dns step-ca
-        --address \":8443\"
-        --provisioner admin
-        --password-file /home/step/secrets/password
-      )
-      && jq '.est = {\"enabled\": true, \"bootstrapToken\": \"changeme\"} | if .db.type == \"badger\" then .db.badgerFileLoadingMode = \"FileIO\" else . end' /home/step/config/ca.json > /tmp/ca.json
-      && mv /tmp/ca.json /home/step/config/ca.json
-      "
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        export PATH="/usr/bin:/bin:$PATH"
+        mkdir -p /home/step/secrets
+        printf '%s' "$STEPCA_PASSWORD" > /home/step/secrets/password
+        if [ ! -f /home/step/config/ca.json ]; then
+          step ca init \
+            --name "Nexus IoT CA" \
+            --dns localhost \
+            --dns step-ca \
+            --address ":8443" \
+            --provisioner admin \
+            --password-file /home/step/secrets/password
+        fi
+        jq '.est = {"enabled": true, "bootstrapToken": "changeme"} | if .db.type == "badger" then .db.badgerFileLoadingMode = "FileIO" else . end' /home/step/config/ca.json > /tmp/ca.json
+        mv /tmp/ca.json /home/step/config/ca.json
 
   step-ca:
     image: smallstep/step-ca:latest
