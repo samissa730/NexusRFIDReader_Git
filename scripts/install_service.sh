@@ -118,8 +118,8 @@ if [ -f "${IOT_SCRIPT}" ]; then
   sudo bash -c "cat > '${AZURE_IOT_UNIT}'" <<AZUREIOT
 [Unit]
 Description=Azure IoT Hub Connection Service
-After=network-online.target nexus-usb0-network.service
-Wants=network-online.target nexus-usb0-network.service
+After=network.target nexus-usb0-network.service
+Wants=nexus-usb0-network.service
 StartLimitIntervalSec=60
 StartLimitBurst=3
 
