@@ -7,7 +7,7 @@ USER root
 # Enable community repo for step-cli (needed for "step ca init" in step-ca-init)
 RUN sed -i '/community/s/^#//' /etc/apk/repositories 2>/dev/null || true \
     && apk update \
-    && apk add --no-cache python3 py3-pip openssl wget jq curl step-cli \
+    && apk add --no-cache python3 py3-pip openssl wget jq curl step-cli socat \
     && pip3 install --break-system-packages flask cryptography gunicorn
 
 WORKDIR /app
