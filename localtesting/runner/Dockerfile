@@ -14,7 +14,9 @@ WORKDIR /app
 # SAN so TLS works when clients connect to 127.0.0.1 or localhost (e.g. host-side EST test)
 RUN openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes \
     -subj "/CN=est-proxy" \
-    -addext "subjectAltName=DNS:est-proxy,DNS:localhost,IP:127.0.0.1"
+    -addext "subjectAltName=DNS:est-proxy,DNS:localhost,IP:127.0.0.1" \
+    && cat cert.pem key.pem > combined.pem && chmod 600 combined.pem \
+    && chown -R step:step /app
 
 ENV EST_BOOTSTRAP_TOKEN=changeme
 ENV STEP_CA_URL=https://step-ca:8443

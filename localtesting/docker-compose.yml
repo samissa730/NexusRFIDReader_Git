@@ -209,7 +209,7 @@ services:
     volumes:
       - step_ca_data:/home/step:ro
     # Gunicorn over HTTP; socat terminates TLS (avoids gunicorn SSL handshake reset with external clients)
-    command: ["sh", "-c", "printf '%s' \"$$EST_PROXY_SCRIPT\" > /tmp/app.py && (PYTHONPATH=/tmp python3 -m gunicorn -b 127.0.0.1:8080 -w 2 app:app &) && sleep 2 && exec socat OPENSSL-LISTEN:9443,fork,cert=/app/cert.pem,key=/app/key.pem,reuseaddr TCP:127.0.0.1:8080"]
+    command: ["sh", "-c", "printf '%s' \"$$EST_PROXY_SCRIPT\" > /tmp/app.py && (PYTHONPATH=/tmp python3 -m gunicorn -b 127.0.0.1:8080 -w 2 app:app &) && sleep 2 && exec socat OPENSSL-LISTEN:9443,fork,reuseaddr,cert=/app/combined.pem TCP:127.0.0.1:8080"]
     depends_on:
       step-ca:
         condition: service_healthy
