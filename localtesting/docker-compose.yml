@@ -10,6 +10,7 @@ services:
     build: ./runner
     container_name: step-ca-init
     restart: "no"
+    entrypoint: []
     volumes:
       - step_ca_data:/home/step
     environment:
