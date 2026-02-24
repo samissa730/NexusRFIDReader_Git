@@ -183,9 +183,9 @@ class RFID(QThread):
                 if response_time is not None:
                     if self.connectivity is False:
                         try:
-                            # Only recreate reader when we don't have one (avoids spam of "RFID initialized" every 100ms)
+                            # Only create reader when we don't have one (avoids spam of "RFID initialized" every 100ms)
                             if self.reader is None:
-                                LLRPReaderClient.disconnect_all_readers()
+                                # Skip disconnect_all_readers() when we have no reader - avoids "Reader not connected. Disconnect is not needed."
                                 self._set_reader(self.host, False)  # Do not set connectivity True until connect() succeeds
                             self.reader.connect()
                             self.connectivity = True
