@@ -652,8 +652,11 @@ class OverviewScreen(BaseScreen):
         # Check if disconnection time exceeds the limit
         disconnection_duration = current_time - self.internet_disconnected_start
         if disconnection_duration >= self.internet_limit_seconds:
-            logger.critical(f"Internet disconnected for {disconnection_duration:.0f} seconds (limit: {self.internet_limit_seconds} seconds). Restarting device...")
-            self._restart_device()
+            if settings.INTERNET_RESTART_ON_DISCONNECT:
+                logger.critical(f"Internet disconnected for {disconnection_duration:.0f} seconds (limit: {self.internet_limit_seconds} seconds). Restarting device...")
+                self._restart_device()
+            else:
+                logger.warning(f"Internet disconnected for {disconnection_duration:.0f} seconds (restart on disconnect disabled in config; app continues running)")
         else:
             remaining_time = self.internet_limit_seconds - disconnection_duration
             logger.warning(f"Internet still disconnected. {remaining_time:.0f} seconds remaining before restart")

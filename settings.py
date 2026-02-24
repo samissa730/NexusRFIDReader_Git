@@ -90,6 +90,7 @@ def get_default_config():
         },
         "baud_rate_don": 9600,
         "internet_limit_time": 5,
+        "internet_restart_on_disconnect": True,
     }
 
 
@@ -147,6 +148,7 @@ DATABASE_CONFIG = _config["database_config"]
 FILTER_CONFIG = _config["filter_config"]
 BAUD_RATE_DON = _config["baud_rate_don"]
 INTERNET_LIMIT_TIME = _config["internet_limit_time"]
+INTERNET_RESTART_ON_DISCONNECT = _config.get("internet_restart_on_disconnect", True)
 
 
 def update_rfid_host(new_host: str):
@@ -165,7 +167,7 @@ def update_rfid_host(new_host: str):
 
 def reload_config():
     """Reload configuration from JSON file and update all config dictionaries in place"""
-    global GPS_CONFIG, RFID_CONFIG, API_CONFIG, DATABASE_CONFIG, FILTER_CONFIG, BAUD_RATE_DON, INTERNET_LIMIT_TIME
+    global GPS_CONFIG, RFID_CONFIG, API_CONFIG, DATABASE_CONFIG, FILTER_CONFIG, BAUD_RATE_DON, INTERNET_LIMIT_TIME, INTERNET_RESTART_ON_DISCONNECT
     try:
         new_config = load_config()
         # Update dictionaries in place so existing references reflect changes
@@ -187,6 +189,7 @@ def reload_config():
         # Update primitives (need to reassign)
         BAUD_RATE_DON = new_config["baud_rate_don"]
         INTERNET_LIMIT_TIME = new_config["internet_limit_time"]
+        INTERNET_RESTART_ON_DISCONNECT = new_config.get("internet_restart_on_disconnect", True)
         
         return True
     except Exception as e:
