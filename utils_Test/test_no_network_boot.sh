@@ -68,7 +68,8 @@ case "$cmd" in
         fi
         echo -e "${GREEN}App stopped. Running fallback (nexusrfid-start-fallback.service)...${NC}"
         sudo systemctl start nexusrfid-start-fallback.service
-        echo "Waiting for nexusrfid to become active (up to 15s)..."
+        # nexusrfid has ExecStartPre (dhclient + sleep 2), so allow up to 15s for it to become active
+        echo "Waiting for nexusrfid.service to become active (up to 15s)..."
         for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
             sleep 1
             if systemctl is-active --quiet nexusrfid.service; then
@@ -76,7 +77,7 @@ case "$cmd" in
                 exit 0
             fi
         done
-        echo -e "${RED}FAIL: App did not start. Check: systemctl status nexusrfid.service; journalctl -u nexusrfid.service -n 30${NC}"
+        echo -e "${RED}FAIL: App did not start within 15s. Check: systemctl status nexusrfid.service${NC}"
         exit 1
         ;;
     simulate-reboot)
