@@ -91,21 +91,13 @@ else
     print_warning "Service unit file not found at ${UNIT_PATH}"
 fi
 
-# Stop, disable, and remove USB tethering (usb0) bring-up service
-print_step "Removing nexus-usb0-network.service..."
-if systemctl list-units --type=service --all 2>/dev/null | grep -q "nexus-usb0-network.service"; then
-    if systemctl is-active --quiet nexus-usb0-network.service 2>/dev/null; then
-        sudo systemctl stop nexus-usb0-network.service 2>/dev/null || true
-    fi
-    if systemctl is-enabled --quiet nexus-usb0-network.service 2>/dev/null; then
-        sudo systemctl disable nexus-usb0-network.service 2>/dev/null || true
-    fi
-fi
+# Keep nexus-usb0-network.service installed so internet (USB tethering) keeps working
+# after uninstall. Only remove the main app unit.
+print_step "Leaving nexus-usb0-network.service in place (keeps USB tethering internet working)..."
 if [ -f "${USB0_UNIT}" ]; then
-    sudo rm -f "${USB0_UNIT}"
-    print_success "nexus-usb0-network.service unit file removed"
+    print_success "nexus-usb0-network.service left enabled; internet over usb0 will continue to work"
 else
-    print_status "nexus-usb0-network.service unit file not found"
+    print_status "nexus-usb0-network.service not found (nothing to keep)"
 fi
 
 # Reload systemd daemon
@@ -123,22 +115,22 @@ else
     print_status "Desktop entry not found"
 fi
 
-# Final verification
+# Final verification (nexus-usb0-network is left on purpose for internet)
 print_step "Verifying uninstallation..."
-if ! systemctl list-units --type=service --all | grep -q "${SERVICE_NAME}.service" && [ ! -f "${UNIT_PATH}" ] && [ ! -f "${USB0_UNIT}" ]; then
+if ! systemctl list-units --type=service --all | grep -q "${SERVICE_NAME}.service" && [ ! -f "${UNIT_PATH}" ]; then
     echo ""
     echo "============================================================"
     print_header "Uninstallation Complete!"
     echo "============================================================"
     print_success "Service ${SERVICE_NAME}.service has been completely removed"
     print_success "Desktop entry removed (if existed)"
-    print_status "System is clean and ready for fresh installation"
+    print_status "nexus-usb0-network.service was left installed so internet over usb0 keeps working"
+    print_status "To remove it too: sudo systemctl disable nexus-usb0-network.service && sudo rm ${USB0_UNIT} && sudo systemctl daemon-reload"
     echo "============================================================"
 else
     echo ""
     print_error "Uninstallation may not be complete. Please check manually:"
     print_status "Check service: systemctl status ${SERVICE_NAME}.service"
     print_status "Check unit file: ls -la ${UNIT_PATH}"
-    print_status "Check usb0 unit: ls -la ${USB0_UNIT}"
     exit 1
 fi

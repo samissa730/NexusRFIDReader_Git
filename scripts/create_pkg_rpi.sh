@@ -85,13 +85,13 @@ echo -e "${YELLOW}Step 4: Creating systemd service file...${NC}"
 cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/etc/systemd/system/nexusrfid_production.service <<'EOL'
 [Unit]
 Description=Nexus RFID Application
-After=azure-iot.service graphical.target
-Wants=azure-iot.service graphical.target
+After=azure-iot.service nexus-usb0-network.service graphical.target
+Wants=azure-iot.service nexus-usb0-network.service graphical.target
 
 [Service]
 Type=simple
-ExecStartPre=/bin/bash -c '/usr/bin/sudo /sbin/dhclient usb0 || true'
-ExecStartPre=/bin/sleep 5
+ExecStartPre=/bin/bash -c '/usr/bin/sudo /sbin/dhclient usb0 2>/dev/null || true'
+ExecStartPre=/bin/sleep 2
 ExecStart=sudo /usr/local/bin/NexusRFIDReader
 Restart=always
 RestartSec=5
@@ -108,23 +108,9 @@ WantedBy=graphical.target
 EOL
 echo -e "   ${GREEN}SUCCESS${NC} Systemd service file created (will be configured during installation)"
 
-# Step 4b: Create USB tethering (usb0) bring-up service for boot
-cat > ${PACKAGE_NAME}-${PACKAGE_VERSION}/etc/systemd/system/nexus-usb0-network.service <<'EOL'
-[Unit]
-Description=Bring up USB tethering (usb0) for Nexus RFID at boot
-After=network-pre.target
-Before=network-online.target
-
-[Service]
-Type=oneshot
-ExecStart=/bin/sh -c '/sbin/dhclient usb0 2>/dev/null || /usr/sbin/dhclient usb0 2>/dev/null || true'
-RemainAfterExit=yes
-TimeoutStartSec=30
-
-[Install]
-WantedBy=multi-user.target
-EOL
-echo -e "   ${GREEN}SUCCESS${NC} nexus-usb0-network.service created"
+# Step 4b: nexus-usb0-network.service is created in postinst (not packaged) so it survives
+# package purge and internet over usb0 keeps working after uninstall.
+echo -e "   ${GREEN}SUCCESS${NC} nexus-usb0-network.service will be created in postinst"
 
 # Step 5: Create .desktop file for application menu
 echo -e "${YELLOW}Step 5: Creating desktop application entry...${NC}"
@@ -302,6 +288,27 @@ if [ -d "$SERVICE_HOME" ]; then
     # Ensure proper permissions on home directory (for data files)
     chown -R "${SERVICE_USER}:${SERVICE_USER}" "$SERVICE_HOME" 2>/dev/null || true
 fi
+
+# Create nexus-usb0-network.service (not in package) so internet over usb0 works at boot
+# and keeps working when app service is stopped or when package is purged.
+USB0_UNIT="/etc/systemd/system/nexus-usb0-network.service"
+echo "Creating nexus-usb0-network.service for USB tethering (usb0)..."
+cat > "$USB0_UNIT" <<'USB0UNIT'
+[Unit]
+Description=Bring up USB tethering (usb0) for Nexus RFID at boot
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStartPre=/bin/sleep 15
+ExecStart=/bin/sh -c 'DHCPC=/sbin/dhclient; [ -x /usr/sbin/dhclient ] && DHCPC=/usr/sbin/dhclient; for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do $DHCPC usb0 2>/dev/null && break; sleep 5; done; true'
+RemainAfterExit=yes
+TimeoutStartSec=90
+
+[Install]
+WantedBy=multi-user.target
+USB0UNIT
+echo "nexus-usb0-network.service created (delay + retry so usb0 is up at boot)"
 
 # Update the service file with actual user information
 SERVICE_FILE="/etc/systemd/system/nexusrfid_production.service"

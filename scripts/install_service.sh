@@ -145,20 +145,25 @@ else
   print_warning "Azure IoT script not found at ${IOT_SCRIPT}; nexus-iot.sock will not be created"
 fi
 
-# Install USB tethering (usb0) bring-up so internet is up at boot even if app service is down
+# Install USB tethering (usb0) bring-up so internet is up at boot even if app service is down.
+# This service runs after network.target, waits for usb0 to appear, then retries dhclient
+# so that internet works regardless of nexusrfid.service state (running, stopped, or uninstalled).
 USB0_UNIT="/etc/systemd/system/nexus-usb0-network.service"
 print_step "Installing USB tethering (usb0) bring-up service..."
 sudo bash -c "cat > '${USB0_UNIT}'" <<USB0UNIT
 [Unit]
 Description=Bring up USB tethering (usb0) for Nexus RFID at boot
-After=network-pre.target
-Before=network-online.target
+After=network.target
+# So network is up before we try; usb0 may enumerate a bit later
 
 [Service]
 Type=oneshot
-ExecStart=/bin/sh -c '/sbin/dhclient usb0 2>/dev/null || /usr/sbin/dhclient usb0 2>/dev/null || true'
+# Wait for USB to enumerate so usb0 may exist
+ExecStartPre=/bin/sleep 15
+# Retry dhclient every 5s for up to 60s so we get a lease even if usb0 appears late
+ExecStart=/bin/sh -c 'DHCPC=/sbin/dhclient; [ -x /usr/sbin/dhclient ] && DHCPC=/usr/sbin/dhclient; for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do \$DHCPC usb0 2>/dev/null && break; sleep 5; done; true'
 RemainAfterExit=yes
-TimeoutStartSec=30
+TimeoutStartSec=90
 
 [Install]
 WantedBy=multi-user.target
@@ -173,16 +178,15 @@ print_step "Creating systemd service unit file..."
 sudo bash -c "cat > '${UNIT_PATH}'" <<UNIT
 [Unit]
 Description=Nexus RFID Application
-After=azure-iot.service graphical.target
-Wants=azure-iot.service graphical.target
+After=azure-iot.service nexus-usb0-network.service graphical.target
+Wants=azure-iot.service nexus-usb0-network.service graphical.target
 
 [Service]
 Type=simple
 WorkingDirectory=${PROJECT_ROOT}
-# Setup internet connection via usb0 FIRST, before anything else
-# This runs before network-online.target since we're setting up the connection ourselves
-ExecStartPre=/bin/bash -c '/usr/bin/sudo /sbin/dhclient usb0 || true'
-ExecStartPre=/bin/sleep 5
+# Optional: ensure usb0 has a lease if nexus-usb0-network got it late (no-op if already up)
+ExecStartPre=/bin/bash -c '/usr/bin/sudo /sbin/dhclient usb0 2>/dev/null || true'
+ExecStartPre=/bin/sleep 2
 ExecStart=${RUN_SCRIPT}
 Restart=always
 RestartSec=5
