@@ -42,8 +42,9 @@ case "$cmd" in
             echo -e "${RED}  FAIL: nexusrfid-start-fallback.timer not enabled${NC}"
         fi
         if [ -f /etc/systemd/system/nexusrfid.service ]; then
-            if grep -q 'network-online' /etc/systemd/system/nexusrfid.service; then
-                echo -e "${RED}  FAIL: nexusrfid.service references network-online${NC}"
+            # Only fail if a dependency line (After/Wants/Requires) references network-online, not comments
+            if grep -E '^\s*(After|Wants|Requires)=' /etc/systemd/system/nexusrfid.service | grep -q 'network-online'; then
+                echo -e "${RED}  FAIL: nexusrfid.service references network-online in After/Wants/Requires${NC}"
             else
                 echo -e "${GREEN}  OK: nexusrfid.service does not wait for network-online${NC}"
                 ok=$((ok+1))
@@ -54,8 +55,8 @@ case "$cmd" in
         ;;
     fallback)
         echo -e "${BLUE}[FALLBACK] Testing fallback start (app will be stopped then restarted by fallback)...${NC}"
-        if ! systemctl list-unit-files --type=service | grep -q nexusrfid.service; then
-            echo -e "${RED}nexusrfid.service not found. Install the service first.${NC}"
+        if [ ! -f /etc/systemd/system/nexusrfid.service ]; then
+            echo -e "${RED}nexusrfid.service not found (no unit file). Install the service first.${NC}"
             exit 1
         fi
         echo "Stopping nexusrfid.service..."
