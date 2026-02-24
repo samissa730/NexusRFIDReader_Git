@@ -221,7 +221,7 @@ After=graphical.target
 
 [Service]
 Type=oneshot
-# After start, wait so nexusrfid can pass ExecStartPre and become active before we exit
+# Start nexusrfid if not active, then wait so it can pass ExecStartPre (dhclient + sleep) and become active
 ExecStart=/bin/sh -c 'systemctl is-active --quiet ${SERVICE_NAME}.service || { systemctl start ${SERVICE_NAME}.service; sleep 6; }'
 RemainAfterExit=yes
 
