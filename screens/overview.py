@@ -174,15 +174,15 @@ class OverviewScreen(BaseScreen):
         self.gps_display_timer.timeout.connect(self._update_gps_display)
         self.gps_display_timer.start(2000)  # Update every 2 seconds
 
+        # Internet disconnection tracking (must be set before first _check_internet_status)
+        self.internet_disconnected_start = None
+        self.internet_limit_seconds = settings.INTERNET_LIMIT_TIME * 60  # Convert minutes to seconds
+
         # Internet status check timer
         self.internet_timer = QTimer(self)
         self.internet_timer.timeout.connect(self._check_internet_status)
         self.internet_timer.start(5000)  # Check every 5 seconds
         self._check_internet_status()  # Initial check
-        
-        # Internet disconnection tracking
-        self.internet_disconnected_start = None
-        self.internet_limit_seconds = settings.INTERNET_LIMIT_TIME * 60  # Convert minutes to seconds
         
         # Config reload timer - reload config every internet_limit_time * 3 seconds
         self.config_reload_timer = QTimer(self)
