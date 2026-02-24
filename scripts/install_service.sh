@@ -178,8 +178,9 @@ print_step "Creating systemd service unit file..."
 sudo bash -c "cat > '${UNIT_PATH}'" <<UNIT
 [Unit]
 Description=Nexus RFID Application
-After=azure-iot.service nexus-usb0-network.service graphical.target
-Wants=azure-iot.service nexus-usb0-network.service graphical.target
+# Start after graphical.target so UI is available; do not block on network/SIM (no network-online).
+After=graphical.target azure-iot.service nexus-usb0-network.service
+Wants=graphical.target azure-iot.service nexus-usb0-network.service
 
 [Service]
 Type=simple
@@ -207,6 +208,43 @@ if [ -f "${UNIT_PATH}" ]; then
 else
     print_error "Failed to create service unit file"
     exit 1
+fi
+
+# Fallback: start app 60s after boot if not already running (e.g. when no SIM/network and graphical chain is delayed)
+FALLBACK_UNIT="/etc/systemd/system/nexusrfid-start-fallback.service"
+FALLBACK_TIMER="/etc/systemd/system/nexusrfid-start-fallback.timer"
+print_step "Installing fallback start (60s after boot if app not running)..."
+sudo bash -c "cat > '${FALLBACK_UNIT}'" <<FALLBACK
+[Unit]
+Description=Start Nexus RFID app if not running (fallback after boot)
+After=graphical.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'systemctl is-active --quiet ${SERVICE_NAME}.service || systemctl start ${SERVICE_NAME}.service'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+FALLBACK
+sudo bash -c "cat > '${FALLBACK_TIMER}'" <<TIMER
+[Unit]
+Description=Run Nexus RFID start fallback 60s after boot
+# No After=graphical so timer runs 60s after boot even without network/SIM
+
+[Timer]
+OnBootSec=25
+Persistent=no
+Unit=nexusrfid-start-fallback.service
+
+[Install]
+WantedBy=timers.target
+TIMER
+if [ -f "${FALLBACK_TIMER}" ]; then
+    sudo systemctl enable nexusrfid-start-fallback.timer 2>/dev/null || true
+    print_success "nexusrfid-start-fallback.timer enabled (starts app 60s after boot if not running)"
+else
+    print_warning "Could not create fallback timer"
 fi
 
 print_step "Reloading systemd daemon..."
