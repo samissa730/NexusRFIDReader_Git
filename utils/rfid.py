@@ -182,13 +182,21 @@ class RFID(QThread):
                 response_time = ping(self.host, timeout=3)
                 if response_time is not None:
                     if self.connectivity is False:
-                        LLRPReaderClient.disconnect_all_readers()
-                        self.reader = None
-                        self._set_reader(self.host, True)
-                        self.reader.connect()
-                        self.sig_msg.emit(1)
-                        # Reset discovery tracking when connection is restored
-                        self._discovery_in_progress = False
+                        try:
+                            # Only recreate reader when we don't have one (avoids spam of "RFID initialized" every 100ms)
+                            if self.reader is None:
+                                LLRPReaderClient.disconnect_all_readers()
+                                self._set_reader(self.host, False)  # Do not set connectivity True until connect() succeeds
+                            self.reader.connect()
+                            self.connectivity = True
+                            self.sig_msg.emit(1)
+                            self._discovery_in_progress = False
+                        except Exception as e:
+                            logger.debug(f"Reconnect to {self.host} failed: {e}")
+                            self.connectivity = False
+                            self.sig_msg.emit(2)
+                            # Leave reader as-is for next retry; clear only if we need a fresh client
+                            self.reader = None
                 else:
                     if self.connectivity is True:
                         self.connectivity = False
