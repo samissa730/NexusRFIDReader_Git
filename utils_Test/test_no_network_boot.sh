@@ -68,13 +68,16 @@ case "$cmd" in
         fi
         echo -e "${GREEN}App stopped. Running fallback (nexusrfid-start-fallback.service)...${NC}"
         sudo systemctl start nexusrfid-start-fallback.service
-        sleep 2
-        if systemctl is-active --quiet nexusrfid.service; then
-            echo -e "${GREEN}SUCCESS: Fallback started the app; nexusrfid.service is running.${NC}"
-        else
-            echo -e "${RED}FAIL: App did not start. Check: systemctl status nexusrfid.service${NC}"
-            exit 1
-        fi
+        echo "Waiting for nexusrfid to become active (up to 15s)..."
+        for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+            sleep 1
+            if systemctl is-active --quiet nexusrfid.service; then
+                echo -e "${GREEN}SUCCESS: Fallback started the app; nexusrfid.service is running.${NC}"
+                exit 0
+            fi
+        done
+        echo -e "${RED}FAIL: App did not start. Check: systemctl status nexusrfid.service; journalctl -u nexusrfid.service -n 30${NC}"
+        exit 1
         ;;
     simulate-reboot)
         echo -e "${YELLOW}[SIMULATE-REBOOT] This will mask the service that provides network-online.target and REBOOT.${NC}"

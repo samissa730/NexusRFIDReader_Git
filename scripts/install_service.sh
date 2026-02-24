@@ -221,7 +221,8 @@ After=graphical.target
 
 [Service]
 Type=oneshot
-ExecStart=/bin/sh -c 'systemctl is-active --quiet ${SERVICE_NAME}.service || systemctl start ${SERVICE_NAME}.service'
+# After start, wait so nexusrfid can pass ExecStartPre and become active before we exit
+ExecStart=/bin/sh -c 'systemctl is-active --quiet ${SERVICE_NAME}.service || { systemctl start ${SERVICE_NAME}.service; sleep 6; }'
 RemainAfterExit=yes
 
 [Install]
