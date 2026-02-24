@@ -211,9 +211,17 @@ else
 fi
 
 # Fallback: start app 60s after boot if not already running (e.g. when no SIM/network and graphical chain is delayed)
+# Use a helper script because systemctl start from inside a service's ExecStart can be blocked by systemd.
 FALLBACK_UNIT="/etc/systemd/system/nexusrfid-start-fallback.service"
 FALLBACK_TIMER="/etc/systemd/system/nexusrfid-start-fallback.timer"
-print_step "Installing fallback start (60s after boot if app not running)..."
+FALLBACK_HELPER="/usr/local/bin/nexusrfid-fallback-start"
+print_step "Installing fallback start helper and unit..."
+sudo bash -c "cat > '${FALLBACK_HELPER}'" <<'HELPER'
+#!/bin/sh
+# Start nexusrfid from fallback timer; running from a script avoids systemd blocking systemctl-from-service.
+exec /usr/bin/systemctl start nexusrfid.service
+HELPER
+sudo chmod 755 "${FALLBACK_HELPER}"
 sudo bash -c "cat > '${FALLBACK_UNIT}'" <<FALLBACK
 [Unit]
 Description=Start Nexus RFID app if not running (fallback after boot)
@@ -221,10 +229,10 @@ After=graphical.target
 
 [Service]
 Type=oneshot
-# Start app (no-op if already running); then wait so it can pass ExecStartPre and become active
-ExecStart=/usr/bin/systemctl start ${SERVICE_NAME}.service
-ExecStart=/bin/sleep 10
+ExecStart=${FALLBACK_HELPER}
+ExecStart=/bin/sleep 12
 RemainAfterExit=yes
+TimeoutStartSec=120
 
 [Install]
 WantedBy=multi-user.target

@@ -91,15 +91,16 @@ else
     print_warning "Service unit file not found at ${UNIT_PATH}"
 fi
 
-# Remove fallback start timer and service
+# Remove fallback start timer, service, and helper script
 print_step "Removing nexusrfid-start-fallback timer..."
 FALLBACK_TIMER="/etc/systemd/system/nexusrfid-start-fallback.timer"
 FALLBACK_UNIT="/etc/systemd/system/nexusrfid-start-fallback.service"
+FALLBACK_HELPER="/usr/local/bin/nexusrfid-fallback-start"
 if systemctl is-enabled --quiet nexusrfid-start-fallback.timer 2>/dev/null; then
     sudo systemctl disable nexusrfid-start-fallback.timer 2>/dev/null || true
 fi
-sudo rm -f "${FALLBACK_TIMER}" "${FALLBACK_UNIT}" 2>/dev/null || true
-print_success "Fallback timer removed"
+sudo rm -f "${FALLBACK_TIMER}" "${FALLBACK_UNIT}" "${FALLBACK_HELPER}" 2>/dev/null || true
+print_success "Fallback timer and helper removed"
 
 # Keep nexus-usb0-network.service installed so internet (USB tethering) keeps working
 # after uninstall. Only remove the main app unit.
