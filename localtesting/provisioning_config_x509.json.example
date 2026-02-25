@@ -1,0 +1,4 @@
+{
+  "idScope": "YOUR_DPS_ID_SCOPE",
+  "globalEndpoint": "global.azure-devices-provisioning.net"
+}
