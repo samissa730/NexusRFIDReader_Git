@@ -32,7 +32,7 @@ services:
             --provisioner admin \
             --password-file /home/step/secrets/password
         fi
-        jq '.est = {"enabled": true, "bootstrapToken": "changeme"} | if .db.type == "badger" then .db.badgerFileLoadingMode = "FileIO" else . end' /home/step/config/ca.json > /tmp/ca.json
+        jq '.est = {"enabled": true, "bootstrapToken": "changeme"} | .authority.provisioners[0].claims = {"defaultTLSCertDuration": "5m", "maxTLSCertDuration": "24h"} | if .db.type == "badger" then .db.badgerFileLoadingMode = "FileIO" else . end' /home/step/config/ca.json > /tmp/ca.json
         mv /tmp/ca.json /home/step/config/ca.json
 
   step-ca:
