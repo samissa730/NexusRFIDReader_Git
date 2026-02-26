@@ -42,7 +42,7 @@ REGISTRATION_ID = "test-device-renew"
 DEFAULT_CERT_DIR = SCRIPT_DIR / "renew_workflow_output"
 DEFAULT_THRESHOLD_SECS = 60
 LOCK_FILE = ".auto_renew.lock"
-STALE_LOCK_SECS = 300  # 5 minutes: if lock file is older, treat as stale and remove
+STALE_LOCK_SECS = 90  # If lock file is older than this, remove it so we can proceed (must be < cron interval, e.g. 2 min)
 
 
 def _log(msg: str) -> None:
@@ -53,6 +53,7 @@ def _log(msg: str) -> None:
 def _try_lock(cert_dir: Path):
     """Acquire exclusive lock in cert_dir. Returns (True, open_file) or (False, None). Caller must close file to release lock."""
     lock_path = cert_dir / LOCK_FILE
+    f = None
     try:
         cert_dir.mkdir(parents=True, exist_ok=True)
         f = open(lock_path, "w")
@@ -61,8 +62,18 @@ def _try_lock(cert_dir: Path):
         f.flush()
         return True, f
     except (BlockingIOError, OSError):
+        if f is not None:
+            try:
+                f.close()
+            except Exception:
+                pass
         return False, None
     except Exception:
+        if f is not None:
+            try:
+                f.close()
+            except Exception:
+                pass
         return False, None
 
 
@@ -86,6 +97,8 @@ def main() -> int:
     key_path = cert_dir / "device_key.pem"
     chain_path = cert_dir / "device_chain.pem"
 
+    _log(f"START pid={os.getpid()} cert_dir={cert_dir} threshold={args.threshold}s")
+
     if not cert_path.is_file():
         _log(f"ERROR: No cert at {cert_path}. Run test_est_enrollment.py or test_renew_workflow.py first.")
         return 1
@@ -98,13 +111,19 @@ def main() -> int:
             if age_secs > STALE_LOCK_SECS:
                 lock_path.unlink()
                 _log(f"Removed stale lock file (age {int(age_secs)}s > {STALE_LOCK_SECS}s).")
-        except Exception:
-            pass
+            else:
+                _log(f"Lock file exists, age {int(age_secs)}s (stale if > {STALE_LOCK_SECS}s).")
+        except Exception as ex:
+            _log(f"WARN: Could not stat/remove lock file: {ex}")
+    else:
+        _log("No existing lock file.")
 
     acquired, lock_file = _try_lock(cert_dir)
     if not acquired:
         _log("SKIP: Another renewal in progress (lock held).")
         return 0
+
+    _log("Lock acquired.")
 
     try:
         cert_pem = cert_path.read_bytes()
@@ -118,16 +137,21 @@ def main() -> int:
             not_after = not_after.replace(tzinfo=None)
         time_left_secs = (not_after - now_utc).total_seconds()
 
+        _log(f"Current cert CN={cn} expires {not_after} time_left={int(time_left_secs)}s threshold={args.threshold}s")
+
         if time_left_secs >= args.threshold:
             _log(f"OK: Cert valid for {int(time_left_secs)}s (>= {args.threshold}s), no renewal.")
             return 0
 
         _log(f"Renewing: time left {int(time_left_secs)}s < {args.threshold}s for CN={cn}")
 
+        _log("Generating new CSR and key...")
         key_pem, csr_pem = generate_csr_and_key_pem(REGISTRATION_ID)
+        _log(f"Calling EST {EST_SERVER_URL} for CN={REGISTRATION_ID}...")
         cert_pem_new, chain_pem = enroll_certificate_via_est(
             EST_SERVER_URL, BOOTSTRAP_TOKEN, csr_pem, verify_ssl=False
         )
+        _log("Verifying new certificate...")
         if not verify_certificate(cert_pem_new, chain_pem or None):
             _log("ERROR: New cert failed verification.")
             return 1
@@ -143,10 +167,11 @@ def main() -> int:
             pass
 
         cn2, not_after2 = get_cert_cn_and_expiry(cert_pem_new)
+        _log(f"Wrote {cert_path} {key_path}" + (f" {chain_path}" if chain_pem else ""))
         _log(f"OK: Renewed cert for CN={cn2}, expires {not_after2}")
         return 0
     except Exception as e:
-        _log(f"ERROR: {e}")
+        _log(f"ERROR: Renewal failed: {e}")
         import traceback
         traceback.print_exc()
         return 1
