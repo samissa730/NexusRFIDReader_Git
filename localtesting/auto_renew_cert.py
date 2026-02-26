@@ -13,7 +13,7 @@ Usage:
 
 Requires:
   - Docker step-ca + EST running (https://localhost:9443/est)
-  - An initial cert already present (run test_est_enrollment.py or test_renew_workflow.py once)
+  - An initial cert already present (run test_est_enrollment.py once). Renewed certs are written to est_test_output/, which test_x509_dps_iot_hub.py uses.
 """
 
 import argparse
@@ -40,7 +40,7 @@ from utils_Test.test_x509_est_device_setup import (
 EST_SERVER_URL = "https://127.0.0.1:9443/est"
 BOOTSTRAP_TOKEN = "changeme"
 REGISTRATION_ID = "test-device-renew"
-DEFAULT_CERT_DIR = SCRIPT_DIR / "renew_workflow_output"
+DEFAULT_CERT_DIR = SCRIPT_DIR / "est_test_output"  # same as test_est_enrollment.py; test_x509_dps_iot_hub.py uses these certs
 DEFAULT_THRESHOLD_SECS = 60
 STALE_LOCK_SECS = 90  # If lock file is older than this, remove it so we can proceed (must be < cron interval, e.g. 2 min)
 
@@ -170,9 +170,11 @@ def main() -> int:
 
         _log(f"Renewing: time left {int(time_left_secs)}s < {args.threshold}s for CN={cn}")
 
+        # Use same CN as current cert so renewed cert matches (e.g. test-device-001 from test_est_enrollment.py)
+        registration_id = cn if cn else REGISTRATION_ID
         _log("Generating new CSR and key...")
-        key_pem, csr_pem = generate_csr_and_key_pem(REGISTRATION_ID)
-        _log(f"Calling EST {EST_SERVER_URL} for CN={REGISTRATION_ID}...")
+        key_pem, csr_pem = generate_csr_and_key_pem(registration_id)
+        _log(f"Calling EST {EST_SERVER_URL} for CN={registration_id}...")
         cert_pem_new, chain_pem = enroll_certificate_via_est(
             EST_SERVER_URL, BOOTSTRAP_TOKEN, csr_pem, verify_ssl=False
         )
