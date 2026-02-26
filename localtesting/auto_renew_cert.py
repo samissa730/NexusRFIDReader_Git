@@ -18,6 +18,7 @@ Requires:
 
 import argparse
 import fcntl
+import hashlib
 import os
 import sys
 from datetime import datetime, timezone
@@ -41,7 +42,6 @@ BOOTSTRAP_TOKEN = "changeme"
 REGISTRATION_ID = "test-device-renew"
 DEFAULT_CERT_DIR = SCRIPT_DIR / "renew_workflow_output"
 DEFAULT_THRESHOLD_SECS = 60
-LOCK_FILE = ".auto_renew.lock"
 STALE_LOCK_SECS = 90  # If lock file is older than this, remove it so we can proceed (must be < cron interval, e.g. 2 min)
 
 
@@ -50,12 +50,16 @@ def _log(msg: str) -> None:
     print(f"[{ts}] {msg}", flush=True)
 
 
-def _try_lock(cert_dir: Path):
-    """Acquire exclusive lock in cert_dir. Returns (True, open_file) or (False, None). Caller must close file to release lock."""
-    lock_path = cert_dir / LOCK_FILE
+def _lock_path_for(cert_dir: Path) -> Path:
+    """Use a fixed path in /tmp so cron and manual runs always use the same lock (avoids path/cwd issues)."""
+    key = hashlib.sha256(str(cert_dir.resolve()).encode()).hexdigest()[:16]
+    return Path("/tmp") / f"auto_renew_cert_{key}.lock"
+
+
+def _try_lock(lock_path: Path):
+    """Acquire exclusive lock at lock_path. Returns (True, open_file) or (False, None). Caller must close file to release lock."""
     f = None
     try:
-        cert_dir.mkdir(parents=True, exist_ok=True)
         f = open(lock_path, "w")
         fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         f.write(str(os.getpid()))
@@ -97,14 +101,14 @@ def main() -> int:
     key_path = cert_dir / "device_key.pem"
     chain_path = cert_dir / "device_chain.pem"
 
-    _log(f"START pid={os.getpid()} cert_dir={cert_dir} threshold={args.threshold}s")
+    lock_path = _lock_path_for(cert_dir)
+    _log(f"START pid={os.getpid()} cert_dir={cert_dir} threshold={args.threshold}s lock_path={lock_path}")
 
     if not cert_path.is_file():
         _log(f"ERROR: No cert at {cert_path}. Run test_est_enrollment.py or test_renew_workflow.py first.")
         return 1
 
     # Remove stale lock file (e.g. left behind by crashed run) so we don't skip forever
-    lock_path = cert_dir / LOCK_FILE
     if lock_path.is_file():
         try:
             age_secs = (datetime.now(timezone.utc).timestamp() - lock_path.stat().st_mtime)
@@ -118,9 +122,9 @@ def main() -> int:
     else:
         _log("No existing lock file.")
 
-    acquired, lock_file = _try_lock(cert_dir)
+    acquired, lock_file = _try_lock(lock_path)
     if not acquired:
-        _log("SKIP: Another renewal in progress (lock held).")
+        _log(f"SKIP: Another renewal in progress (lock held at {lock_path}).")
         return 0
 
     _log("Lock acquired.")
@@ -182,7 +186,7 @@ def main() -> int:
             except Exception:
                 pass
         try:
-            (cert_dir / LOCK_FILE).unlink(missing_ok=True)
+            lock_path.unlink(missing_ok=True)
         except Exception:
             pass
 
