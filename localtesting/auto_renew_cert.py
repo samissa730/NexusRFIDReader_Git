@@ -42,6 +42,7 @@ REGISTRATION_ID = "test-device-renew"
 DEFAULT_CERT_DIR = SCRIPT_DIR / "renew_workflow_output"
 DEFAULT_THRESHOLD_SECS = 60
 LOCK_FILE = ".auto_renew.lock"
+STALE_LOCK_SECS = 300  # 5 minutes: if lock file is older, treat as stale and remove
 
 
 def _log(msg: str) -> None:
@@ -88,6 +89,17 @@ def main() -> int:
     if not cert_path.is_file():
         _log(f"ERROR: No cert at {cert_path}. Run test_est_enrollment.py or test_renew_workflow.py first.")
         return 1
+
+    # Remove stale lock file (e.g. left behind by crashed run) so we don't skip forever
+    lock_path = cert_dir / LOCK_FILE
+    if lock_path.is_file():
+        try:
+            age_secs = (datetime.now(timezone.utc).timestamp() - lock_path.stat().st_mtime)
+            if age_secs > STALE_LOCK_SECS:
+                lock_path.unlink()
+                _log(f"Removed stale lock file (age {int(age_secs)}s > {STALE_LOCK_SECS}s).")
+        except Exception:
+            pass
 
     acquired, lock_file = _try_lock(cert_dir)
     if not acquired:
