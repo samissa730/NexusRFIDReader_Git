@@ -108,14 +108,25 @@ def main() -> int:
         _log(f"ERROR: No cert at {cert_path}. Run test_est_enrollment.py or test_renew_workflow.py first.")
         return 1
 
-    # Ensure we can write to cert_dir (cron often runs as root; files may be owned by another user)
+    # Ensure we can write to cert_dir (may be owned by root if cron ever ran as root)
     try:
         cert_dir.mkdir(parents=True, exist_ok=True)
         test_file = cert_dir / ".write_test"
         test_file.write_bytes(b"")
         test_file.unlink(missing_ok=True)
     except PermissionError as e:
-        _log(f"ERROR: Cannot write to {cert_dir}: {e}. Run cron as the user that owns the cert files (e.g. crontab -e as recomputer, not root).")
+        try:
+            import pwd
+            my_uid = os.getuid()
+            dir_uid = cert_dir.stat().st_uid if cert_dir.exists() else None
+            my_name = pwd.getpwuid(my_uid).pw_name
+            dir_name = pwd.getpwuid(dir_uid).pw_name if dir_uid is not None else "?"
+            _log(f"ERROR: Cannot write to {cert_dir}: {e}")
+            _log(f"  Process runs as uid={my_uid} ({my_name}), directory owned by uid={dir_uid} ({dir_name}).")
+            _log(f"  Fix: run once (as your user): sudo chown -R {my_name}:{my_name} {cert_dir}")
+        except Exception:
+            _log(f"ERROR: Cannot write to {cert_dir}: {e}")
+            _log(f"  Fix: run once: sudo chown -R $USER {cert_dir}")
         return 1
 
     # Remove stale lock file (e.g. left behind by crashed run) so we don't skip forever
