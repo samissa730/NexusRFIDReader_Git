@@ -4,7 +4,7 @@ Cron-based automatic certificate renewal for localtesting.
 
 Runs once per cron invocation: reads current device cert, checks time left until
 expiry. If time left < threshold (default 60s), re-enrolls via EST and overwrites
-cert/key/chain. Uses a lockfile so overlapping cron runs do not run renewal twice.
+cert/key/chain.
 
 Usage:
   python auto_renew_cert.py [--threshold SECS] [--cert-dir DIR]
@@ -17,8 +17,6 @@ Requires:
 """
 
 import argparse
-import fcntl
-import hashlib
 import os
 import sys
 from datetime import datetime, timezone
@@ -42,43 +40,11 @@ BOOTSTRAP_TOKEN = "changeme"
 REGISTRATION_ID = "test-device-renew"
 DEFAULT_CERT_DIR = SCRIPT_DIR / "est_test_output"  # same as test_est_enrollment.py; test_x509_dps_iot_hub.py uses these certs
 DEFAULT_THRESHOLD_SECS = 60
-STALE_LOCK_SECS = 90  # If lock file is older than this, remove it so we can proceed (must be < cron interval, e.g. 2 min)
 
 
 def _log(msg: str) -> None:
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     print(f"[{ts}] {msg}", flush=True)
-
-
-def _lock_path_for(cert_dir: Path) -> Path:
-    """Use a fixed path in /tmp so cron and manual runs always use the same lock (avoids path/cwd issues)."""
-    key = hashlib.sha256(str(cert_dir.resolve()).encode()).hexdigest()[:16]
-    return Path("/tmp") / f"auto_renew_cert_{key}.lock"
-
-
-def _try_lock(lock_path: Path):
-    """Acquire exclusive lock at lock_path. Returns (True, open_file) or (False, None). Caller must close file to release lock."""
-    f = None
-    try:
-        f = open(lock_path, "w")
-        fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        f.write(str(os.getpid()))
-        f.flush()
-        return True, f
-    except (BlockingIOError, OSError):
-        if f is not None:
-            try:
-                f.close()
-            except Exception:
-                pass
-        return False, None
-    except Exception:
-        if f is not None:
-            try:
-                f.close()
-            except Exception:
-                pass
-        return False, None
 
 
 def main() -> int:
@@ -101,8 +67,7 @@ def main() -> int:
     key_path = cert_dir / "device_key.pem"
     chain_path = cert_dir / "device_chain.pem"
 
-    lock_path = _lock_path_for(cert_dir)
-    _log(f"START pid={os.getpid()} cert_dir={cert_dir} threshold={args.threshold}s lock_path={lock_path}")
+    _log(f"START pid={os.getpid()} cert_dir={cert_dir} threshold={args.threshold}s")
 
     if not cert_path.is_file():
         _log(f"ERROR: No cert at {cert_path}. Run test_est_enrollment.py or test_renew_workflow.py first.")
@@ -128,27 +93,6 @@ def main() -> int:
             _log(f"ERROR: Cannot write to {cert_dir}: {e}")
             _log(f"  Fix: run once: sudo chown -R $USER {cert_dir}")
         return 1
-
-    # Remove stale lock file (e.g. left behind by crashed run) so we don't skip forever
-    if lock_path.is_file():
-        try:
-            age_secs = (datetime.now(timezone.utc).timestamp() - lock_path.stat().st_mtime)
-            if age_secs > STALE_LOCK_SECS:
-                lock_path.unlink()
-                _log(f"Removed stale lock file (age {int(age_secs)}s > {STALE_LOCK_SECS}s).")
-            else:
-                _log(f"Lock file exists, age {int(age_secs)}s (stale if > {STALE_LOCK_SECS}s).")
-        except Exception as ex:
-            _log(f"WARN: Could not stat/remove lock file: {ex}")
-    else:
-        _log("No existing lock file.")
-
-    acquired, lock_file = _try_lock(lock_path)
-    if not acquired:
-        _log(f"SKIP: Another renewal in progress (lock held at {lock_path}).")
-        return 0
-
-    _log("Lock acquired.")
 
     try:
         cert_pem = cert_path.read_bytes()
@@ -202,16 +146,6 @@ def main() -> int:
         import traceback
         traceback.print_exc()
         return 1
-    finally:
-        if lock_file is not None:
-            try:
-                lock_file.close()
-            except Exception:
-                pass
-        try:
-            lock_path.unlink(missing_ok=True)
-        except Exception:
-            pass
 
 
 if __name__ == "__main__":
