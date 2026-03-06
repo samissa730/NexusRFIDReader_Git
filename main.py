@@ -91,6 +91,18 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"Error executing 'sudo dhclient usb0': {e}")
 
+    # Reorder network interface priorities: Ethernet (100) -> WiFi (200) -> Cellular (300)
+    try:
+        from utils import network
+        success, _, _, current_interface = network.reorder_interface_priorities()
+        if success and current_interface:
+            network.CURRENT_INTERFACE = current_interface
+            logger.info(f"Network priority set; active interface: {current_interface['interface']} ({current_interface['type']})")
+        elif not success:
+            logger.warning("Network interface reordering skipped or failed (non-Linux or no routes)")
+    except Exception as e:
+        logger.error(f"Error reordering network priorities: {e}")
+
     # Enable GPS on startup
     try:
         from utils.common import enable_gps_at_command
