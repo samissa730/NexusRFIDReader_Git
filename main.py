@@ -86,6 +86,27 @@ if __name__ == "__main__":
                 logger.info(result.stdout.strip())
             if result.stderr:
                 logger.warning(result.stderr.strip())
+
+            time.sleep(2)
+
+            from utils.network import get_current_active_interface, reorder_interface_priorities
+
+            logger.info("Starting network interface verification and priority reordering...")
+            success, prev_priorities, updated_priorities, current_interface = reorder_interface_priorities()
+
+            if success and current_interface:
+                import utils.network
+                utils.network.CURRENT_INTERFACE = current_interface
+                logger.info(f"Network interface setup complete. Active interface: {current_interface['interface']} ({current_interface['type']})")
+            else:
+                current_interface = get_current_active_interface()
+                if current_interface:
+                    import utils.network
+                    utils.network.CURRENT_INTERFACE = current_interface
+                    logger.info(f"Using current interface: {current_interface['interface']} ({current_interface['type']})")
+                else:
+                    logger.warning("Could not determine current network interface")
+
         else:
             logger.info("Skipping 'sudo dhclient usb0' (non-Linux platform)")
     except Exception as e:
