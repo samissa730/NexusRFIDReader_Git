@@ -283,6 +283,9 @@ class OverviewScreen(BaseScreen):
 
     def _update_internet_tunnel_display(self):
         """Update the internet tunnel display with current active interface."""
+        tunnel_label = getattr(self.ui, "internet_tunnel", None)
+        if tunnel_label is None:
+            return
         try:
             # First try to get from global variable set during startup
             current_interface = CURRENT_INTERFACE
@@ -294,12 +297,12 @@ class OverviewScreen(BaseScreen):
             if current_interface:
                 interface_name = current_interface['interface']
                 interface_type = current_interface['type']
-                self.ui.internet_tunnel.setText(f"{interface_name} ({interface_type})")
+                tunnel_label.setText(f"{interface_name} ({interface_type})")
             else:
-                self.ui.internet_tunnel.setText("N/A")
+                tunnel_label.setText("N/A")
         except Exception as e:
             logger.debug(f"Error updating internet tunnel display: {e}")
-            self.ui.internet_tunnel.setText("N/A")
+            tunnel_label.setText("N/A")
             
     def _on_arp_scan_status(self, is_scanning):
         """Handle arp-scan status changes - show/hide spinner"""
