@@ -245,23 +245,26 @@ echo "XDG Runtime Dir: $SERVICE_XDG_RUNTIME_DIR"
 SUDOERS_FILE="/etc/sudoers.d/nexusrfid"
 NEED_SUDO_CONFIG=true
 
-# Check if sudoers file exists and already has the configuration
+# Check if sudoers file exists and already has the full configuration (dhclient + ip for route reordering)
 if [ -f "$SUDOERS_FILE" ]; then
-    if grep -q "^${SERVICE_USER}.*NOPASSWD.*dhclient" "$SUDOERS_FILE" 2>/dev/null; then
+    if grep -q "^${SERVICE_USER}.*NOPASSWD.*dhclient" "$SUDOERS_FILE" 2>/dev/null && \
+       grep -q "^${SERVICE_USER}.*NOPASSWD.*/.*ip" "$SUDOERS_FILE" 2>/dev/null; then
         NEED_SUDO_CONFIG=false
         echo "Sudo configuration for $SERVICE_USER already exists"
     fi
 fi
 
-# Create or update sudoers file if needed
+# Create or update sudoers file if needed (dhclient for usb0; ip for network priority reordering so WiFi beats usb0)
 if [ "$NEED_SUDO_CONFIG" = true ]; then
     echo "Configuring sudo permissions for $SERVICE_USER user..."
     {
         echo "${SERVICE_USER} ALL=(ALL) NOPASSWD: /sbin/dhclient"
         echo "${SERVICE_USER} ALL=(ALL) NOPASSWD: /usr/sbin/dhclient"
+        echo "${SERVICE_USER} ALL=(ALL) NOPASSWD: /sbin/ip"
+        echo "${SERVICE_USER} ALL=(ALL) NOPASSWD: /usr/sbin/ip"
     } > "$SUDOERS_FILE"
     chmod 0440 "$SUDOERS_FILE"
-    echo "Sudo configuration added for dhclient"
+    echo "Sudo configuration added for dhclient and ip (network priority reordering)"
 fi
 
 # Create data directory with proper permissions
@@ -303,6 +306,7 @@ After=network.target
 Type=oneshot
 ExecStartPre=/bin/sleep 15
 ExecStart=/bin/sh -c 'DHCPC=/sbin/dhclient; [ -x /usr/sbin/dhclient ] && DHCPC=/usr/sbin/dhclient; for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do $DHCPC usb0 2>/dev/null && break; sleep 5; done; true'
+ExecStartPost=/bin/sh -c 'r=$(ip route show default dev usb0 2>/dev/null); [ -n "$r" ] && gw=$(echo "$r" | sed -n "s/.*via \([^ ]*\).*/\1/p") && [ -n "$gw" ] && ip route replace default via "$gw" dev usb0 metric 300 || true'
 RemainAfterExit=yes
 TimeoutStartSec=90
 

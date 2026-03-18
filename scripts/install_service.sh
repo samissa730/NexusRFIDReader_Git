@@ -162,6 +162,7 @@ Type=oneshot
 ExecStartPre=/bin/sleep 15
 # Retry dhclient every 5s for up to 60s so we get a lease even if usb0 appears late
 ExecStart=/bin/sh -c 'DHCPC=/sbin/dhclient; [ -x /usr/sbin/dhclient ] && DHCPC=/usr/sbin/dhclient; for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do \$DHCPC usb0 2>/dev/null && break; sleep 5; done; true'
+ExecStartPost=/bin/sh -c 'r=$(ip route show default dev usb0 2>/dev/null); [ -n "$r" ] && gw=$(echo "$r" | sed -n "s/.*via \([^ ]*\).*/\1/p") && [ -n "$gw" ] && ip route replace default via "$gw" dev usb0 metric 300 || true'
 RemainAfterExit=yes
 TimeoutStartSec=90
 

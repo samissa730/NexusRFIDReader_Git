@@ -143,8 +143,21 @@ if __name__ == "__main__":
 
     cur_exit_code = RFIDReaderApp.EXIT_CODE_CRASH
 
+    def delayed_reorder():
+        """Run network priority reorder again so WiFi (wlan0) is preferred if it got a route after startup."""
+        try:
+            from utils import network
+            success, _, _, current_interface = network.reorder_interface_priorities()
+            if success and current_interface:
+                network.CURRENT_INTERFACE = current_interface
+                logger.info(f"Delayed reorder: active interface {current_interface['interface']} ({current_interface['type']})")
+        except Exception as e:
+            logger.debug(f"Delayed reorder: {e}")
+
     while cur_exit_code == RFIDReaderApp.EXIT_CODE_CRASH:
         rm_form = RFIDReaderApp()
+        # Re-run network priority reorder after 15s so wlan0 is preferred if it got DHCP after app start
+        QTimer.singleShot(15000, delayed_reorder)
         rm_form.show()
         cur_exit_code = app.exec()
         rm_form.close()
