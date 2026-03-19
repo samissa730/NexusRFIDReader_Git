@@ -1,0 +1,13 @@
+[Unit]
+Description=Run Azure IoT certificate renewal daily
+Requires=azure-iot-cert-renew.service
+
+[Timer]
+# Run once per day at 03:00
+OnCalendar=*-*-* 03:00:00
+# If device was off at 03:00, run soon after boot (within 5 min)
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

@@ -64,6 +64,28 @@ stop_service() {
     print_success "Systemd reloaded"
 }
 
+# Function to stop and remove cert renewal timer
+stop_cert_renew_timer() {
+    print_status "Stopping and disabling cert renewal timer..."
+    if systemctl is-active --quiet azure-iot-cert-renew.timer 2>/dev/null; then
+        sudo systemctl stop azure-iot-cert-renew.timer
+        print_success "Cert renewal timer stopped"
+    fi
+    if systemctl is-enabled --quiet azure-iot-cert-renew.timer 2>/dev/null; then
+        sudo systemctl disable azure-iot-cert-renew.timer
+        print_success "Cert renewal timer disabled"
+    fi
+    if [[ -f "/etc/systemd/system/azure-iot-cert-renew.timer" ]]; then
+        rm -f /etc/systemd/system/azure-iot-cert-renew.timer
+        print_success "Cert renewal timer file removed"
+    fi
+    if [[ -f "/etc/systemd/system/azure-iot-cert-renew.service" ]]; then
+        rm -f /etc/systemd/system/azure-iot-cert-renew.service
+        print_success "Cert renewal service file removed"
+    fi
+    sudo systemctl daemon-reload
+}
+
 # Function to remove systemd service file
 remove_service_file() {
     print_status "Removing systemd service file..."
@@ -257,6 +279,9 @@ main() {
     
     # Stop and disable service
     stop_service
+    
+    # Stop and remove cert renewal timer
+    stop_cert_renew_timer
     
     # Remove systemd service file
     remove_service_file

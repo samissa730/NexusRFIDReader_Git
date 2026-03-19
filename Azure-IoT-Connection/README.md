@@ -4,13 +4,15 @@ This repository contains the necessary files to set up an Azure IoT connection s
 
 ## Features
 
-- **Automatic Device Provisioning**: Uses Azure Device Provisioning Service (DPS) for secure device registration
+- **X.509 authentication only**: Device certificates are enrolled via EST (Enrollment over Secure Transport); no symmetric keys.
+- **Automatic Device Provisioning**: Uses Azure Device Provisioning Service (DPS) with X.509 for secure device registration
    - **Persistent Connection**: Maintains connection to Azure IoT Hub with automatic reconnection
    - **Heartbeat Monitoring**: Sends regular status updates to Azure IoT Hub
    - **Direct Method Support**: Can execute remote commands sent from Azure IoT Hub
    - **Automatic Updates**: Background thread checks for new versions every 5 minutes
    - **Blob Storage Integration**: Downloads updates from Azure Blob Storage
    - **Systemd Service**: Runs as a system service with automatic startup on boot
+   - **X.509 certificate renewal**: A systemd timer runs daily and renews the device cert via EST when expiry is within 24 hours; then restarts the IoT service
    - **Comprehensive Logging**: Logs all activities to both system journal and file
 
 ## Prerequisites
@@ -19,14 +21,13 @@ Before setting up the service, ensure you have:
 
 1. **Raspberry Pi** running Raspberry Pi OS (or compatible Linux distribution)
 2. **Azure IoT Hub** with Device Provisioning Service (DPS) enabled
-3. **Device Registration** in Azure DPS with the following information:
-   - ID Scope
-   - Primary Key (Symmetric Key)
-4. **`env.json` file** configured with your Azure IoT credentials:
+3. **Device Registration** in Azure DPS: ID Scope and an **X.509 enrollment** (registration_id = device ID; the CA that signed the device cert must be registered in DPS).
+4. **EST server** for certificate enrollment (e.g. step-ca with EST proxy). Optional: **`env.json`** with `idScope`, `est_server_url`, `est_bootstrap_token`, and device-update fields:
    ```json
    {
-       "group_key": "your_group_primary_key",
        "idScope": "your_dps_id_scope",
+       "est_server_url": "https://your-est-server:9443/est",
+       "est_bootstrap_token": "your_bootstrap_token",
        "storageAccount": "your_storage_account",
        "containerName": "your_container_name",
        "sasToken": "your_sas_token"
@@ -55,19 +56,13 @@ sudo bash uninstall.sh
    sudo bash set_env.sh
    ```
 
-3. **Ensure your `env.json` file contains the required Azure IoT configuration**:
-   - `group_key`: Group Primary Key (from Azure Portal)
-   - `idScope`: DPS ID Scope (from Azure Portal)
-   - `storageAccount`: Azure Storage Account name (for updates)
-   - `containerName`: Container name (for updates)
-   - `sasToken`: Shared Access Signature token (for updates)
+3. **Device setup uses X.509 (EST)**. When you run device setup, you will be prompted for (or they can come from `env.json`):
+   - **ID Scope**: DPS ID Scope (from Azure Portal)
+   - **EST Server URL**: e.g. `https://your-est:9443/est`
+   - **EST Bootstrap Token**: token for initial certificate enrollment
    
-   The script will automatically use these values along with default settings:
-   - Site Name: "Lazer"
-   - Truck Number: Device Serial Number
-   - Device ID: Device Serial Number
-   - Blob Base Path: "builds"
-   - Current Version: "20250826.1"
+   Optional in `env.json`: `idScope`, `est_server_url`, `est_bootstrap_token`, `storageAccount`, `containerName`, `sasToken` (for device updates).
+   Defaults: Site Name "Lazer", Truck Number = Device Serial, Device ID = Device Serial.
 
 The script will automatically:
    - Update system packages
@@ -75,7 +70,7 @@ The script will automatically:
    - Create all necessary directories and files
    - Copy service scripts to proper locations
    - Set up the systemd service
-   - Run device setup automatically using `env.json` configuration
+   - Run device setup (X.509 via EST; prompts or `env.json`)
    - Enable and start the service
    - Verify the installation
 
@@ -100,12 +95,17 @@ sudo mkdir -p /var/log
 sudo cp iot_service.py /opt/azure-iot/
 sudo cp device_setup.py /opt/azure-iot/
 sudo cp download.py /opt/azure-iot/
+sudo cp est_client.py /opt/azure-iot/
+sudo cp azure-iot-cert-renew.py /opt/azure-iot/
 sudo cp azure-iot.service /etc/systemd/system/
+sudo cp azure-iot-cert-renew.service /etc/systemd/system/
+sudo cp azure-iot-cert-renew.timer /etc/systemd/system/
 
 # Set permissions
 sudo chmod +x /opt/azure-iot/iot_service.py
 sudo chmod +x /opt/azure-iot/device_setup.py
 sudo chmod +x /opt/azure-iot/download.py
+sudo chmod +x /opt/azure-iot/azure-iot-cert-renew.py
 
 # Run device setup
 sudo python3 /opt/azure-iot/device_setup.py
@@ -121,6 +121,8 @@ sudo chmod 644 /var/log/azure-iot-service.log
 sudo systemctl daemon-reload
 sudo systemctl enable azure-iot.service
 sudo systemctl start azure-iot.service
+sudo systemctl enable azure-iot-cert-renew.timer
+sudo systemctl start azure-iot-cert-renew.timer
 ```
 
 **Note:** The automated setup script (`set_env.sh`) handles all of these steps automatically. Make sure your `env.json` file is properly configured before running the script.
@@ -156,12 +158,38 @@ sudo systemctl start azure-iot.service
 sudo systemctl disable azure-iot.service
 ```
 
+### Certificate renewal (systemd timer)
+
+X.509 device certificates can be renewed automatically so the device does not lose connectivity when the cert expires. The setup installs a **systemd timer** that runs the renewal script once per day (at 03:00). If the cert has less than 24 hours left, the script re-enrolls via EST, writes the new cert/key to `/etc/azureiotpnp/`, and restarts `azure-iot.service`.
+
+**Requirements:** `provisioning_config.json` must contain `estServerUrl` and `estBootstrapToken` (these are saved by `device_setup.py` when you configure the device).
+
+**Check timer status:**
+```bash
+sudo systemctl status azure-iot-cert-renew.timer
+sudo systemctl list-timers azure-iot-cert-renew.timer
+```
+
+**View last renewal run:**
+```bash
+sudo journalctl -u azure-iot-cert-renew.service -n 50
+```
+
+**Manual run (test renewal):**
+```bash
+sudo python3 /opt/azure-iot/azure-iot-cert-renew.py
+# Optional: renew when less than 7 days left
+sudo python3 /opt/azure-iot/azure-iot-cert-renew.py --threshold 604800
+```
+
+**Change schedule:** Edit `/etc/systemd/system/azure-iot-cert-renew.timer` (e.g. `OnCalendar=*-*-* 03:00:00` for daily at 3am, or `OnCalendar=hourly` for hourly), then `sudo systemctl daemon-reload && sudo systemctl restart azure-iot-cert-renew.timer`.
+
 ## Configuration
 
 ### Main Configuration File
    - **Location**: `/etc/azureiotpnp/provisioning_config.json`
    - **Permissions**: 600 (root read/write only)
-   - **Contains**: Azure DPS credentials, device tags, and update configuration
+   - **Contains**: Azure DPS credentials, device tags, update configuration, and (when set by device_setup) `estServerUrl` and `estBootstrapToken` for automatic certificate renewal
 
 ### Service Configuration
    - **Location**: `/etc/systemd/system/azure-iot.service`
@@ -220,9 +248,8 @@ sudo python3 iot_service.py
    - Check for Windows line endings: `dos2unix *.sh`
 
 4. **Configuration input validation fails:**
-   - Ensure `env.json` file exists and is properly formatted
-   - Check that `group_key` and `idScope` are present in `env.json`
-   - Verify your Azure IoT credentials are correct
+   - Run device setup and provide ID Scope, EST Server URL, and EST Bootstrap Token (or set them in `env.json`)
+   - Ensure the EST server is reachable and the bootstrap token is correct
    - Ensure the device has a valid serial number
 
 ## Security Considerations
@@ -231,7 +258,7 @@ sudo python3 iot_service.py
 - Service runs as root (required for system operations)
 - No new privileges allowed
 - Private temporary directory
-- Symmetric key authentication (consider using X.509 certificates for production)
+- X.509 certificate authentication (device certs enrolled via EST)
 
 ## Scripts Overview
 
@@ -318,7 +345,11 @@ Azure-IoT-Connection/
 ├── uninstall.sh                  # Service removal script
 ├── iot_service.py                # Main IoT service script
 ├── device_setup.py               # Device configuration script
+├── est_client.py                 # EST client for enrollment/renewal
+├── azure-iot-cert-renew.py       # Certificate renewal script (run by timer)
 ├── azure-iot.service             # Systemd service file
+├── azure-iot-cert-renew.service  # Systemd oneshot for cert renewal
+├── azure-iot-cert-renew.timer    # Systemd timer (daily)
 ├── env.json                      # Azure IoT credentials (create this)
 ├── provisioning_config_template.json  # Configuration template
 └── README.md                     # This file

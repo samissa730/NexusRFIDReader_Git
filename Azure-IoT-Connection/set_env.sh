@@ -147,6 +147,17 @@ copy_service_files() {
         print_error "download.py not found in $SCRIPT_DIR"
         exit 1
     fi
+
+    # Copy EST client and cert renewal script (for device_setup and systemd timer)
+    if [[ -f "$SCRIPT_DIR/est_client.py" ]]; then
+        sudo cp "$SCRIPT_DIR/est_client.py" /opt/azure-iot/
+        print_success "EST client copied"
+    fi
+    if [[ -f "$SCRIPT_DIR/azure-iot-cert-renew.py" ]]; then
+        sudo cp "$SCRIPT_DIR/azure-iot-cert-renew.py" /opt/azure-iot/
+        sudo chmod +x /opt/azure-iot/azure-iot-cert-renew.py
+        print_success "Cert renewal script copied"
+    fi
     
     # Copy env.json if present; otherwise device_setup will prompt and create it
     if [[ -f "$SCRIPT_DIR/env.json" ]]; then
@@ -164,6 +175,16 @@ copy_service_files() {
     else
         print_error "azure-iot.service not found in $SCRIPT_DIR"
         exit 1
+    fi
+
+    # Copy cert renewal systemd service and timer
+    if [[ -f "$SCRIPT_DIR/azure-iot-cert-renew.service" ]]; then
+        sudo cp "$SCRIPT_DIR/azure-iot-cert-renew.service" /etc/systemd/system/
+        print_success "Cert renewal service file copied"
+    fi
+    if [[ -f "$SCRIPT_DIR/azure-iot-cert-renew.timer" ]]; then
+        sudo cp "$SCRIPT_DIR/azure-iot-cert-renew.timer" /etc/systemd/system/
+        print_success "Cert renewal timer copied"
     fi
 }
 
@@ -218,6 +239,13 @@ setup_service() {
     
     # Start the service
     sudo systemctl start azure-iot.service
+    
+    # Enable and start cert renewal timer (runs daily)
+    if [[ -f /etc/systemd/system/azure-iot-cert-renew.timer ]]; then
+        sudo systemctl enable azure-iot-cert-renew.timer
+        sudo systemctl start azure-iot-cert-renew.timer
+        print_success "Cert renewal timer enabled and started"
+    fi
     
     # Wait a moment for service to start
     sleep 3

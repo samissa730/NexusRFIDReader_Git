@@ -1,7 +1,8 @@
 [Unit]
 Description=Azure IoT Hub Connection Service
-After=network-online.target
-Wants=network-online.target
+# Use network.target only so service starts at boot regardless of SIM/network (no network-online.target).
+After=network.target nexus-usb0-network.service
+Wants=nexus-usb0-network.service
 StartLimitIntervalSec=60
 StartLimitBurst=3
 

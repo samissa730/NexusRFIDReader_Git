@@ -1,0 +1,17 @@
+[Unit]
+Description=Azure IoT X.509 certificate renewal (EST)
+# Run after network is up so EST server is reachable
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Run as root to write /etc/azureiotpnp/ and restart azure-iot.service
+User=root
+WorkingDirectory=/opt/azure-iot
+ExecStart=/usr/bin/python3 /opt/azure-iot/azure-iot-cert-renew.py
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
