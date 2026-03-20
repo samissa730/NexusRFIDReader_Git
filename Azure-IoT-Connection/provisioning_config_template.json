@@ -4,6 +4,8 @@
   "registrationId": "YOUR_REGISTRATION_ID_HERE",
   "certPath": "/etc/azureiotpnp/device_cert.pem",
   "keyPath": "/etc/azureiotpnp/device_key.pem",
+  "estServerUrl": "https://apim-dev-spotlight.azure-api.net/cert/est",
+  "estBootstrapToken": "YOUR_DEV_BEARER_TOKEN",
   "tags": {
     "nexusLocate": {
       "siteName": "YOUR_SITE_NAME_HERE",

@@ -1,4 +1,6 @@
 {
   "idScope": "YOUR_DPS_ID_SCOPE",
-  "globalEndpoint": "global.azure-devices-provisioning.net"
+  "globalEndpoint": "global.azure-devices-provisioning.net",
+  "estServerUrl": "https://apim-dev-spotlight.azure-api.net/cert/est",
+  "estBootstrapToken": "YOUR_DEV_BEARER_TOKEN"
 }

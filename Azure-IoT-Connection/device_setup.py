@@ -19,6 +19,7 @@ CONFIG_PATH = Path("/etc/azureiotpnp/provisioning_config.json")
 # X.509 cert/key stored next to config
 DEFAULT_CERT_PATH = CONFIG_PATH.parent / "device_cert.pem"
 DEFAULT_KEY_PATH = CONFIG_PATH.parent / "device_key.pem"
+DEFAULT_EST_SERVER_URL = "https://apim-dev-spotlight.azure-api.net/cert/est"
 
 
 def load_env_json():
@@ -64,9 +65,12 @@ def get_user_input():
         print("ID Scope is required.")
         return None
 
-    est_server_url = (env_config.get('est_server_url') or "").strip() or input(
-        "Enter EST Server URL (e.g. https://your-est:9443/est): "
-    ).strip()
+    est_server_url = (env_config.get('est_server_url') or "").strip()
+    if not est_server_url:
+        user_est_server_url = input(
+            f"Enter EST Server URL [{DEFAULT_EST_SERVER_URL}]: "
+        ).strip()
+        est_server_url = user_est_server_url or DEFAULT_EST_SERVER_URL
     est_bootstrap_token = (env_config.get('est_bootstrap_token') or "").strip() or input(
         "Enter EST Bootstrap Token: "
     ).strip()

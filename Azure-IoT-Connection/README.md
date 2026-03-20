@@ -22,11 +22,11 @@ Before setting up the service, ensure you have:
 1. **Raspberry Pi** running Raspberry Pi OS (or compatible Linux distribution)
 2. **Azure IoT Hub** with Device Provisioning Service (DPS) enabled
 3. **Device Registration** in Azure DPS: ID Scope and an **X.509 enrollment** (registration_id = device ID; the CA that signed the device cert must be registered in DPS).
-4. **EST server** for certificate enrollment (e.g. step-ca with EST proxy). Optional: **`env.json`** with `idScope`, `est_server_url`, `est_bootstrap_token`, and device-update fields:
+4. **EST server** for certificate enrollment. DEV uses APIM EST endpoints at `https://apim-dev-spotlight.azure-api.net/cert/est`. Optional: **`env.json`** with `idScope`, `est_server_url`, `est_bootstrap_token`, and device-update fields:
    ```json
    {
        "idScope": "your_dps_id_scope",
-       "est_server_url": "https://your-est-server:9443/est",
+       "est_server_url": "https://apim-dev-spotlight.azure-api.net/cert/est",
        "est_bootstrap_token": "your_bootstrap_token",
        "storageAccount": "your_storage_account",
        "containerName": "your_container_name",
@@ -58,10 +58,22 @@ sudo bash uninstall.sh
 
 3. **Device setup uses X.509 (EST)**. When you run device setup, you will be prompted for (or they can come from `env.json`):
    - **ID Scope**: DPS ID Scope (from Azure Portal)
-   - **EST Server URL**: e.g. `https://your-est:9443/est`
+   - **EST Server URL**: defaults to `https://apim-dev-spotlight.azure-api.net/cert/est`
    - **EST Bootstrap Token**: token for initial certificate enrollment
    
    Optional in `env.json`: `idScope`, `est_server_url`, `est_bootstrap_token`, `storageAccount`, `containerName`, `sasToken` (for device updates).
+
+   DEV API reference:
+   ```bash
+   curl -k https://apim-dev-spotlight.azure-api.net/cert/est/simpleenroll \
+     -H "Authorization: Bearer <token>" \
+     --data-binary @device.csr \
+     -o device.crt
+
+   curl -k https://apim-dev-spotlight.azure-api.net/cert/est/cacerts \
+     -H "Authorization: Bearer <token>" \
+     -o ca_chain.pem
+   ```
    Defaults: Site Name "Lazer", Truck Number = Device Serial, Device ID = Device Serial.
 
 The script will automatically:

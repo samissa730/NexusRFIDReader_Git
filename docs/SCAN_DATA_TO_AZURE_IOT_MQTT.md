@@ -26,7 +26,7 @@ This document is the **single source of truth** for how RFID scan data is sent f
 | **Separate IoT service process** | The main app (GUI, RFID, GPS) can run without root; the IoT service runs as a systemd service, survives app restarts, and owns the single MQTT connection and credentials. |
 | **Unix socket** (`/var/run/nexus-iot.sock`) | Local, low-latency IPC; no network port; the app does not need Azure credentials—only the service does. |
 | **Batching scans** | Fewer MQTT publishes reduce connection load and cost; configurable `batchSize` and `batchIntervalSeconds` balance latency vs. efficiency. |
-| **DPS (Device Provisioning Service)** | Devices get a **derived symmetric key** from a group key; no per-device key distribution. One enrollment group in DPS, many devices. |
+| **DPS (Device Provisioning Service)** | Devices are provisioned with **X.509 certificates** (enrolled via EST) and assigned to IoT Hub securely. |
 | **MQTT** | Azure IoT Hub’s recommended protocol for devices: efficient, bidirectional; the Python SDK uses MQTT under the hood when you call `send_message()`. |
 
 ---
@@ -90,14 +90,14 @@ This document is the **single source of truth** for how RFID scan data is sent f
 |------|------------|-----|
 | 1 | Create an **Azure IoT Hub** (any tier; Basic supports D2C). | Hub is the MQTT endpoint and identity store for devices. |
 | 2 | Create a **Device Provisioning Service (DPS)** and link it to the IoT Hub. | DPS assigns devices to the hub and issues credentials without pre-registering each device in the hub. |
-| 3 | In DPS, create an **Enrollment Group** (e.g. symmetric key). Note: **ID Scope** and **Primary Key** (group key). | Group enrollment lets you derive per-device keys from one key; no need to paste keys on each device. |
-| 4 | (Optional) Register the device in the hub or use DPS to auto-create. | DPS can create the device in the hub on first provisioning. |
+| 3 | In DPS, create an **X.509 enrollment** (group or individual) and register the CA/intermediate certificate chain. Note: **ID Scope**. | DPS validates certificate chain and maps the device to an IoT Hub identity. |
+| 4 | Configure EST endpoint access in device setup (`est_server_url`, bootstrap token). | Device setup enrolls cert/key, then service authenticates with X.509. |
 
-**Why DPS:** One group key + device ID (e.g. serial) gives a derived symmetric key per device. No manual key per device in the portal.
+**Why DPS:** It decouples device provisioning from fixed hub settings and works cleanly with certificate-based attestation.
 
 ### 4.1.1 How to get Azure IoT Hub and DPS credentials (Azure Portal)
 
-Follow these steps in the **Azure Portal** ([https://portal.azure.com](https://portal.azure.com)) to obtain the values you need for device setup: **ID Scope** and **Group key (Primary Key)**. You need an Azure subscription and rights to create or use IoT Hub and DPS resources.
+Follow these steps in the **Azure Portal** ([https://portal.azure.com](https://portal.azure.com)) to obtain the values you need for device setup: **ID Scope** and **X.509 enrollment settings**. You need an Azure subscription and rights to create or use IoT Hub and DPS resources.
 
 ---
 
@@ -136,23 +136,15 @@ Follow these steps in the **Azure Portal** ([https://portal.azure.com](https://p
 
 ---
 
-#### D. Create an Enrollment Group and get the Primary Key (group key)
+#### D. Create X.509 enrollment in DPS
 
 1. In the same DPS resource, in the left menu under *Settings*, click **Manage enrollments**.
-2. Click **+ Add enrollment group** at the top.
-3. **Group name**: Enter a name (e.g. `nexus-devices`).
-4. **Attestation type**: Select **Symmetric Key**.
-5. **Auto-generate keys**: Leave **checked** (both Primary and Secondary key will be generated).
-6. **IoT Hub device options** (optional): You can set **IoT Hub** to your hub and enable **Enable entry** so that new devices are created in the hub when they first provision.
-7. Click **Save**.
-8. The new enrollment group appears in the list. Click the **group name** (e.g. `nexus-devices`) to open it.
-9. On the enrollment group page you will see:
-   - **Primary Key** (long Base64 string)
-   - **Secondary Key** (optional, for key rotation)
-10. Click **Copy** next to **Primary Key** and store it securely.  
-    **You will use this value as `group_key` in `env.json`; the device setup script derives a per-device key from it.**
+2. Add an **Enrollment Group** or **Individual Enrollment**.
+3. Set **Attestation type** to **Certificate**.
+4. Register/upload the issuing CA/intermediate chain used for device certificates.
+5. Configure IoT Hub assignment settings and save.
 
-**Important:** Treat the Primary Key as a secret. Do not commit it to source control; use `env.json` (or similar) and restrict file permissions.
+**Important:** Keep device private keys on-device only; never commit cert keys or bootstrap tokens to source control.
 
 ---
 
@@ -161,42 +153,56 @@ Follow these steps in the **Azure Portal** ([https://portal.azure.com](https://p
 | Value | Where you got it | Used as |
 |-------|------------------|--------|
 | **ID Scope** | DPS → Overview → ID Scope | `idScope` in `env.json` / device config |
-| **Primary Key** (enrollment group) | DPS → Manage enrollments → [your group] → Primary Key | `group_key` in `env.json`; device setup derives the per-device symmetric key from this |
+| **X.509 enrollment** | DPS → Manage enrollments (certificate attestation) | Allows certificate-based provisioning for the `registrationId` |
+| **EST URL / token** | API Management certificate endpoint | `est_server_url` and `est_bootstrap_token` in `env.json` or setup prompts |
 
 Optional (for OTA/updates): **Storage account**, **container name**, and **SAS token** for the blob container where updates are stored—configured separately and added to `env.json` if you use the Azure IoT service’s update feature.
 
 ---
 
-### 4.2 Device credentials (derived key)
+### 4.2 Device credentials (X.509 via EST)
 
-- **Group key (primary key):** From the DPS enrollment group (Base64).
 - **Registration ID:** Usually the device serial (e.g. from `/proc/cpuinfo` on Linux).
-- **Derived key:** `HMAC-SHA256(group_key_bytes, registration_id)` then Base64.  
-  Implemented in `Azure-IoT-Connection/device_setup.py` via `compute_derived_key()`.
+- **EST enroll:** `device_setup.py` requests a device certificate/key from EST `simpleenroll`.
+- **CA chain:** EST `cacerts` endpoint provides trust chain when needed.
+- **Current DEV endpoint:** `https://apim-dev-spotlight.azure-api.net/cert/est`
 
-**Why symmetric key:** Simple and supported everywhere. For higher security, use X.509 (DPS and SDK support it).
+DEV API check commands:
+```bash
+curl -k https://apim-dev-spotlight.azure-api.net/cert/est/simpleenroll \
+  -H "Authorization: Bearer <token>" \
+  --data-binary @device.csr \
+  -o device.crt
+
+curl -k https://apim-dev-spotlight.azure-api.net/cert/est/cacerts \
+  -H "Authorization: Bearer <token>" \
+  -o ca_chain.pem
+```
+
+**Current auth model:** X.509 only in runtime service.
 
 ### 4.3 Device configuration file
 
 - **Path:** `/etc/azureiotpnp/provisioning_config.json`
 - **Permissions:** `600` (root only).
-- **Contents (minimal; secrets encrypted at rest):**
+- **Contents (current X.509 fields):**
   - `globalEndpoint`: `"global.azure-devices-provisioning.net"`
-  - `idScopeEnc` / `symmetricKeyEnc`: encrypted values (key derived from `/etc/machine-id`); or legacy plain `idScope` / `symmetricKey` for backward compatibility
+  - `idScope`
   - `registrationId`: device ID (e.g. serial)
+  - `certPath`, `keyPath`
+  - `estServerUrl`, `estBootstrapToken`
   - `tags.nexusLocate`: e.g. `siteName`, `truckNumber`, `deviceSerial` (optional)
   - `batchSize` / `batchIntervalSeconds`: optional; service defaults are 10 and 5
   - `deviceUpdate`: optional; only present if OTA via `download.py` is configured  
-  The **cryptography** package is required for encryption/decryption; `device_setup.py` writes encrypted credentials and `iot_service.py` decrypts on load.
 
 **Why file-based:** The IoT service runs as a system service and must read credentials and batching settings from a fixed path without user interaction.
 
 ### 4.4 Provisioning (one-time per device)
 
-1. Run **device setup** so that `provisioning_config.json` is created and the derived key is computed:
-   - `env.json` (or prompts) supplies: `group_key`, `idScope`, and optionally storage/site/truck. The group key is used only to derive the device key and is never written to the device config.
-   - `device_setup.py` writes `provisioning_config.json` with only the minimal runtime credentials (no group key; optional `deviceUpdate` only if OTA is configured).
-2. **Why:** Provisioning uses DPS to get `assigned_hub` and `device_id`; the service then connects to that hub with the same symmetric key.
+1. Run **device setup** so that `provisioning_config.json` is created and X.509 cert/key are enrolled:
+   - `env.json` (or prompts) supplies: `idScope`, `est_server_url`, `est_bootstrap_token`, and optionally storage/site/truck.
+   - `device_setup.py` writes X.509 runtime credentials and optional `deviceUpdate`.
+2. **Why:** Provisioning uses DPS to get `assigned_hub` and `device_id`; the service connects to that hub using the enrolled certificate.
 
 ### 4.5 IoT service process
 
@@ -259,7 +265,7 @@ Optional (for OTA/updates): **Storage account**, **container name**, and **SAS t
 - **Credentials:** Stored only in `/etc/azureiotpnp/provisioning_config.json` with mode `600`.
 - **Transport:** TLS to Azure (handled by the SDK over MQTT).
 - **App:** No Azure secrets; only talks to the local Unix socket.
-- **Symmetric key:** Derived per device from the DPS group key; compromise of one device does not expose the group key if the derivation is correct.
+- **Certificate auth:** Device authenticates with X.509 cert/key; private key stays on the device.
 
 ---
 
@@ -269,7 +275,7 @@ Optional (for OTA/updates): **Storage account**, **container name**, and **SAS t
 |---------|--------|--------|
 | Scans not reaching the hub | IoT service status: `systemctl status azure-iot.service` | Service must be running to create the socket and hold the MQTT connection. |
 | Socket missing | `ls -la /var/run/nexus-iot.sock` | Created by the IoT service on start; if missing, the service failed or is stopped. |
-| Provisioning fails | DPS ID Scope, group key, registration ID | Wrong scope/key or ID format prevents DPS from assigning the hub. |
+| Provisioning fails | DPS ID Scope, X.509 enrollment, registration ID, EST URL/token | Enrollment mismatch or EST auth issues prevent provisioning/assignment. |
 | Connection drops | Logs: `journalctl -u azure-iot.service -f` | Network, firewall, or throttling; service should reconnect automatically. |
 | No batches sent | `batchSize` and `batchIntervalSeconds` in config | Buffer flushes only when size or interval is reached; ensure config is loaded. |
 
@@ -291,8 +297,8 @@ Optional (for OTA/updates): **Storage account**, **container name**, and **SAS t
 
 ## 10. Summary Checklist
 
-- [ ] Azure: IoT Hub + DPS created; DPS linked to hub; enrollment group (symmetric key) created; ID Scope and group key noted.
-- [ ] Device: `provisioning_config.json` present at `/etc/azureiotpnp/` with correct `idScope`, `registrationId`, derived `symmetricKey`, and optional `batchSize` / `batchIntervalSeconds`.
+- [ ] Azure: IoT Hub + DPS created; DPS linked to hub; X.509 enrollment configured; ID Scope noted.
+- [ ] Device: `provisioning_config.json` present at `/etc/azureiotpnp/` with correct `idScope`, `registrationId`, `certPath`, `keyPath`, `estServerUrl`, and optional `batchSize` / `batchIntervalSeconds`.
 - [ ] IoT service: Installed under `/opt/azure-iot/`, systemd unit enabled and started; socket `/var/run/nexus-iot.sock` exists when service is running.
 - [ ] App: Uses `IoTClient` and `send_scan(scan_record)` for each scan to send; no Azure credentials in the app.
 - [ ] Backend: **Azure Function (C#)** triggered by IoT Hub messages; parses `scan_batch` payloads and **stores scan data in PostgreSQL**. IoT Hub route (or equivalent) must point device-to-cloud messages to the function.
