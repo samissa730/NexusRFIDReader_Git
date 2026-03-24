@@ -71,6 +71,7 @@ class AzureIoTService:
         self.scan_buffer = []  # Buffer scans for batch upload
         self.batch_lock = threading.Lock()
         self.last_batch_flush_time = 0  # When first item in current buffer was added
+        self.last_real_scan_time = 0  # Track last real scan received from app socket
         self._load_configuration()
         signal.signal(signal.SIGTERM, self._signal_handler)
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -105,6 +106,14 @@ class AzureIoTService:
         # Batching: send multiple scans in one MQTT message
         self.batch_size = max(1, int(config.get("batchSize", 10)))
         self.batch_interval_seconds = max(0, float(config.get("batchIntervalSeconds", 5)))
+        # OTA updater can be disabled by omitting required fields
+        device_update = config.get("deviceUpdate", {}) if isinstance(config.get("deviceUpdate", {}), dict) else {}
+        required_update_fields = ["storageAccount", "containerName", "blobBasePath", "currentVersion", "sasToken"]
+        self.ota_enabled = all(device_update.get(field) for field in required_update_fields)
+        self.ota_missing_fields = [field for field in required_update_fields if not device_update.get(field)]
+        # Dev helper: send mock scans when no real scans arrive
+        self.mock_data_enabled = bool(config.get("mockDataEnabled", True))
+        self.mock_data_interval_seconds = max(5, int(config.get("mockDataIntervalSeconds", 30)))
         # logger.info(f"Loaded configuration for device: {self.registration_id}")
         # logger.info(f"Site: {self.nexus_locate.get('siteName', 'N/A')}")
         # logger.info(f"Truck: {self.nexus_locate.get('truckNumber', 'N/A')}")
@@ -250,12 +259,20 @@ class AzureIoTService:
 
             # Start socket server for scan data from main app
             self._start_socket_server()
+            self.last_real_scan_time = time.time()
 
             # Start background updater that runs download.py every 5 minutes
             try:
-                if not self.updater_thread or not self.updater_thread.is_alive():
-                    self.updater_thread = threading.Thread(target=self._background_update_worker, daemon=True)
-                    self.updater_thread.start()
+                if self.ota_enabled:
+                    if not self.updater_thread or not self.updater_thread.is_alive():
+                        self.updater_thread = threading.Thread(target=self._background_update_worker, daemon=True)
+                        self.updater_thread.start()
+                else:
+                    print(
+                        "[IoT Service] OTA updater disabled (missing deviceUpdate fields): "
+                        + ", ".join(self.ota_missing_fields),
+                        flush=True,
+                    )
             except Exception:
                 pass
 
@@ -281,6 +298,7 @@ class AzureIoTService:
                 heartbeat_interval = 60  # Send heartbeat every 60 seconds
                 last_connection_check = time.time()
                 last_heartbeat = time.time()
+                last_mock_scan = 0
                 
                 while self.running:
                     current_time = time.time()
@@ -319,6 +337,16 @@ class AzureIoTService:
                             has_buffered = bool(self.scan_buffer)
                         if has_buffered:
                             self._flush_scan_batch()
+
+                    # When no real scans arrive, send periodic mock scan batch for connectivity validation
+                    if self.mock_data_enabled:
+                        with self.batch_lock:
+                            has_buffered = bool(self.scan_buffer)
+                        no_recent_real_scans = (current_time - self.last_real_scan_time) >= self.mock_data_interval_seconds
+                        if (not has_buffered and no_recent_real_scans and
+                                (current_time - last_mock_scan) >= self.mock_data_interval_seconds):
+                            if self._send_mock_scan_batch(current_time):
+                                last_mock_scan = current_time
 
                     # Sleep in small increments to respond to shutdown signals
                     time.sleep(1)
@@ -508,6 +536,7 @@ class AzureIoTService:
                         self.last_batch_flush_time = time.time()
                     self.scan_buffer.append(enriched_data)
                     count = len(self.scan_buffer)
+                self.last_real_scan_time = time.time()
                 if count >= self.batch_size:
                     self._flush_scan_batch()
                 
@@ -560,6 +589,28 @@ class AzureIoTService:
                 # logger.error(f"Unexpected error sending message: {e}")
                 return False
         
+        return False
+
+    def _send_mock_scan_batch(self, current_time: float) -> bool:
+        """Send one mock scan batch when no real scans are available."""
+        mock_scan = {
+            "siteId": self.nexus_locate.get("siteName", "dev-site"),
+            "tagName": f"MOCK-{self.registration_id}-{int(current_time)}",
+            "latitude": 0.0,
+            "longitude": 0.0,
+            "speed": 0.0,
+            "deviceId": self.device_id,
+            "antenna": "1",
+            "barrier": 0.0,
+            "rssi": "-50",
+            "mock": True,
+            "timestamp": int(current_time),
+        }
+        payload = {"type": "scan_batch", "scans": [mock_scan]}
+        if self._send_message_safe(json.dumps(payload)):
+            self.message_count += 1
+            print(f"[IoT Service] ✓ [{self.message_count}] Sent mock scan batch", flush=True)
+            return True
         return False
 
 if __name__ == "__main__":
