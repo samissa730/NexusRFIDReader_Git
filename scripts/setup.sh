@@ -86,8 +86,13 @@ print_success "RFID and networking dependencies installed"
 
 # Install Python dependencies globally (not in venv)
 print_step "Installing Python dependencies globally..."
-sudo pip3 install --break-system-packages -U pip
-print_success "pip updated successfully"
+# Apt's python3-pip has no pip RECORD, so plain -U pip fails with uninstall-no-record-file.
+# --ignore-installed upgrades without trying to remove the distro package first.
+if sudo python3 -m pip install --break-system-packages --upgrade --ignore-installed pip; then
+    print_success "pip updated successfully"
+else
+    print_warning "pip upgrade skipped; continuing with system pip from apt"
+fi
 
 # Install PySide6 first as it's often a dependency for other packages
 print_step "Installing PySide6 (Qt for Python)..."
