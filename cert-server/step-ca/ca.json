@@ -33,7 +33,7 @@
           },
           "encryptedKey": "eyJhbGciOiJQQkVTMi1IUzI1NitBMTI4S1ciLCJlbmMiOiJBMjU2R0NNIiwicDJjIjo2MDAwMDAsInAycyI6ImdMLUh4VWhybHA0aFdxMG9LSC0tYlEifQ.WnUbCls3oDEpf2Qt3rLIrLNDrpK1Tz8Fmy2G2f60DpoNy5N3rRZrGQ.wZzotIAJKdG27qL2.2uZnPPHtGc2cyhKKwhGl5Gg1JJHWKRO-dgtsAV1hPaD0HANCt-6HwMbjDZpSMw6MZwGZtdvNlVo2RqpRNJVzI52hSNUiyag6FWOErasj6pvpy5kKNU6MfQR07uAwnbkJ17Ie7DP5LyJAEuJvm8ecpKwUvPqRw0SxClGzSgqNao4Dri_2RkhwF0f8QlzgbqspbF4JPhtyeh3JKpyXksbv23ko_4KGwYPH_APYWXz_DWKr0kSu7dUGFeMfBhuUh3-TAbznzJM-nQtq_WlOMCQE7uvrnB54p6HdR1Jdmzz0g-LwiSKe7eAdD4G5KFuMdpin_BN1VkSm2LcRDZs2AkEOj9X-kaSslmQHZznvvuHEtpzClbGPlpg27IbCviVFlWM.sizHbYUNpJ0XIPYff8JqgQ",
           "claims": {
-            "defaultTLSCertDuration": "5m",
+            "defaultTLSCertDuration": "30m",
             "maxTLSCertDuration": "24h"
           }
         }

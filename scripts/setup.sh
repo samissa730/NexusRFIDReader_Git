@@ -96,12 +96,13 @@ fi
 
 # Install PySide6 first as it's often a dependency for other packages
 print_step "Installing PySide6 (Qt for Python)..."
-sudo pip3 install --break-system-packages PySide6
+# --ignore-installed: apt ships urllib3/requests/etc. without pip RECORD; pip must not try to uninstall them.
+sudo python3 -m pip install --break-system-packages --ignore-installed PySide6
 print_success "PySide6 installed successfully"
 
 # Install other Python dependencies
 print_step "Installing remaining Python dependencies..."
-sudo pip3 install --break-system-packages -r "${project_root}/requirements.txt"
+sudo python3 -m pip install --break-system-packages --ignore-installed -r "${project_root}/requirements.txt"
 print_success "All Python dependencies installed"
 
 # Make scripts executable

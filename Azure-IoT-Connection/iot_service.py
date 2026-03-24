@@ -39,7 +39,10 @@ try:
     from azure.iot.device.exceptions import ConnectionDroppedError, ConnectionFailedError
 except ImportError:
     print("ERROR: Azure IoT SDK not installed")
-    print("Install with: sudo pip3 install azure-iot-device")
+    print(
+        "Install with: sudo python3 -m pip install azure-iot-device "
+        "--break-system-packages --ignore-installed"
+    )
     sys.exit(1)
 
 CONFIG_PATH = Path("/etc/azureiotpnp/provisioning_config.json")

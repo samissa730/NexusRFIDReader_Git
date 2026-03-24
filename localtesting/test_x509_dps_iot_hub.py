@@ -118,7 +118,9 @@ def _run_x509_dps_and_iot_hub():
     except ImportError:
         _print_section("X.509 DPS / IoT Hub test (skipped)")
         _print_fail("Azure IoT SDK not installed.")
-        _print_info("Install with: pip install azure-iot-device")
+        _print_info(
+            "Install with: pip install azure-iot-device --break-system-packages --ignore-installed"
+        )
         return False
 
     registration_id = _get_registration_id_from_cert()
