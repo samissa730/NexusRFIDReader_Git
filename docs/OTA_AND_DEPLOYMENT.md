@@ -298,55 +298,49 @@ The updater is **`Azure-IoT-Connection/download.py`**: it reads **nexus_update.b
 
 ---
 
-## 7. Option B: Device twin desired property
+## 7. Option B: Cloud-to-device (C2D) message (alternative)
 
-The cloud updates the **device twin’s desired property** (e.g. `properties.desired.ota`). The device has a **listener** that subscribes to desired property updates and, when `ota` changes, runs the same “pull from blob and install” script.
+The cloud sends a **C2D message** to each target device. The device listens for C2D messages and, when it receives an OTA trigger message, runs the same pull-from-blob update flow (`download.py` or `check-and-update-from-test.sh`).
 
-### 7.1 Updating device twin (manual test – Azure Portal)
+### 7.1 Sending C2D message (manual test – Azure CLI)
 
-**Where to go**
+Use Azure CLI with the IoT extension to send a C2D message to one device:
 
-1. In the Azure Portal, open your **IoT Hub**.
-2. Under **Device management**, click **Devices**.
-3. Click the **Device ID** (e.g. `pi-test-01`).
-4. Click **Device twin** (or **Twin**).
+```bash
+az extension add --name azure-iot --yes
+az iot device c2d-message send \
+  --login "<IotHubConnectionString>" \
+  --device-id "pi-test-01" \
+  --data '{"ota":{"action":"check_update","version":"20250204.1"}}'
+```
 
-**What to do**
+If the device-side C2D handler is running, it should receive the message and execute the update script.
 
-5. In the JSON editor, find the **properties.desired** section (or add it). Add or update an **ota** property, for example:
-   ```json
-   "desired": {
-     "ota": {
-       "version": "20250204.1",
-       "action": "install"
-     }
-   }
-   ```
-   The device listener can treat any change to `desired.ota` as “run the update script.” The script will still read **releases/test/latest.json** from blob to get the actual paths; the twin can carry a version for display or comparison.
-6. Click **Save** at the top of the editor.
+**Links**
 
-**Link**
+- [Send cloud-to-device messages](https://learn.microsoft.com/en-us/azure/iot-hub/iot-hub-csharp-csharp-c2d)
+- [IoT Hub REST API – Send C2D](https://learn.microsoft.com/en-us/rest/api/iothub/service/send-cloud-to-device-message)
 
-- [Understand and use device twins in IoT Hub](https://learn.microsoft.com/en-us/azure/iot-hub/iot-hub-devguide-device-twins)
+### 7.2 Automating C2D after pipeline upload
 
-### 7.2 Automating twin update after pipeline upload
+After DeployTest uploads artifacts, send C2D OTA trigger messages to devices.
 
-After DeployTest, update the **desired** property for each target device. You can:
+#### 7.2.1 Detailed steps: Azure DevOps (send C2D after upload)
 
-- **Pipeline step:** Use Azure CLI (azure-iot extension) or REST to [update the device twin](https://learn.microsoft.com/en-us/rest/api/iothub/service/twin/update) (PATCH) with `properties.desired.ota = { "version": "<Build.BuildNumber>", "action": "install" }` for each device ID.
-- **Azure Function:** Triggered by blob upload; Function gets device list and updates each device twin via the IoT Hub service SDK.
+Use **IotHubConnectionString** (secret) from §6.2.1 and either:
 
-#### 7.2.1 Detailed steps: Azure DevOps (update device twin after upload)
+- **OtaDeviceIds** (comma-separated), or
+- query all device IDs from IoT Hub at runtime.
 
-Use **IotHubConnectionString** (secret) from §6.2.1. For a C2D-based job you can pass device IDs via **OtaDeviceIds** (comma-separated) or adapt the script to query all devices from IoT Hub like the twin job. Ensure the variable group is linked to the DeployTest stage (see Step 1–2 in §6.2.1).
+Ensure the variable group is linked to the DeployTest stage (see Step 1-2 in §6.2.1).
 
-**Add a new job in the DeployTest stage to update device twins**
+**Add a new job in the DeployTest stage to send C2D messages**
 
-Add a job in the **DeployTest** stage that runs after the blob deployment and sends C2D to each device. Place it after the `DeployToBlobStorage` job. The **implemented** flow uses the **NotifyDevicesTwin** job (§6.2.1); this §7.2.1 is for an optional **C2D** alternative if you prefer messages over twin updates.
+This is an optional alternative to the implemented twin job (`NotifyDevicesTwin` in §6.2.1).
 
 ```yaml
-      - job: NotifyDevicesTwin
-        displayName: 'Notify devices via device twin (OTA)'
+      - job: NotifyDevicesC2D
+        displayName: 'Notify devices via C2D (OTA)'
         condition: succeeded()
         variables:
           - group: test-variables
@@ -354,7 +348,7 @@ Add a job in the **DeployTest** stage that runs after the blob deployment and se
           - group: ota-iot-variables   # or omit if OTA vars are in test-variables
         steps:
           - task: AzureCLI@2
-            displayName: 'Update device twin desired.ota for each device'
+            displayName: 'Send C2D OTA trigger to each device'
             inputs:
               azureSubscription: ${{ format(variables.workLoadServiceConnection, 'test') }}
               scriptType: bash
@@ -363,42 +357,41 @@ Add a job in the **DeployTest** stage that runs after the blob deployment and se
                 set -euo pipefail
                 az extension add --name azure-iot --yes
                 CONN="${{ variables.IotHubConnectionString }}"
-                DEVICES="${{ variables.OtaDeviceIds }}"
                 BUILD="$(Build.BuildNumber)"
-                DESIRED="{\"ota\":{\"version\":\"$BUILD\",\"action\":\"install\"}}"
+                DEVICES="${{ variables.OtaDeviceIds }}"
+                if [ -z "${DEVICES:-}" ]; then
+                  DEVICES=$(az iot hub device-identity list --login "$CONN" --query "[].deviceId" -o tsv)
+                fi
                 for id in $(echo "$DEVICES" | tr ',' ' '); do
                   id=$(echo "$id" | xargs)
                   [ -z "$id" ] && continue
-                  echo "Updating twin for device: $id"
-                  az iot hub device-twin update \
+                  echo "Sending C2D OTA trigger to device: $id"
+                  az iot device c2d-message send \
                     --login "$CONN" \
                     --device-id "$id" \
-                    --desired "$DESIRED"
+                    --data "{\"ota\":{\"action\":\"check_update\",\"version\":\"$BUILD\"}}"
                 done
-                echo "Device twin updates completed."
+                echo "C2D OTA messages sent."
 ```
 
-- Replace **ota-iot-variables** with **test-variables** if that is where you stored the OTA variables.
-- **Build.BuildNumber** is the pipeline build number (e.g. `20250204.1`), so `desired.ota.version` matches the version in **releases/test/latest.json**. The device listener can compare or simply run the update script when `desired.ota` changes.
+- Replace **ota-iot-variables** with **test-variables** if OTA variables are stored there.
+- The message body includes **Build.BuildNumber** so device logs can show which deployment triggered the check.
 
 **Links**
 
-- [IoT Hub service REST API – Update twin](https://learn.microsoft.com/en-us/rest/api/iothub/service/twin/update)  
-- [Azure IoT Hub service SDK](https://learn.microsoft.com/en-us/azure/iot-hub/iot-hub-devguide-sdks)
+- [Receive C2D messages (device)](https://learn.microsoft.com/en-us/azure/iot-hub/iot-hub-devguide-messages-c2d#receive-cloud-to-device-messages)
+- [IoT Hub service REST API – Send C2D](https://learn.microsoft.com/en-us/rest/api/iothub/service/send-cloud-to-device-message)
 
-### 7.3 Device side: listener for twin desired updates
+### 7.3 Device side: C2D message handler
 
-On the device, a **listener** must:
+On the device, a C2D handler must:
 
 1. Connect to IoT Hub (device connection string).
-2. Subscribe to **device twin desired property** updates.
-3. When **desired.ota** (or your chosen property) changes, run the same update script that pulls from blob using config.
+2. Subscribe to **cloud-to-device messages**.
+3. Parse incoming message payload (for example `ota.action == "check_update"`).
+4. Run the same update script that pulls from blob using config.
 
-Implementation: same as Option A (separate Python service or logic inside your app), but instead of receiving C2D, the client handles the **twin desired property update** callback and runs **check-and-update-from-test.sh** (or equivalent).
-
-**Link**
-
-- [Listen for desired property updates (device SDK)](https://learn.microsoft.com/en-us/azure/iot-hub/iot-hub-devguide-device-twins#back-end-operations)
+Implementation note: unlike Option A, this option uses the C2D callback path instead of `on_twin_desired_properties_patch_received`.
 
 ---
 
@@ -467,7 +460,6 @@ For full ADU setup steps (create account, instance, device groups, agent install
 
 **Links**
 
-- [Device Update for IoT Hub](https://learn.microsoft.com/en-us/azure/iot-hub-device-update/device-update-overview)  
 - [Create Device Update resources](https://learn.microsoft.com/en-us/azure/iot-hub-device-update/create-device-update-account?tabs=portal)
 
 ---
