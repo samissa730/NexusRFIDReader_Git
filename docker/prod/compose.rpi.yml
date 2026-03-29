@@ -1,0 +1,28 @@
+version: "3.9"
+
+services:
+  nexusrfid:
+    build:
+      context: ../..
+      dockerfile: docker/prod/Dockerfile
+    image: nexusrfid:prod
+    container_name: nexusrfid-prod
+    restart: always
+
+    # Keep network behavior aligned with current host-based services.
+    network_mode: host
+    privileged: true
+
+    environment:
+      DISPLAY: "${DISPLAY:-:0}"
+      XAUTHORITY: "${XAUTHORITY:-/home/pi/.Xauthority}"
+      QT_X11_NO_MITSHM: "1"
+
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - /etc/azureiotpnp:/etc/azureiotpnp
+      - /var/lib/nexusrfid:/var/lib/nexusrfid
+      - /home/pi/.Xauthority:/home/pi/.Xauthority:ro
+
+    devices:
+      - /dev:/dev
