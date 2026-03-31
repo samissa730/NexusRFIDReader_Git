@@ -53,10 +53,24 @@ COPY requirements.txt /opt/nexusrfid/requirements.txt
 RUN pip install --no-cache-dir -r /opt/nexusrfid/requirements.txt && \
     pip install --no-cache-dir azure-iot-device azure-storage-blob
 
-# Fail build if PySide6's xcb plugin has unresolved shared-library deps (avoids silent "no UI" at runtime).
-RUN QXCB="$(python3 -c 'import glob, os, PySide6; print(glob.glob(os.path.join(PySide6.__path__[0], "Qt6", "plugins", "platforms", "libqxcb.so"))[0])')" && \
-    ldd "$QXCB" | tee /tmp/ldd-qxcb.txt && \
-    if grep -q "not found" /tmp/ldd-qxcb.txt; then echo "Missing deps for libqxcb.so"; exit 1; fi
+# Fail build if PySide6's xcb plugin has unresolved shared-library deps (wheel layout varies: Qt/ vs Qt6/).
+RUN python3 <<'PY'
+import glob, os, subprocess, sys
+import PySide6
+
+base = PySide6.__path__[0]
+cands = glob.glob(os.path.join(base, "**", "libqxcb.so"), recursive=True)
+if not cands:
+    print("libqxcb.so not found under", base, file=sys.stderr)
+    sys.exit(1)
+qxcb = cands[0]
+print("Checking", qxcb)
+out = subprocess.check_output(["ldd", qxcb], text=True)
+print(out)
+if "not found" in out:
+    print("Missing deps for libqxcb.so", file=sys.stderr)
+    sys.exit(1)
+PY
 
 COPY . /opt/nexusrfid
 
