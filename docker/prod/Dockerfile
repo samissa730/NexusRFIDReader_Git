@@ -12,6 +12,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     iproute2 \
     isc-dhcp-client \
     x11-xserver-utils \
+    libfontconfig1 \
+    libfreetype6 \
+    libxkbcommon0 \
+    libdbus-1-3 \
+    libglib2.0-0 \
     libx11-6 \
     libx11-xcb1 \
     libxcb1 \
