@@ -24,6 +24,7 @@
 #   NEXUS_HEALTH_INTERVAL      For health timer (default: 10min)
 #   NEXUS_BOOT_DELAY           OnBootSec for first fire after boot (default: 2min)
 #   NEXUS_FORCE_INSTALL_UNITS  If 1, always write nexus-bootstrap-* units (overwrite)
+#   NEXUS_BOOTSTRAP_SCAN_ONLY  If 1, only Install-scan-container.sh (no renewal/health timers or self-register)
 
 set -euo pipefail
 
@@ -48,6 +49,7 @@ print_step() { echo -e "${CYAN}[STEP]${NC} $1"; }
 : "${NEXUS_HEALTH_INTERVAL:=10min}"
 : "${NEXUS_BOOT_DELAY:=2min}"
 : "${NEXUS_FORCE_INSTALL_UNITS:=0}"
+: "${NEXUS_BOOTSTRAP_SCAN_ONLY:=1}"
 
 _DEFAULT_SEARCH=(
   "/usr/local/sbin"
@@ -320,11 +322,18 @@ main() {
     print_error "Scan container script not found. Set NEXUS_SCRIPT_SEARCH_DIRS or NEXUS_EXTRA_SCRIPT_DIR."
     exit 1
   fi
-  if [[ -z "$renew" ]]; then
-    print_warning "Renewal script not found — skipping."
-  fi
-  if [[ -z "$health" ]]; then
-    print_warning "Device check script not found — skipping."
+
+  if [[ "$NEXUS_BOOTSTRAP_SCAN_ONLY" == "1" ]]; then
+    print_status "NEXUS_BOOTSTRAP_SCAN_ONLY=1: only container scan script (renewal and health omitted)."
+    renew=""
+    health=""
+  else
+    if [[ -z "$renew" ]]; then
+      print_warning "Renewal script not found — skipping."
+    fi
+    if [[ -z "$health" ]]; then
+      print_warning "Device check script not found — skipping."
+    fi
   fi
 
   print_status "Resolved: scan=$(basename "$scan") fullpath=$scan"
