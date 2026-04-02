@@ -9,7 +9,8 @@
 #   - Device health / network:   check-setup-device.sh
 #
 # Behaviour:
-#   1. Resolve each script under NEXUS_SCRIPT_SEARCH_DIRS.
+#   1. Resolve each script under NEXUS_SCRIPT_SEARCH_DIRS, and recursively under the directory
+#      that contains this bootstrap script (e.g. scripts/rpi-os/… in a git clone).
 #   2. If a .service under /etc/systemd/system already ExecStart='s that script, use its .timer
 #      (image self-registration).
 #   3. Otherwise install nexus-bootstrap-<role>.service + .timer and enable them.
@@ -82,11 +83,18 @@ as_root() {
 
 find_script() {
   local -n _names=$1
-  local d name
+  local d name found
   for name in "${_names[@]}"; do
     for d in $_NEXUS_DIRS; do
       [[ -z "$d" || ! -d "$d" ]] && continue
-      if [[ -f "$d/$name" ]]; then
+      if [[ "$d" == "$_THIS_DIR" ]]; then
+        # Repo layout: maintenance scripts often live in a subdir (e.g. scripts/rpi-os/).
+        found="$(find "$d" -type f -name "$name" ! -path '*/.*' 2>/dev/null | LC_ALL=C sort | head -n 1)"
+        if [[ -n "$found" ]]; then
+          echo "$found"
+          return 0
+        fi
+      elif [[ -f "$d/$name" ]]; then
         echo "$d/$name"
         return 0
       fi
