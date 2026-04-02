@@ -1,20 +1,22 @@
 #!/usr/bin/env bash
 #
-# Nexus RFID — pull/run the production container (matches docker/prod/compose.rpi.yml).
+# Nexus RFID — pull and run the production container via `docker run` (no compose).
 # Intended to run periodically via systemd timer (see scripts/bootstrap-rpi-device-timers.sh).
 #
 # Behaviour:
 #   - Uses docker, or podman if docker is missing.
-#   - If NEXUS_COMPOSE_FILE is set and exists: `compose pull` + `compose up -d`.
-#   - Else: pull NEXUS_CONTAINER_IMAGE, recreate container if image changed, not running, or unhealthy.
+#   - Pulls NEXUS_CONTAINER_IMAGE, recreates container if image changed, not running, or not on latest local image.
+#
+# Default image: Docker Hub sam730/nexusrfid — set NEXUS_CONTAINER_TAG or full NEXUS_CONTAINER_IMAGE.
 #
 # Environment (optional):
-#   NEXUS_COMPOSE_FILE       e.g. /opt/nexusrfid/docker/prod/compose.rpi.yml
-#   NEXUS_CONTAINER_IMAGE    default: docker.io/nexusrfid/nexusrfid:prod
+#   NEXUS_CONTAINER_IMAGE    full ref (default: docker.io/sam730/nexusrfid:<NEXUS_CONTAINER_TAG>)
+#   NEXUS_CONTAINER_TAG      tag only (default: latest) — ignored if NEXUS_CONTAINER_IMAGE is set explicitly
 #   NEXUS_CONTAINER_NAME     default: nexusrfid-prod
+#   NEXUS_PI_USER            default: admin (XAUTHORITY path under /home/<user>)
 #   DISPLAY                  default: :0
-#   XAUTHORITY               default: /home/pi/.Xauthority
-#   NEXUS_PI_USER            default: pi (for XAUTHORITY path)
+#   XAUTHORITY               default: /home/<NEXUS_PI_USER>/.Xauthority
+#   QT_QPA_PLATFORM          default: xcb
 #
 # Optional self-register for bootstrap (see scripts/bootstrap-rpi-device-timers.sh):
 #   --install-systemd-timer  install nexus-scan-container.service + .timer
@@ -23,11 +25,13 @@ set -euo pipefail
 
 # NEXUS_BOOTSTRAP_SELF_REGISTER
 
-: "${NEXUS_CONTAINER_IMAGE:=docker.io/nexusrfid/nexusrfid:prod}"
+: "${NEXUS_CONTAINER_TAG:=tagname}"
+: "${NEXUS_CONTAINER_IMAGE:=docker.io/sam730/nexusrfid:${NEXUS_CONTAINER_TAG}}"
 : "${NEXUS_CONTAINER_NAME:=nexusrfid-prod}"
-: "${NEXUS_PI_USER:=pi}"
+: "${NEXUS_PI_USER:=admin}"
 : "${DISPLAY:=:0}"
 : "${XAUTHORITY:=/home/${NEXUS_PI_USER}/.Xauthority}"
+: "${QT_QPA_PLATFORM:=xcb}"
 
 log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*"; }
 
@@ -40,16 +44,6 @@ ctr_cmd() {
     log "ERROR: Neither docker nor podman found."
     exit 1
   fi
-}
-
-compose_up() {
-  local compose_file=$1
-  local dir
-  dir="$(cd "$(dirname "$compose_file")" && pwd)"
-  local base
-  base="$(basename "$compose_file")"
-  log "Compose mode: pull + up in $dir ($base)"
-  ( cd "$dir" && $CTR compose -f "$base" pull && $CTR compose -f "$base" up -d --remove-orphans )
 }
 
 container_run_id() {
@@ -67,7 +61,7 @@ container_state() {
 run_container_raw() {
   log "Starting container $NEXUS_CONTAINER_NAME from $NEXUS_CONTAINER_IMAGE"
   $CTR rm -f "$NEXUS_CONTAINER_NAME" 2>/dev/null || true
-  # Mirrors docker/prod/compose.rpi.yml
+  # Matches production: docker run ... sam730/nexusrfid:<tag>
   $CTR run -d \
     --name "$NEXUS_CONTAINER_NAME" \
     --restart always \
@@ -75,12 +69,13 @@ run_container_raw() {
     --privileged \
     -e "DISPLAY=${DISPLAY}" \
     -e "XAUTHORITY=${XAUTHORITY}" \
+    -e "QT_QPA_PLATFORM=${QT_QPA_PLATFORM}" \
     -e QT_X11_NO_MITSHM=1 \
     -v /tmp/.X11-unix:/tmp/.X11-unix \
+    -v "${XAUTHORITY}:${XAUTHORITY}:ro" \
     -v /etc/azureiotpnp:/etc/azureiotpnp \
     -v /var/lib/nexusrfid:/var/lib/nexusrfid \
-    -v "${XAUTHORITY}:${XAUTHORITY}:ro" \
-    -v /dev:/dev \
+    --device /dev:/dev \
     "$NEXUS_CONTAINER_IMAGE"
 }
 
@@ -158,12 +153,6 @@ main() {
 
   CTR="$(ctr_cmd)"
   log "Runtime: $CTR"
-
-  if [[ -n "${NEXUS_COMPOSE_FILE:-}" && -f "$NEXUS_COMPOSE_FILE" ]]; then
-    compose_up "$NEXUS_COMPOSE_FILE"
-    log "OK: compose up complete."
-    exit 0
-  fi
 
   ensure_raw
 }
