@@ -126,12 +126,22 @@ unit_basename() {
   basename -- "$1" .service
 }
 
-# Find timer that triggers svc_basename.service
+# Find timer that triggers svc_basename.service:
+# - Explicit Unit=svc_basename.service in the timer unit, or
+# - Default systemd rule: foo.timer activates foo.service when [Timer] has no Unit= line.
+#   (Self-installed nexus-*.timer files often omit Unit=; the old grep-only logic missed those
+#   and wrongly added duplicate nexus-bootstrap-*.timer units.)
 find_timer_for_service() {
   local svc_basename=$1
-  local f
+  local f timer_base
   while IFS= read -r -d '' f; do
-    if grep -qE "^Unit=${svc_basename}\\.service\\>" "$f" 2>/dev/null; then
+    if grep -qE "^[[:space:]]*Unit=${svc_basename}\\.service\\>" "$f" 2>/dev/null; then
+      echo "$f"
+      return 0
+    fi
+    timer_base="$(basename "$f" .timer)"
+    [[ "$timer_base" != "$svc_basename" ]] && continue
+    if ! grep -qE '^[[:space:]]*Unit=' "$f" 2>/dev/null; then
       echo "$f"
       return 0
     fi
