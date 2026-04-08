@@ -212,7 +212,6 @@ stages:
               
               [Service]
               Type=simple
-              ExecStartPre=/bin/bash -c '/usr/bin/sudo /sbin/dhclient usb0 || true'
               ExecStartPre=/bin/sleep 5
               ExecStart=sudo /usr/local/bin/NexusRFIDReader
               Restart=always
@@ -253,7 +252,7 @@ stages:
               Architecture: ${ARCHITECTURE}
               Maintainer: ${MAINTAINER} <support@nexusyms.com>
               Homepage: ${WEBSITE}
-              Depends: libxcb-xinerama0, libxcb-cursor0, libx11-xcb1, libxcb1, libxfixes3, libxi6, libxrender1, libxcb-render0, libxcb-shape0, libxcb-xfixes0, x11-xserver-utils, python3, python3-pip, systemd, sudo, isc-dhcp-client, sed, arp-scan
+              Depends: libxcb-xinerama0, libxcb-cursor0, libx11-xcb1, libxcb1, libxfixes3, libxi6, libxrender1, libxcb-render0, libxcb-shape0, libxcb-xfixes0, x11-xserver-utils, python3, python3-pip, systemd, sudo, sed, arp-scan
               Description: ${DESCRIPTION}
                This application provides advanced RFID scanning capabilities with GPS tracking,
                real-time data processing, and cloud synchronization. It's designed for inventory
@@ -335,27 +334,6 @@ stages:
               SERVICE_XAUTHORITY="${SERVICE_HOME}/.Xauthority"
               SERVICE_XDG_RUNTIME_DIR="/run/user/${SERVICE_UID}"
               SERVICE_DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/${SERVICE_UID}/bus"
-              
-              # Configure sudo for dhclient
-              SUDOERS_FILE="/etc/sudoers.d/nexusrfid"
-              NEED_SUDO_CONFIG=true
-              
-              if [ -f "$SUDOERS_FILE" ]; then
-                  if grep -q "^${SERVICE_USER}.*NOPASSWD.*dhclient" "$SUDOERS_FILE" 2>/dev/null; then
-                      NEED_SUDO_CONFIG=false
-                      echo "Sudo configuration for $SERVICE_USER already exists"
-                  fi
-              fi
-              
-              if [ "$NEED_SUDO_CONFIG" = true ]; then
-                  echo "Configuring sudo permissions for $SERVICE_USER user..."
-                  {
-                      echo "${SERVICE_USER} ALL=(ALL) NOPASSWD: /sbin/dhclient"
-                      echo "${SERVICE_USER} ALL=(ALL) NOPASSWD: /usr/sbin/dhclient"
-                  } > "$SUDOERS_FILE"
-                  chmod 0440 "$SUDOERS_FILE"
-                  echo "Sudo configuration added for dhclient"
-              fi
               
               # Create data directory
               RFID_DATA_DIR=/var/lib/nexusrfid

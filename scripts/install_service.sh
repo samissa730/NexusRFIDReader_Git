@@ -87,9 +87,6 @@ Wants=graphical.target
 [Service]
 Type=simple
 WorkingDirectory=${PROJECT_ROOT}
-# Setup internet connection via usb0 FIRST, before anything else
-# This runs before network-online.target since we're setting up the connection ourselves
-ExecStartPre=/bin/bash -c '/usr/bin/sudo /sbin/dhclient usb0 || true'
 ExecStartPre=/bin/sleep 5
 ExecStart=${RUN_SCRIPT}
 Restart=always
