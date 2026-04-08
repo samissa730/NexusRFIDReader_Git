@@ -8,7 +8,7 @@ trigger:
   paths:
     include:
       - requirements.txt
-      - '*.spec'
+      - docker/**
       - main.py
       - ui/**
       - utils/**
@@ -22,6 +22,7 @@ pr:
   paths:
     include:
       - requirements.txt
+      - docker/**
       - main.py
       - ui/**
       - utils/**
@@ -42,6 +43,11 @@ variables:
     value: 'deviceupdates'
   - name: workLoadServiceConnection
     value: 'spotlight-{0}-infrastructure-service-connection'
+  # Docker Hub: create a "Docker Registry" service connection in Azure DevOps (docker.io) and set this name to match.
+  - name: dockerHubServiceConnection
+    value: 'dockerhub-sam730'
+  - name: dockerHubRepository
+    value: 'sam730/nexusrfid'
 
 parameters:
   - name: environments
@@ -56,42 +62,17 @@ parameters:
 
 stages:
   - stage: BuildProject
-    displayName: 'Build and Package Stage'
+    displayName: 'Build Docker Image and Push'
     jobs:
-      - job: MultiPlatformBuild
-        displayName: 'Multi-Platform Build Job'
-        strategy:
-          matrix:
-            Windows:
-              vmImage: 'windows-latest'
-              osName: 'Windows'
-              executableSuffix: '.exe'
-              pyinstallerOptions: '--onefile --windowed'
-              hiddenImports: '--hidden-import=PySide6.QtCore --hidden-import=PySide6.QtWidgets --hidden-import=PySide6.QtGui --hidden-import=PySide6.QtOpenGL'
-            Linux:
-              vmImage: 'ubuntu-latest'
-              osName: 'Linux'
-              executableSuffix: ''
-              pyinstallerOptions: '--onefile'
-              hiddenImports: '--hidden-import=PySide6.QtCore --hidden-import=PySide6.QtWidgets --hidden-import=PySide6.QtGui'
-            RaspberryPi:
-              vmImage: 'ubuntu-latest'
-              osName: 'RaspberryPi'
-              executableSuffix: ''
-              pyinstallerOptions: '--onefile'
-              hiddenImports: '--hidden-import=PySide6.QtCore --hidden-import=PySide6.QtWidgets --hidden-import=PySide6.QtGui'
-          maxParallel: 3
-
+      - job: DockerBuild
+        displayName: 'Docker Build (Linux)'
         pool:
-          vmImage: $(vmImage)
-
+          vmImage: 'ubuntu-latest'
         steps:
-          # Checkout repository
           - checkout: self
             displayName: 'Checkout Repository'
             clean: true
 
-          # Setup Python environment
           - task: UsePythonVersion@0
             displayName: 'Use Python $(pythonVersion)'
             inputs:
@@ -99,173 +80,73 @@ stages:
               addToPath: true
               architecture: 'x64'
 
-          # Install build dependencies
           - script: |
               python -m pip install --upgrade pip
-              pip install setuptools wheel pyinstaller pytest
-            displayName: 'Install Build Dependencies'
+              pip install pytest
+            displayName: 'Install test dependencies'
 
-          # Install project dependencies
           - script: |
               pip install -r requirements.txt
-            displayName: 'Install Project Dependencies'
-            condition: succeeded()
+            displayName: 'Install project dependencies'
 
-          # Run tests - Windows PowerShell
-          - task: PowerShell@2
-            displayName: 'Run Tests (Windows)'
-            condition: and(succeeded(), eq(variables['osName'], 'Windows'))
-            continueOnError: true
-            inputs:
-              targetType: 'inline'
-              script: |
-                try {
-                  if (Test-Path "tests") {
-                    python -m pytest tests/ --junitxml="$(Agent.TempDirectory)/test-results.xml"
-                    if ($LASTEXITCODE -ne 0) { Write-Host "Tests completed with issues" }
-                  } elseif (Test-Path "UnitTests") {
-                    python -m pytest UnitTests/ --junitxml="$(Agent.TempDirectory)/test-results.xml"
-                    if ($LASTEXITCODE -ne 0) { Write-Host "Tests completed with issues" }
-                  } else {
-                    Write-Host "No tests directory found, creating empty test results"
-                    New-Item -ItemType Directory -Path "$(Agent.TempDirectory)" -Force
-                    $xmlContent = '<?xml version="1.0" encoding="UTF-8"?><testsuites><testsuite name="NoTests" tests="0" failures="0" errors="0" skipped="0"></testsuite></testsuites>'
-                    Set-Content -Path "$(Agent.TempDirectory)/test-results.xml" -Value $xmlContent
-                  }
-                } catch {
-                  Write-Host "Test execution failed: $($_.Exception.Message)"
-                  Write-Host "Creating empty test results"
-                  New-Item -ItemType Directory -Path "$(Agent.TempDirectory)" -Force
-                  $xmlContent = '<?xml version="1.0" encoding="UTF-8"?><testsuites><testsuite name="NoTests" tests="0" failures="0" errors="0" skipped="0"></testsuite></testsuites>'
-                  Set-Content -Path "$(Agent.TempDirectory)/test-results.xml" -Value $xmlContent
-                }
-          
-          # Run tests - Linux/Mac Bash
           - bash: |
               if [ -d "tests" ]; then
                 python -m pytest tests/ --junitxml=$(Agent.TempDirectory)/test-results.xml || echo "Tests completed with issues"
               elif [ -d "UnitTests" ]; then
                 python -m pytest UnitTests/ --junitxml=$(Agent.TempDirectory)/test-results.xml || echo "Tests completed with issues"
               else
-                echo "No tests directory found, creating empty test results"
                 mkdir -p $(Agent.TempDirectory)
                 echo '<?xml version="1.0" encoding="UTF-8"?><testsuites><testsuite name="NoTests" tests="0" failures="0" errors="0" skipped="0"></testsuite></testsuites>' > $(Agent.TempDirectory)/test-results.xml
               fi
-            displayName: 'Run Tests (Linux)'
-            condition: and(succeeded(), ne(variables['osName'], 'Windows'))
+            displayName: 'Run tests'
             continueOnError: true
 
-          # Publish test results
           - task: PublishTestResults@2
             displayName: 'Publish Test Results'
             inputs:
               testResultsFiles: '$(Agent.TempDirectory)/test-results.xml'
-              testRunTitle: '$(osName) Test Results'
+              testRunTitle: 'Linux Test Results'
               failTaskOnFailedTests: false
             condition: always()
 
-          # Build with PyInstaller - Windows
-          - task: PowerShell@2
-            displayName: 'Build Executable (Windows)'
-            condition: and(succeeded(), eq(variables['osName'], 'Windows'))
+          # PR: validate Dockerfile builds; do not push to Docker Hub.
+          - task: Docker@2
+            displayName: 'Build Docker image (PR)'
+            condition: eq(variables['Build.Reason'], 'PullRequest')
             inputs:
-              targetType: 'inline'
-              script: |
-                Write-Host "Building for $(osName)..."
-                New-Item -ItemType Directory -Path "$(Build.ArtifactStagingDirectory)/$(osName)" -Force
-                
-                if (Test-Path "$(projectName).spec") {
-                  pyinstaller $(projectName).spec --clean --noconfirm --distpath "$(Build.ArtifactStagingDirectory)/$(osName)"
-                } else {
-                  if (!(Test-Path "main.py")) { Write-Error "main.py not found"; exit 1 }
-                  $pyinstallerArgs = @(
-                    "main.py", "--name", "$(projectName)",
-                    "$(pyinstallerOptions)".Split(' '), "$(hiddenImports)".Split(' '),
-                    "--add-data", "font;font", "--add-data", "ui;ui",
-                    "--add-data", "screens;screens", "--add-data", "utils;utils",
-                    "--add-data", "widgets;widgets", "--clean", "--noconfirm",
-                    "--distpath", "$(Build.ArtifactStagingDirectory)/$(osName)",
-                    "--workpath", "$(Agent.TempDirectory)/build",
-                    "--specpath", "$(Agent.TempDirectory)/spec"
-                  )
-                  & pyinstaller $pyinstallerArgs
-                }
-          
-          # Build with PyInstaller - Linux
+              command: build
+              repository: $(dockerHubRepository)
+              dockerfile: 'docker/prod/Dockerfile'
+              buildContext: '$(Build.SourcesDirectory)'
+              tags: |
+                pr-$(System.PullRequest.PullRequestId)
+
+          # main / non-PR: push sam730/nexusrfid:$(Build.BuildNumber)
+          - task: Docker@2
+            displayName: 'Build and push Docker image to Docker Hub'
+            condition: ne(variables['Build.Reason'], 'PullRequest')
+            inputs:
+              command: buildAndPush
+              containerRegistry: $(dockerHubServiceConnection)
+              repository: $(dockerHubRepository)
+              dockerfile: 'docker/prod/Dockerfile'
+              buildContext: '$(Build.SourcesDirectory)'
+              tags: |
+                $(Build.BuildNumber)
+
           - bash: |
-              echo "Building for $(osName)..."
-              mkdir -p $(Build.ArtifactStagingDirectory)/$(osName)
-              
-              if [ -f "$(projectName).spec" ]; then
-                pyinstaller $(projectName).spec --clean --noconfirm --distpath $(Build.ArtifactStagingDirectory)/$(osName)
-              else
-                if [ ! -f "main.py" ]; then echo "main.py not found"; exit 1; fi
-                pyinstaller main.py \
-                  --name $(projectName) $(pyinstallerOptions) $(hiddenImports) \
-                  --add-data "font:font" --add-data "ui:ui" \
-                  --add-data "screens:screens" --add-data "utils:utils" \
-                  --add-data "widgets:widgets" --clean --noconfirm \
-                  --distpath $(Build.ArtifactStagingDirectory)/$(osName) \
-                  --workpath $(Agent.TempDirectory)/build \
-                  --specpath $(Agent.TempDirectory)/spec
-              fi
-            displayName: 'Build Executable (Linux)'
-            condition: and(succeeded(), ne(variables['osName'], 'Windows'))
+              echo "$(dockerHubRepository):$(Build.BuildNumber)" > "$(Build.ArtifactStagingDirectory)/docker-image.txt"
+            displayName: 'Write docker image reference'
+            condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
 
-          # Verify Build - Windows
-          - task: PowerShell@2
-            displayName: 'Verify Build (Windows)'
-            condition: and(succeeded(), eq(variables['osName'], 'Windows'))
-            inputs:
-              targetType: 'inline'
-              script: |
-                if (Test-Path "$(Build.ArtifactStagingDirectory)/$(osName)/$(projectName).exe") {
-                  Write-Host "✅ Executable found"
-                } else {
-                  Write-Host "❌ Executable NOT found"; exit 1
-                }
-          
-          # Verify Build - Linux
-          - bash: |
-              if [ -f "$(Build.ArtifactStagingDirectory)/$(osName)/$(projectName)" ]; then
-                echo "✅ Executable found"
-                chmod +x "$(Build.ArtifactStagingDirectory)/$(osName)/$(projectName)"
-              else
-                echo "❌ Executable NOT found"; exit 1
-              fi
-            displayName: 'Verify Build (Linux)'
-            condition: and(succeeded(), ne(variables['osName'], 'Windows'))
-
-          # Create release package
-          - task: ArchiveFiles@2
-            displayName: 'Create Release Package'
-            inputs:
-              rootFolderOrFile: '$(Build.ArtifactStagingDirectory)/$(osName)'
-              includeRootFolder: true
-              archiveType: 'zip'
-              archiveFile: '$(Build.ArtifactStagingDirectory)/$(projectName)-$(osName)-$(Build.BuildNumber).zip'
-              replaceExistingArchive: true
-            condition: succeeded()
-
-          # Publish artifacts for deployment stages
           - task: PublishPipelineArtifact@1
-            displayName: 'Publish $(osName) Artifacts'
+            displayName: 'Publish Docker image reference'
             inputs:
-              targetPath: '$(Build.ArtifactStagingDirectory)/$(osName)'
-              artifactName: '$(projectName)-$(osName)-artifacts'
+              targetPath: '$(Build.ArtifactStagingDirectory)/docker-image.txt'
+              artifactName: 'docker-image-ref'
               publishLocation: 'pipeline'
-            condition: succeeded()
+            condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
 
-          # Publish release package
-          - task: PublishPipelineArtifact@1
-            displayName: 'Publish $(osName) Release Package'
-            inputs:
-              targetPath: '$(Build.ArtifactStagingDirectory)/$(projectName)-$(osName)-$(Build.BuildNumber).zip'
-              artifactName: '$(projectName)-$(osName)-$(Build.BuildNumber)'
-              publishLocation: 'pipeline'
-            condition: succeeded()
-
-  # Post-build stage for release notes
   - stage: PostBuild
     displayName: 'Post-Build Activities'
     dependsOn: BuildProject
@@ -285,19 +166,15 @@ stages:
               echo "- Source Branch: $(Build.SourceBranch)" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
               echo "- Source Version: $(Build.SourceVersion)" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
               echo "" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
-              echo "**Supported Platforms:**" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
-              echo "- Windows (GUI mode)" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
-              echo "- Linux (Console mode)" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
-              echo "- Raspberry Pi (Console mode)" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
+              echo "**Container image (Docker Hub):**" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
+              echo "- $(dockerHubRepository):$(Build.BuildNumber)" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
               echo "" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
-              echo "**Deployment Environments:**" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
-              echo "- DEV: sadevrf idlocate/deviceupdates/builds/$(Build.BuildNumber)/" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
-              echo "- TEST: satestrf idlocate/deviceupdates/builds/$(Build.BuildNumber)/" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
-              echo "- PROD: saprodrf idlocate/deviceupdates/builds/$(Build.BuildNumber)/" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
-              echo "" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
-              echo "**OTA Update Version:** $(Build.BuildNumber)" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
+              echo "**Deployment Environments (blob release pointer):**" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
+              echo "- DEV: sadevrf $(containerName)/releases/$(Build.BuildNumber)/docker-image.txt" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
+              echo "- TEST: satestrf $(containerName)/releases/$(Build.BuildNumber)/docker-image.txt" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
+              echo "- PROD: saprodrf $(containerName)/releases/$(Build.BuildNumber)/docker-image.txt" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
             displayName: 'Generate Release Notes'
-            
+
           - task: PublishPipelineArtifact@1
             displayName: 'Publish Release Notes'
             inputs:
@@ -305,17 +182,16 @@ stages:
               artifactName: 'ReleaseNotes-$(Build.BuildNumber)'
               publishLocation: 'pipeline'
 
-  # Deploy to DEV
   - stage: DeployDev
     displayName: Deploy to DEV
     lockBehavior: runLatest
     dependsOn:
       - BuildProject
       - PostBuild
-    condition: succeeded()
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
     jobs:
-      - deployment: DeployToBlobStorage
-        displayName: Deploy artifacts to DEV Blob Storage
+      - deployment: DeployReleasePointer
+        displayName: Upload Docker image reference to DEV Blob Storage
         continueOnError: false
         environment:
           name: dev
@@ -329,53 +205,15 @@ stages:
                 - checkout: none
 
                 - task: DownloadPipelineArtifact@2
-                  displayName: 'Download Windows Artifacts'
+                  displayName: 'Download Docker image reference'
                   inputs:
-                    artifact: '$(projectName)-Windows-artifacts'
-                    path: '$(Pipeline.Workspace)/Windows'
-
-                - task: DownloadPipelineArtifact@2
-                  displayName: 'Download Linux Artifacts'
-                  inputs:
-                    artifact: '$(projectName)-Linux-artifacts'
-                    path: '$(Pipeline.Workspace)/Linux'
-
-                - task: DownloadPipelineArtifact@2
-                  displayName: 'Download RaspberryPi Artifacts'
-                  inputs:
-                    artifact: '$(projectName)-RaspberryPi-artifacts'
-                    path: '$(Pipeline.Workspace)/RaspberryPi'
-
-                - task: DownloadPipelineArtifact@2
-                  displayName: 'Download Packages'
-                  inputs:
-                    artifact: '$(projectName)-Windows-$(Build.BuildNumber)'
-                    path: '$(Pipeline.Workspace)/packages'
-
-                - task: DownloadPipelineArtifact@2
-                  inputs:
-                    artifact: '$(projectName)-Linux-$(Build.BuildNumber)'
-                    path: '$(Pipeline.Workspace)/packages'
-
-                - task: DownloadPipelineArtifact@2
-                  inputs:
-                    artifact: '$(projectName)-RaspberryPi-$(Build.BuildNumber)'
-                    path: '$(Pipeline.Workspace)/packages'
+                    artifact: 'docker-image-ref'
+                    path: '$(Pipeline.Workspace)/docker-ref'
 
                 - task: AzureFileCopy@6
-                  displayName: 'Upload Windows to DEV'
+                  displayName: 'Upload docker-image.txt to DEV'
                   inputs:
-                    SourcePath: '$(Pipeline.Workspace)/Windows/$(projectName).exe'
-                    azureSubscription: ${{ format(variables.workLoadServiceConnection, 'dev') }}
-                    Destination: 'AzureBlob'
-                    storage: ${{ format(variables.storageAccountName, 'dev') }}
-                    ContainerName: '$(containerName)'
-                    BlobPrefix: 'builds/$(Build.BuildNumber)/Windows/'
-
-                - task: AzureFileCopy@6
-                  displayName: 'Upload Windows Package to DEV'
-                  inputs:
-                    SourcePath: '$(Pipeline.Workspace)/packages/$(projectName)-Windows-$(Build.BuildNumber).zip'
+                    SourcePath: '$(Pipeline.Workspace)/docker-ref/docker-image.txt'
                     azureSubscription: ${{ format(variables.workLoadServiceConnection, 'dev') }}
                     Destination: 'AzureBlob'
                     storage: ${{ format(variables.storageAccountName, 'dev') }}
@@ -383,7 +221,7 @@ stages:
                     BlobPrefix: 'releases/$(Build.BuildNumber)/'
 
                 - task: AzureCLI@2
-                  displayName: 'Upload Linux/RaspberryPi to DEV'
+                  displayName: 'Verify DEV docker-image.txt'
                   inputs:
                     azureSubscription: ${{ format(variables.workLoadServiceConnection, 'dev') }}
                     scriptType: 'bash'
@@ -391,44 +229,19 @@ stages:
                     inlineScript: |
                       S="${{ format(variables.storageAccountName, 'dev') }}"
                       C="$(containerName)"
-                      B="$(Build.BuildNumber)"
-                      P="$(projectName)"
-                      
-                      az storage blob upload --file "$(Pipeline.Workspace)/Linux/$P" --name "builds/$B/Linux/$P" \
-                        --container-name "$C" --account-name "$S" --auth-mode login --overwrite
-                      az storage blob upload --file "$(Pipeline.Workspace)/packages/$P-Linux-$B.zip" --name "releases/$B/$P-Linux-$B.zip" \
-                        --container-name "$C" --account-name "$S" --auth-mode login --overwrite
-                      az storage blob upload --file "$(Pipeline.Workspace)/RaspberryPi/$P" --name "builds/$B/RaspberryPi/$P" \
-                        --container-name "$C" --account-name "$S" --auth-mode login --overwrite
-                      az storage blob upload --file "$(Pipeline.Workspace)/packages/$P-RaspberryPi-$B.zip" --name "releases/$B/$P-RaspberryPi-$B.zip" \
-                        --container-name "$C" --account-name "$S" --auth-mode login --overwrite
+                      B="releases/$(Build.BuildNumber)/docker-image.txt"
+                      az storage blob exists --account-name "$S" --container-name "$C" --name "$B" --auth-mode login --output tsv | grep -q "True" && echo "✅ $B" || (echo "❌ $B"; exit 1)
 
-                - task: AzureCLI@2
-                  displayName: 'Verify DEV Uploads'
-                  inputs:
-                    azureSubscription: ${{ format(variables.workLoadServiceConnection, 'dev') }}
-                    scriptType: 'bash'
-                    scriptLocation: 'inlineScript'
-                    inlineScript: |
-                      S="${{ format(variables.storageAccountName, 'dev') }}"
-                      C="$(containerName)"
-                      for B in "builds/$(Build.BuildNumber)/Windows/$(projectName).exe" \
-                               "builds/$(Build.BuildNumber)/Linux/$(projectName)" \
-                               "builds/$(Build.BuildNumber)/RaspberryPi/$(projectName)"; do
-                        az storage blob exists --account-name "$S" --container-name "$C" --name "$B" --auth-mode login --output tsv | grep -q "True" && echo "✅ $B" || (echo "❌ $B"; exit 1)
-                      done
-
-  # Deploy to TEST
   - stage: DeployTest
     displayName: Deploy to TEST
     lockBehavior: runLatest
     dependsOn:
       - BuildProject
       - PostBuild
-    condition: succeeded()
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
     jobs:
-      - deployment: DeployToBlobStorage
-        displayName: Deploy artifacts to TEST Blob Storage
+      - deployment: DeployReleasePointer
+        displayName: Upload Docker image reference to TEST Blob Storage
         continueOnError: false
         environment:
           name: test
@@ -440,88 +253,45 @@ stages:
             deploy:
               steps:
                 - checkout: none
+
                 - task: DownloadPipelineArtifact@2
-                  displayName: 'Download Artifacts'
+                  displayName: 'Download Docker image reference'
                   inputs:
-                    artifact: '$(projectName)-Windows-artifacts'
-                    path: '$(Pipeline.Workspace)/Windows'
-                - task: DownloadPipelineArtifact@2
-                  inputs:
-                    artifact: '$(projectName)-Linux-artifacts'
-                    path: '$(Pipeline.Workspace)/Linux'
-                - task: DownloadPipelineArtifact@2
-                  inputs:
-                    artifact: '$(projectName)-RaspberryPi-artifacts'
-                    path: '$(Pipeline.Workspace)/RaspberryPi'
-                - task: DownloadPipelineArtifact@2
-                  inputs:
-                    artifact: '$(projectName)-Windows-$(Build.BuildNumber)'
-                    path: '$(Pipeline.Workspace)/packages'
-                - task: DownloadPipelineArtifact@2
-                  inputs:
-                    artifact: '$(projectName)-Linux-$(Build.BuildNumber)'
-                    path: '$(Pipeline.Workspace)/packages'
-                - task: DownloadPipelineArtifact@2
-                  inputs:
-                    artifact: '$(projectName)-RaspberryPi-$(Build.BuildNumber)'
-                    path: '$(Pipeline.Workspace)/packages'
+                    artifact: 'docker-image-ref'
+                    path: '$(Pipeline.Workspace)/docker-ref'
+
                 - task: AzureFileCopy@6
-                  displayName: 'Upload Windows to TEST'
+                  displayName: 'Upload docker-image.txt to TEST'
                   inputs:
-                    SourcePath: '$(Pipeline.Workspace)/Windows/$(projectName).exe'
-                    azureSubscription: ${{ format(variables.workLoadServiceConnection, 'test') }}
-                    Destination: 'AzureBlob'
-                    storage: ${{ format(variables.storageAccountName, 'test') }}
-                    ContainerName: '$(containerName)'
-                    BlobPrefix: 'builds/$(Build.BuildNumber)/Windows/'
-                - task: AzureFileCopy@6
-                  displayName: 'Upload Windows Package to TEST'
-                  inputs:
-                    SourcePath: '$(Pipeline.Workspace)/packages/$(projectName)-Windows-$(Build.BuildNumber).zip'
+                    SourcePath: '$(Pipeline.Workspace)/docker-ref/docker-image.txt'
                     azureSubscription: ${{ format(variables.workLoadServiceConnection, 'test') }}
                     Destination: 'AzureBlob'
                     storage: ${{ format(variables.storageAccountName, 'test') }}
                     ContainerName: '$(containerName)'
                     BlobPrefix: 'releases/$(Build.BuildNumber)/'
-                - task: AzureCLI@2
-                  displayName: 'Upload Linux/RaspberryPi to TEST'
-                  inputs:
-                    azureSubscription: ${{ format(variables.workLoadServiceConnection, 'test') }}
-                    scriptType: 'bash'
-                    scriptLocation: 'inlineScript'
-                    inlineScript: |
-                      S="${{ format(variables.storageAccountName, 'test') }}"
-                      C="$(containerName)"
-                      B="$(Build.BuildNumber)"
-                      P="$(projectName)"
-                      az storage blob upload --file "$(Pipeline.Workspace)/Linux/$P" --name "builds/$B/Linux/$P" --container-name "$C" --account-name "$S" --auth-mode login --overwrite
-                      az storage blob upload --file "$(Pipeline.Workspace)/packages/$P-Linux-$B.zip" --name "releases/$B/$P-Linux-$B.zip" --container-name "$C" --account-name "$S" --auth-mode login --overwrite
-                      az storage blob upload --file "$(Pipeline.Workspace)/RaspberryPi/$P" --name "builds/$B/RaspberryPi/$P" --container-name "$C" --account-name "$S" --auth-mode login --overwrite
-                      az storage blob upload --file "$(Pipeline.Workspace)/packages/$P-RaspberryPi-$B.zip" --name "releases/$B/$P-RaspberryPi-$B.zip" --container-name "$C" --account-name "$S" --auth-mode login --overwrite
-                - task: AzureCLI@2
-                  displayName: 'Verify TEST Uploads'
-                  inputs:
-                    azureSubscription: ${{ format(variables.workLoadServiceConnection, 'test') }}
-                    scriptType: 'bash'
-                    scriptLocation: 'inlineScript'
-                    inlineScript: |
-                      S="${{ format(variables.storageAccountName, 'test') }}"
-                      C="$(containerName)"
-                      for B in "builds/$(Build.BuildNumber)/Windows/$(projectName).exe" "builds/$(Build.BuildNumber)/Linux/$(projectName)" "builds/$(Build.BuildNumber)/RaspberryPi/$(projectName)"; do
-                        az storage blob exists --account-name "$S" --container-name "$C" --name "$B" --auth-mode login --output tsv | grep -q "True" && echo "✅ $B" || (echo "❌ $B"; exit 1)
-                      done
 
-  # Deploy to PROD
+                - task: AzureCLI@2
+                  displayName: 'Verify TEST docker-image.txt'
+                  inputs:
+                    azureSubscription: ${{ format(variables.workLoadServiceConnection, 'test') }}
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      S="${{ format(variables.storageAccountName, 'test') }}"
+                      C="$(containerName)"
+                      B="releases/$(Build.BuildNumber)/docker-image.txt"
+                      az storage blob exists --account-name "$S" --container-name "$C" --name "$B" --auth-mode login --output tsv | grep -q "True" && echo "✅ $B" || (echo "❌ $B"; exit 1)
+
   - stage: DeployProd
     displayName: Deploy to PROD
     lockBehavior: runLatest
     dependsOn:
       - BuildProject
       - PostBuild
-    condition: succeeded()
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
     jobs:
-      - deployment: DeployToBlobStorage
-        displayName: Deploy artifacts to PROD Blob Storage
+      - deployment: DeployReleasePointer
+        displayName: Upload Docker image reference to PROD Blob Storage
         continueOnError: false
         environment:
           name: prod
@@ -532,51 +302,25 @@ stages:
             deploy:
               steps:
                 - checkout: none
+
                 - task: DownloadPipelineArtifact@2
-                  displayName: 'Download Artifacts'
+                  displayName: 'Download Docker image reference'
                   inputs:
-                    artifact: '$(projectName)-Windows-artifacts'
-                    path: '$(Pipeline.Workspace)/Windows'
-                - task: DownloadPipelineArtifact@2
-                  inputs:
-                    artifact: '$(projectName)-Linux-artifacts'
-                    path: '$(Pipeline.Workspace)/Linux'
-                - task: DownloadPipelineArtifact@2
-                  inputs:
-                    artifact: '$(projectName)-RaspberryPi-artifacts'
-                    path: '$(Pipeline.Workspace)/RaspberryPi'
-                - task: DownloadPipelineArtifact@2
-                  inputs:
-                    artifact: '$(projectName)-Windows-$(Build.BuildNumber)'
-                    path: '$(Pipeline.Workspace)/packages'
-                - task: DownloadPipelineArtifact@2
-                  inputs:
-                    artifact: '$(projectName)-Linux-$(Build.BuildNumber)'
-                    path: '$(Pipeline.Workspace)/packages'
-                - task: DownloadPipelineArtifact@2
-                  inputs:
-                    artifact: '$(projectName)-RaspberryPi-$(Build.BuildNumber)'
-                    path: '$(Pipeline.Workspace)/packages'
+                    artifact: 'docker-image-ref'
+                    path: '$(Pipeline.Workspace)/docker-ref'
+
                 - task: AzureFileCopy@6
-                  displayName: 'Upload Windows to PROD'
+                  displayName: 'Upload docker-image.txt to PROD'
                   inputs:
-                    SourcePath: '$(Pipeline.Workspace)/Windows/$(projectName).exe'
-                    azureSubscription: ${{ format(variables.workLoadServiceConnection, 'prod') }}
-                    Destination: 'AzureBlob'
-                    storage: ${{ format(variables.storageAccountName, 'prod') }}
-                    ContainerName: '$(containerName)'
-                    BlobPrefix: 'builds/$(Build.BuildNumber)/Windows/'
-                - task: AzureFileCopy@6
-                  displayName: 'Upload Windows Package to PROD'
-                  inputs:
-                    SourcePath: '$(Pipeline.Workspace)/packages/$(projectName)-Windows-$(Build.BuildNumber).zip'
+                    SourcePath: '$(Pipeline.Workspace)/docker-ref/docker-image.txt'
                     azureSubscription: ${{ format(variables.workLoadServiceConnection, 'prod') }}
                     Destination: 'AzureBlob'
                     storage: ${{ format(variables.storageAccountName, 'prod') }}
                     ContainerName: '$(containerName)'
                     BlobPrefix: 'releases/$(Build.BuildNumber)/'
+
                 - task: AzureCLI@2
-                  displayName: 'Upload Linux/RaspberryPi to PROD'
+                  displayName: 'Verify PROD docker-image.txt'
                   inputs:
                     azureSubscription: ${{ format(variables.workLoadServiceConnection, 'prod') }}
                     scriptType: 'bash'
@@ -584,21 +328,5 @@ stages:
                     inlineScript: |
                       S="${{ format(variables.storageAccountName, 'prod') }}"
                       C="$(containerName)"
-                      B="$(Build.BuildNumber)"
-                      P="$(projectName)"
-                      az storage blob upload --file "$(Pipeline.Workspace)/Linux/$P" --name "builds/$B/Linux/$P" --container-name "$C" --account-name "$S" --auth-mode login --overwrite
-                      az storage blob upload --file "$(Pipeline.Workspace)/packages/$P-Linux-$B.zip" --name "releases/$B/$P-Linux-$B.zip" --container-name "$C" --account-name "$S" --auth-mode login --overwrite
-                      az storage blob upload --file "$(Pipeline.Workspace)/RaspberryPi/$P" --name "builds/$B/RaspberryPi/$P" --container-name "$C" --account-name "$S" --auth-mode login --overwrite
-                      az storage blob upload --file "$(Pipeline.Workspace)/packages/$P-RaspberryPi-$B.zip" --name "releases/$B/$P-RaspberryPi-$B.zip" --container-name "$C" --account-name "$S" --auth-mode login --overwrite
-                - task: AzureCLI@2
-                  displayName: 'Verify PROD Uploads'
-                  inputs:
-                    azureSubscription: ${{ format(variables.workLoadServiceConnection, 'prod') }}
-                    scriptType: 'bash'
-                    scriptLocation: 'inlineScript'
-                    inlineScript: |
-                      S="${{ format(variables.storageAccountName, 'prod') }}"
-                      C="$(containerName)"
-                      for B in "builds/$(Build.BuildNumber)/Windows/$(projectName).exe" "builds/$(Build.BuildNumber)/Linux/$(projectName)" "builds/$(Build.BuildNumber)/RaspberryPi/$(projectName)"; do
-                        az storage blob exists --account-name "$S" --container-name "$C" --name "$B" --auth-mode login --output tsv | grep -q "True" && echo "✅ $B" || (echo "❌ $B"; exit 1)
-                      done
+                      B="releases/$(Build.BuildNumber)/docker-image.txt"
+                      az storage blob exists --account-name "$S" --container-name "$C" --name "$B" --auth-mode login --output tsv | grep -q "True" && echo "✅ $B" || (echo "❌ $B"; exit 1)
