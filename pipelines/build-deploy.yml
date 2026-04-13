@@ -33,32 +33,21 @@ variables:
   - group: shared-variables
   - name: pythonVersion
     value: '3.12.10'
-  - name: projectName
-    value: 'NexusRFIDReader'
-  - name: buildConfiguration
-    value: 'Release'
-  - name: storageAccountName
-    value: 'sa{0}rfidlocate'
-  - name: containerName
-    value: 'deviceupdates'
-  - name: workLoadServiceConnection
-    value: 'spotlight-{0}-infrastructure-service-connection'
-  # Docker Hub: create a "Docker Registry" service connection in Azure DevOps (docker.io) and set this name to match.
+  # Dev/test: fixed tag (e.g. sam730/nexusrfid:main); each push updates that tag.
+  - name: dockerImageTag
+    value: 'main'
+  # Docker Hub (dev/test): Docker Registry service connection → docker.io
   - name: dockerHubServiceConnection
     value: 'dockerhub-sam730'
   - name: dockerHubRepository
     value: 'sam730/nexusrfid'
-
-parameters:
-  - name: environments
-    type: object
-    default:
-      - name: Dev
-        deployBranch: refs/heads/main
-      - name: Test
-        deployBranch: refs/heads/main
-      - name: Prod
-        deployBranch: refs/heads/main
+  # --- Prod (ACR): uncomment when ready ---
+  # - name: acrServiceConnection
+  #   value: 'acr-nexusrfid-prod'
+  # - name: acrLoginServer
+  #   value: 'YOUR_REGISTRY.azurecr.io'
+  # - name: acrRepository
+  #   value: 'nexusrfid'
 
 stages:
   - stage: BuildProject
@@ -109,7 +98,7 @@ stages:
               failTaskOnFailedTests: false
             condition: always()
 
-          # PR: validate Dockerfile builds; do not push to Docker Hub.
+          # PR: validate Dockerfile builds; do not push.
           - task: Docker@2
             displayName: 'Build Docker image (PR)'
             condition: eq(variables['Build.Reason'], 'PullRequest')
@@ -121,9 +110,9 @@ stages:
               tags: |
                 pr-$(System.PullRequest.PullRequestId)
 
-          # main / non-PR: push sam730/nexusrfid:$(Build.BuildNumber)
+          # main / non-PR: push fixed tag (updates :main on each successful merge).
           - task: Docker@2
-            displayName: 'Build and push Docker image to Docker Hub'
+            displayName: 'Build and push to Docker Hub (tag: $(dockerImageTag))'
             condition: ne(variables['Build.Reason'], 'PullRequest')
             inputs:
               command: buildAndPush
@@ -132,20 +121,20 @@ stages:
               dockerfile: 'docker/prod/Dockerfile'
               buildContext: '$(Build.SourcesDirectory)'
               tags: |
-                $(Build.BuildNumber)
+                $(dockerImageTag)
 
-          - bash: |
-              echo "$(dockerHubRepository):$(Build.BuildNumber)" > "$(Build.ArtifactStagingDirectory)/docker-image.txt"
-            displayName: 'Write docker image reference'
-            condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
-
-          - task: PublishPipelineArtifact@1
-            displayName: 'Publish Docker image reference'
-            inputs:
-              targetPath: '$(Build.ArtifactStagingDirectory)/docker-image.txt'
-              artifactName: 'docker-image-ref'
-              publishLocation: 'pipeline'
-            condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+          # Prod: push to ACR — uncomment together with ACR variables above.
+          # - task: Docker@2
+          #   displayName: 'Build and push to ACR (tag: $(dockerImageTag))'
+          #   condition: ne(variables['Build.Reason'], 'PullRequest')
+          #   inputs:
+          #     command: buildAndPush
+          #     containerRegistry: $(acrServiceConnection)
+          #     repository: $(acrRepository)
+          #     dockerfile: 'docker/prod/Dockerfile'
+          #     buildContext: '$(Build.SourcesDirectory)'
+          #     tags: |
+          #       $(dockerImageTag)
 
   - stage: PostBuild
     displayName: 'Post-Build Activities'
@@ -166,13 +155,8 @@ stages:
               echo "- Source Branch: $(Build.SourceBranch)" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
               echo "- Source Version: $(Build.SourceVersion)" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
               echo "" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
-              echo "**Container image (Docker Hub):**" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
-              echo "- $(dockerHubRepository):$(Build.BuildNumber)" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
-              echo "" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
-              echo "**Deployment Environments (blob release pointer):**" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
-              echo "- DEV: sadevrf $(containerName)/releases/$(Build.BuildNumber)/docker-image.txt" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
-              echo "- TEST: satestrf $(containerName)/releases/$(Build.BuildNumber)/docker-image.txt" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
-              echo "- PROD: saprodrf $(containerName)/releases/$(Build.BuildNumber)/docker-image.txt" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
+              echo "**Container image (dev/test — Docker Hub; fixed tag):**" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
+              echo "- $(dockerHubRepository):$(dockerImageTag)" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
             displayName: 'Generate Release Notes'
 
           - task: PublishPipelineArtifact@1
@@ -181,152 +165,3 @@ stages:
               targetPath: '$(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md'
               artifactName: 'ReleaseNotes-$(Build.BuildNumber)'
               publishLocation: 'pipeline'
-
-  - stage: DeployDev
-    displayName: Deploy to DEV
-    lockBehavior: runLatest
-    dependsOn:
-      - BuildProject
-      - PostBuild
-    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
-    jobs:
-      - deployment: DeployReleasePointer
-        displayName: Upload Docker image reference to DEV Blob Storage
-        continueOnError: false
-        environment:
-          name: dev
-        variables:
-          - group: dev-variables
-          - group: dev-keyvault-secrets
-        strategy:
-          runOnce:
-            deploy:
-              steps:
-                - checkout: none
-
-                - task: DownloadPipelineArtifact@2
-                  displayName: 'Download Docker image reference'
-                  inputs:
-                    artifact: 'docker-image-ref'
-                    path: '$(Pipeline.Workspace)/docker-ref'
-
-                - task: AzureFileCopy@6
-                  displayName: 'Upload docker-image.txt to DEV'
-                  inputs:
-                    SourcePath: '$(Pipeline.Workspace)/docker-ref/docker-image.txt'
-                    azureSubscription: ${{ format(variables.workLoadServiceConnection, 'dev') }}
-                    Destination: 'AzureBlob'
-                    storage: ${{ format(variables.storageAccountName, 'dev') }}
-                    ContainerName: '$(containerName)'
-                    BlobPrefix: 'releases/$(Build.BuildNumber)/'
-
-                - task: AzureCLI@2
-                  displayName: 'Verify DEV docker-image.txt'
-                  inputs:
-                    azureSubscription: ${{ format(variables.workLoadServiceConnection, 'dev') }}
-                    scriptType: 'bash'
-                    scriptLocation: 'inlineScript'
-                    inlineScript: |
-                      S="${{ format(variables.storageAccountName, 'dev') }}"
-                      C="$(containerName)"
-                      B="releases/$(Build.BuildNumber)/docker-image.txt"
-                      az storage blob exists --account-name "$S" --container-name "$C" --name "$B" --auth-mode login --output tsv | grep -q "True" && echo "✅ $B" || (echo "❌ $B"; exit 1)
-
-  - stage: DeployTest
-    displayName: Deploy to TEST
-    lockBehavior: runLatest
-    dependsOn:
-      - BuildProject
-      - PostBuild
-    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
-    jobs:
-      - deployment: DeployReleasePointer
-        displayName: Upload Docker image reference to TEST Blob Storage
-        continueOnError: false
-        environment:
-          name: test
-        variables:
-          - group: test-variables
-          - group: test-keyvault-secrets
-        strategy:
-          runOnce:
-            deploy:
-              steps:
-                - checkout: none
-
-                - task: DownloadPipelineArtifact@2
-                  displayName: 'Download Docker image reference'
-                  inputs:
-                    artifact: 'docker-image-ref'
-                    path: '$(Pipeline.Workspace)/docker-ref'
-
-                - task: AzureFileCopy@6
-                  displayName: 'Upload docker-image.txt to TEST'
-                  inputs:
-                    SourcePath: '$(Pipeline.Workspace)/docker-ref/docker-image.txt'
-                    azureSubscription: ${{ format(variables.workLoadServiceConnection, 'test') }}
-                    Destination: 'AzureBlob'
-                    storage: ${{ format(variables.storageAccountName, 'test') }}
-                    ContainerName: '$(containerName)'
-                    BlobPrefix: 'releases/$(Build.BuildNumber)/'
-
-                - task: AzureCLI@2
-                  displayName: 'Verify TEST docker-image.txt'
-                  inputs:
-                    azureSubscription: ${{ format(variables.workLoadServiceConnection, 'test') }}
-                    scriptType: 'bash'
-                    scriptLocation: 'inlineScript'
-                    inlineScript: |
-                      S="${{ format(variables.storageAccountName, 'test') }}"
-                      C="$(containerName)"
-                      B="releases/$(Build.BuildNumber)/docker-image.txt"
-                      az storage blob exists --account-name "$S" --container-name "$C" --name "$B" --auth-mode login --output tsv | grep -q "True" && echo "✅ $B" || (echo "❌ $B"; exit 1)
-
-  - stage: DeployProd
-    displayName: Deploy to PROD
-    lockBehavior: runLatest
-    dependsOn:
-      - BuildProject
-      - PostBuild
-    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
-    jobs:
-      - deployment: DeployReleasePointer
-        displayName: Upload Docker image reference to PROD Blob Storage
-        continueOnError: false
-        environment:
-          name: prod
-        variables:
-          - group: prod-keyvault-secrets
-        strategy:
-          runOnce:
-            deploy:
-              steps:
-                - checkout: none
-
-                - task: DownloadPipelineArtifact@2
-                  displayName: 'Download Docker image reference'
-                  inputs:
-                    artifact: 'docker-image-ref'
-                    path: '$(Pipeline.Workspace)/docker-ref'
-
-                - task: AzureFileCopy@6
-                  displayName: 'Upload docker-image.txt to PROD'
-                  inputs:
-                    SourcePath: '$(Pipeline.Workspace)/docker-ref/docker-image.txt'
-                    azureSubscription: ${{ format(variables.workLoadServiceConnection, 'prod') }}
-                    Destination: 'AzureBlob'
-                    storage: ${{ format(variables.storageAccountName, 'prod') }}
-                    ContainerName: '$(containerName)'
-                    BlobPrefix: 'releases/$(Build.BuildNumber)/'
-
-                - task: AzureCLI@2
-                  displayName: 'Verify PROD docker-image.txt'
-                  inputs:
-                    azureSubscription: ${{ format(variables.workLoadServiceConnection, 'prod') }}
-                    scriptType: 'bash'
-                    scriptLocation: 'inlineScript'
-                    inlineScript: |
-                      S="${{ format(variables.storageAccountName, 'prod') }}"
-                      C="$(containerName)"
-                      B="releases/$(Build.BuildNumber)/docker-image.txt"
-                      az storage blob exists --account-name "$S" --container-name "$C" --name "$B" --auth-mode login --output tsv | grep -q "True" && echo "✅ $B" || (echo "❌ $B"; exit 1)
