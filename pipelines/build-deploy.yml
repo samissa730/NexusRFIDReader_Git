@@ -5,6 +5,7 @@ trigger:
   branches:
     include:
       - refs/heads/main
+      - refs/heads/prod
   paths:
     include:
       - requirements.txt
@@ -33,7 +34,7 @@ variables:
   - group: shared-variables
   - name: pythonVersion
     value: '3.12.10'
-  # Dev/test: fixed tag (e.g. sam730/nexusrfid:main); each push updates that tag.
+  # Immutable-style tag: always pull sam730/nexusrfid:main (and ACR …:main); each push updates that tag.
   - name: dockerImageTag
     value: 'main'
   # Docker Hub (dev/test): Docker Registry service connection → docker.io
@@ -41,13 +42,13 @@ variables:
     value: 'dockerhub-sam730'
   - name: dockerHubRepository
     value: 'sam730/nexusrfid'
-  # --- Prod (ACR): uncomment when ready ---
-  # - name: acrServiceConnection
-  #   value: 'acr-nexusrfid-prod'
-  # - name: acrLoginServer
-  #   value: 'YOUR_REGISTRY.azurecr.io'
-  # - name: acrRepository
-  #   value: 'nexusrfid'
+  # Azure Container Registry (prod): Docker Registry service connection → ACR
+  - name: acrServiceConnection
+    value: 'acr-nexusrfid-prod'
+  - name: acrLoginServer
+    value: 'YOUR_REGISTRY.azurecr.io'
+  - name: acrRepository
+    value: 'nexusrfid'
 
 stages:
   - stage: BuildProject
@@ -110,10 +111,10 @@ stages:
               tags: |
                 pr-$(System.PullRequest.PullRequestId)
 
-          # main / non-PR: push fixed tag (updates :main on each successful merge).
+          # main / non-PR: push to Docker Hub (dev/test flow).
           - task: Docker@2
             displayName: 'Build and push to Docker Hub (tag: $(dockerImageTag))'
-            condition: ne(variables['Build.Reason'], 'PullRequest')
+            condition: and(ne(variables['Build.Reason'], 'PullRequest'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
             inputs:
               command: buildAndPush
               containerRegistry: $(dockerHubServiceConnection)
@@ -123,18 +124,18 @@ stages:
               tags: |
                 $(dockerImageTag)
 
-          # Prod: push to ACR — uncomment together with ACR variables above.
-          # - task: Docker@2
-          #   displayName: 'Build and push to ACR (tag: $(dockerImageTag))'
-          #   condition: ne(variables['Build.Reason'], 'PullRequest')
-          #   inputs:
-          #     command: buildAndPush
-          #     containerRegistry: $(acrServiceConnection)
-          #     repository: $(acrRepository)
-          #     dockerfile: 'docker/prod/Dockerfile'
-          #     buildContext: '$(Build.SourcesDirectory)'
-          #     tags: |
-          #       $(dockerImageTag)
+          # prod / non-PR: push to ACR (prod flow).
+          - task: Docker@2
+            displayName: 'Build and push to ACR (tag: $(dockerImageTag))'
+            condition: and(ne(variables['Build.Reason'], 'PullRequest'), eq(variables['Build.SourceBranch'], 'refs/heads/prod'))
+            inputs:
+              command: buildAndPush
+              containerRegistry: $(acrServiceConnection)
+              repository: $(acrRepository)
+              dockerfile: 'docker/prod/Dockerfile'
+              buildContext: '$(Build.SourcesDirectory)'
+              tags: |
+                $(dockerImageTag)
 
   - stage: PostBuild
     displayName: 'Post-Build Activities'
@@ -155,8 +156,9 @@ stages:
               echo "- Source Branch: $(Build.SourceBranch)" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
               echo "- Source Version: $(Build.SourceVersion)" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
               echo "" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
-              echo "**Container image (dev/test — Docker Hub; fixed tag):**" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
-              echo "- $(dockerHubRepository):$(dockerImageTag)" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
+              echo "**Publish behavior by branch:**" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
+              echo "- refs/heads/main -> Docker Hub: $(dockerHubRepository):$(dockerImageTag)" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
+              echo "- refs/heads/prod -> ACR: $(acrLoginServer)/$(acrRepository):$(dockerImageTag)" >> $(Build.ArtifactStagingDirectory)/RELEASE_NOTES.md
             displayName: 'Generate Release Notes'
 
           - task: PublishPipelineArtifact@1
