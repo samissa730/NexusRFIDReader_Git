@@ -45,8 +45,8 @@ except ImportError:
     )
     sys.exit(1)
 
-CONFIG_PATH = Path("/etc/azureiotpnp/provisioning_config.json")
-LOG_PATH = Path("/var/log/azure-iot-service.log")
+CONFIG_PATH = Path("/etc/nexuslocate/config/provisioning_config.json")
+LOG_PATH = Path("/var/log/nexuslocate/azure-iot-service.log")
 SOCKET_PATH = "/var/run/nexus-iot.sock"
 
 # Configure logging
@@ -395,7 +395,7 @@ class AzureIoTService:
         """Run download.py every 5 minutes independent of the IoT loop."""
         script_candidates = [
             Path(__file__).with_name("download.py"),
-            Path("/opt/azure-iot/download.py")
+            Path("/opt/nexuslocate/bin/download.py")
         ]
         script_path = None
         for cand in script_candidates:

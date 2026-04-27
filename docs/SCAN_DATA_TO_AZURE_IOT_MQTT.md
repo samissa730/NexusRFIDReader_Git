@@ -183,7 +183,7 @@ curl -k https://apim-dev-spotlight.azure-api.net/cert/est/cacerts \
 
 ### 4.3 Device configuration file
 
-- **Path:** `/etc/azureiotpnp/provisioning_config.json`
+- **Path:** `/etc/nexuslocate/config/provisioning_config.json`
 - **Permissions:** `600` (root only).
 - **Contents (current X.509 fields):**
   - `globalEndpoint`: `"global.azure-devices-provisioning.net"`
@@ -206,7 +206,7 @@ curl -k https://apim-dev-spotlight.azure-api.net/cert/est/cacerts \
 
 ### 4.5 IoT service process
 
-1. **Install:** Copy `iot_service.py`, `device_setup.py`, `download.py` to `/opt/azure-iot/`, install `azure-iot-device` (e.g. `pip3 install azure-iot-device`).
+1. **Install:** Copy `iot_service.py`, `device_setup.py`, `download.py` to `/opt/nexuslocate/bin/`, install `azure-iot-device` (e.g. `pip3 install azure-iot-device`).
 2. **Systemd:** Install `azure-iot.service` so the service starts on boot and restarts on failure.
 3. **Start:** `sudo systemctl start azure-iot.service`.
 
@@ -262,7 +262,7 @@ curl -k https://apim-dev-spotlight.azure-api.net/cert/est/cacerts \
 
 ## 7. Security Summary
 
-- **Credentials:** Stored only in `/etc/azureiotpnp/provisioning_config.json` with mode `600`.
+- **Credentials:** Stored only in `/etc/nexuslocate/config/provisioning_config.json` with mode `600`.
 - **Transport:** TLS to Azure (handled by the SDK over MQTT).
 - **App:** No Azure secrets; only talks to the local Unix socket.
 - **Certificate auth:** Device authenticates with X.509 cert/key; private key stays on the device.
@@ -298,8 +298,8 @@ curl -k https://apim-dev-spotlight.azure-api.net/cert/est/cacerts \
 ## 10. Summary Checklist
 
 - [ ] Azure: IoT Hub + DPS created; DPS linked to hub; X.509 enrollment configured; ID Scope noted.
-- [ ] Device: `provisioning_config.json` present at `/etc/azureiotpnp/` with correct `idScope`, `registrationId`, `certPath`, `keyPath`, `estServerUrl`, and optional `batchSize` / `batchIntervalSeconds`.
-- [ ] IoT service: Installed under `/opt/azure-iot/`, systemd unit enabled and started; socket `/var/run/nexus-iot.sock` exists when service is running.
+- [ ] Device: `provisioning_config.json` present at `/etc/nexuslocate/config/` with correct `idScope`, `registrationId`, `certPath`, `keyPath`, `estServerUrl`, and optional `batchSize` / `batchIntervalSeconds`.
+- [ ] IoT service: Installed under `/opt/nexuslocate/bin/`, systemd unit enabled and started; socket `/var/run/nexus-iot.sock` exists when service is running.
 - [ ] App: Uses `IoTClient` and `send_scan(scan_record)` for each scan to send; no Azure credentials in the app.
 - [ ] Backend: **Azure Function (C#)** triggered by IoT Hub messages; parses `scan_batch` payloads and **stores scan data in PostgreSQL**. IoT Hub route (or equivalent) must point device-to-cloud messages to the function.
 

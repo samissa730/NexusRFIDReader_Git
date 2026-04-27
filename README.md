@@ -102,7 +102,7 @@ See `requirements.txt` for complete dependency list:
 
 The application automatically detects the platform:
 - **Windows**: Uses `~/Documents` for data storage
-- **Linux/Raspberry Pi**: Uses `~/.nexusrfid` for data storage
+- **Linux/Raspberry Pi**: Uses `/etc/nexuslocate/config` for config and `/var/lib/nexuslocate/queue` for data storage
 
 ### Service Management
 

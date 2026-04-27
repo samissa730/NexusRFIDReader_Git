@@ -36,7 +36,7 @@ EST_OUTPUT_KEY = EST_TEST_OUTPUT_DIR / "device_key.pem"
 CONFIG_PATHS = [
     _SCRIPT_DIR / "provisioning_config_x509.json",
     _SCRIPT_DIR / "provisioning_config.json",
-    Path("/etc/azureiotpnp/provisioning_config.json"),
+    Path("/etc/nexuslocate/config/provisioning_config.json"),
 ]
 
 

@@ -5,7 +5,7 @@ set -euo pipefail
 PROJECT_ROOT="/opt/nexusrfid"
 IOT_SCRIPT="${PROJECT_ROOT}/Azure-IoT-Connection/iot_service.py"
 APP_SCRIPT="${PROJECT_ROOT}/main.py"
-IOT_CONFIG="/etc/azureiotpnp/provisioning_config.json"
+IOT_CONFIG="/etc/nexuslocate/config/provisioning_config.json"
 SOCKET_DIR="/var/run"
 SOCKET_PATH="${SOCKET_DIR}/nexus-iot.sock"
 IOT_PID=""

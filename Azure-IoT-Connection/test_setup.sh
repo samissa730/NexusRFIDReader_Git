@@ -42,11 +42,11 @@ test_configuration() {
     print_status "Testing configuration files..."
     
     # Check if configuration file exists
-    if [[ -f "/etc/azureiotpnp/provisioning_config.json" ]]; then
+    if [[ -f "/etc/nexuslocate/config/provisioning_config.json" ]]; then
         print_success "Configuration file exists"
         
         # Test JSON syntax
-        if python3 -m json.tool "/etc/azureiotpnp/provisioning_config.json" > /dev/null 2>&1; then
+        if python3 -m json.tool "/etc/nexuslocate/config/provisioning_config.json" > /dev/null 2>&1; then
             print_success "Configuration file has valid JSON syntax"
         else
             print_error "Configuration file has invalid JSON syntax"
@@ -54,7 +54,7 @@ test_configuration() {
         fi
         
         # Check file permissions
-        perms=$(stat -c "%a" "/etc/azureiotpnp/provisioning_config.json")
+        perms=$(stat -c "%a" "/etc/nexuslocate/config/provisioning_config.json")
         if [[ "$perms" == "600" ]]; then
             print_success "Configuration file has correct permissions (600)"
         else
@@ -65,7 +65,7 @@ test_configuration() {
         print_status "Configuration summary:"
         config_data=$(python3 -c "
 import json
-with open('/etc/azureiotpnp/provisioning_config.json', 'r') as f:
+with open('/etc/nexuslocate/config/provisioning_config.json', 'r') as f:
     config = json.load(f)
 print(f'  ID Scope: {config.get(\"idScope\", \"N/A\")}')
 print(f'  Registration ID: {config.get(\"registrationId\", \"N/A\")}')
@@ -91,7 +91,7 @@ test_service_files() {
     print_status "Testing service files..."
     
     # Check if service directory exists
-    if [[ -d "/opt/azure-iot" ]]; then
+    if [[ -d "/opt/nexuslocate/bin" ]]; then
         print_success "Service directory exists"
     else
         print_error "Service directory not found"
@@ -99,9 +99,9 @@ test_service_files() {
     fi
     
     # Check if main service script exists and is executable
-    if [[ -f "/opt/azure-iot/iot_service.py" ]]; then
+    if [[ -f "/opt/nexuslocate/bin/iot_service.py" ]]; then
         print_success "IoT service script exists"
-        if [[ -x "/opt/azure-iot/iot_service.py" ]]; then
+        if [[ -x "/opt/nexuslocate/bin/iot_service.py" ]]; then
             print_success "IoT service script is executable"
         else
             print_warning "IoT service script is not executable"
@@ -112,9 +112,9 @@ test_service_files() {
     fi
     
     # Check if device setup script exists and is executable
-    if [[ -f "/opt/azure-iot/device_setup.py" ]]; then
+    if [[ -f "/opt/nexuslocate/bin/device_setup.py" ]]; then
         print_success "Device setup script exists"
-        if [[ -x "/opt/azure-iot/device_setup.py" ]]; then
+        if [[ -x "/opt/nexuslocate/bin/device_setup.py" ]]; then
             print_success "Device setup script is executable"
         else
             print_warning "Device setup script is not executable"
@@ -125,9 +125,9 @@ test_service_files() {
     fi
     
     # Check if download script exists and is executable
-    if [[ -f "/opt/azure-iot/download.py" ]]; then
+    if [[ -f "/opt/nexuslocate/bin/download.py" ]]; then
         print_success "Download script exists"
-        if [[ -x "/opt/azure-iot/download.py" ]]; then
+        if [[ -x "/opt/nexuslocate/bin/download.py" ]]; then
             print_success "Download script is executable"
         else
             print_warning "Download script is not executable"
@@ -221,11 +221,11 @@ test_logging() {
     print_status "Testing logging setup..."
     
     # Check if log file exists
-    if [[ -f "/var/log/azure-iot-service.log" ]]; then
+    if [[ -f "/var/log/nexuslocate/azure-iot-service.log" ]]; then
         print_success "Log file exists"
         
         # Check file permissions
-        perms=$(stat -c "%a" "/var/log/azure-iot-service.log")
+        perms=$(stat -c "%a" "/var/log/nexuslocate/azure-iot-service.log")
         if [[ "$perms" == "644" ]]; then
             print_success "Log file has correct permissions (644)"
         else
@@ -233,13 +233,13 @@ test_logging() {
         fi
         
         # Check file size
-        size=$(stat -c "%s" "/var/log/azure-iot-service.log")
+        size=$(stat -c "%s" "/var/log/nexuslocate/azure-iot-service.log")
         if [[ $size -gt 0 ]]; then
             print_success "Log file has content ($size bytes)"
             
             # Show last few log entries
             print_status "Last 5 log entries:"
-            tail -5 "/var/log/azure-iot-service.log" 2>/dev/null || echo "  (No readable log entries)"
+            tail -5 "/var/log/nexuslocate/azure-iot-service.log" 2>/dev/null || echo "  (No readable log entries)"
         else
             print_warning "Log file is empty"
         fi
@@ -347,11 +347,11 @@ provide_recommendations() {
         echo "• Check network connectivity and firewall settings"
     fi
     
-    if [[ ! -f "/etc/azureiotpnp/provisioning_config.json" ]]; then
-        echo "• Run device setup: sudo python3 /opt/azure-iot/device_setup.py"
+    if [[ ! -f "/etc/nexuslocate/config/provisioning_config.json" ]]; then
+        echo "• Run device setup: sudo python3 /opt/nexuslocate/bin/device_setup.py"
     fi
     
-    if [[ ! -f "/opt/azure-iot/download.py" ]]; then
+    if [[ ! -f "/opt/nexuslocate/bin/download.py" ]]; then
         echo "• Ensure download.py is present for automatic updates"
     fi
     
@@ -359,7 +359,7 @@ provide_recommendations() {
     echo "For detailed troubleshooting:"
     echo "• View service logs: sudo journalctl -u azure-iot.service -f"
     echo "• Check service status: sudo systemctl status azure-iot.service"
-    echo "• View configuration: sudo cat /etc/azureiotpnp/provisioning_config.json"
+    echo "• View configuration: sudo cat /etc/nexuslocate/config/provisioning_config.json"
     echo "============================================================"
 }
 

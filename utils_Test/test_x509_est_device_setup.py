@@ -135,15 +135,15 @@ class TestX509ProvisioningConfigStructure(unittest.TestCase):
         config = build_x509_provisioning_config(
             registration_id="device-001",
             id_scope="0ne12345678",
-            cert_path="/etc/azureiotpnp/device_cert.pem",
-            key_path="/etc/azureiotpnp/device_key.pem",
+            cert_path="/etc/nexuslocate/pki/device.crt",
+            key_path="/etc/nexuslocate/pki/device.key",
             tags={"nexusLocate": {"siteName": "Lazer", "truckNumber": "001"}},
             device_update={"blobBasePath": "builds", "currentVersion": "20250826.1"},
         )
         self.assertEqual(config["registrationId"], "device-001")
         self.assertEqual(config["idScope"], "0ne12345678")
-        self.assertEqual(config["certPath"], "/etc/azureiotpnp/device_cert.pem")
-        self.assertEqual(config["keyPath"], "/etc/azureiotpnp/device_key.pem")
+        self.assertEqual(config["certPath"], "/etc/nexuslocate/pki/device.crt")
+        self.assertEqual(config["keyPath"], "/etc/nexuslocate/pki/device.key")
         self.assertNotIn("symmetricKey", config)
         self.assertIn("tags", config)
         self.assertIn("deviceUpdate", config)
@@ -196,8 +196,8 @@ class TestX509ProvisioningConfigStructure(unittest.TestCase):
         config = build_x509_provisioning_config(
             registration_id="pi-serial-123",
             id_scope="0ne12345678",
-            cert_path="/etc/azureiotpnp/device_cert.pem",
-            key_path="/etc/azureiotpnp/device_key.pem",
+            cert_path="/etc/nexuslocate/pki/device.crt",
+            key_path="/etc/nexuslocate/pki/device.key",
         )
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(config, f, indent=2)

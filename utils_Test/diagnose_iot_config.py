@@ -29,7 +29,7 @@ except ImportError:
     )
     sys.exit(1)
 
-CONFIG_PATH = Path("/etc/azureiotpnp/provisioning_config.json")
+CONFIG_PATH = Path("/etc/nexuslocate/config/provisioning_config.json")
 
 class Colors:
     GREEN = '\033[92m'
@@ -62,7 +62,7 @@ def test_config_file():
     
     if not CONFIG_PATH.exists():
         print_error(f"Configuration file not found: {CONFIG_PATH}")
-        print_info("Expected location: /etc/azureiotpnp/provisioning_config.json")
+        print_info("Expected location: /etc/nexuslocate/config/provisioning_config.json")
         print_info("Run device_setup.py first to create this file")
         return None
     

@@ -53,7 +53,7 @@ starting the container.
 - `/tmp/.X11-unix:/tmp/.X11-unix` (X socket)
 - `DISPLAY=:0`
 - `XAUTHORITY` bind mount (user-specific)
-- `/etc/azureiotpnp:/etc/azureiotpnp` (device provisioning + certs)
+- `/etc/nexuslocate/config:/etc/nexuslocate/config` and `/etc/nexuslocate/pki:/etc/nexuslocate/pki` (device provisioning + certs)
 - `/var/lib/nexusrfid:/var/lib/nexusrfid` (app data)
 - `/var/run/nexus-iot.sock` path writable in container (tmpfs or volume)
 - `/dev` device access for serial/GPS readers (minimum: required tty devices)

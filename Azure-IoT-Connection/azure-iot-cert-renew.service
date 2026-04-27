@@ -6,10 +6,10 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-# Run as root to write /etc/azureiotpnp/ and restart azure-iot.service
+# Run as root to write /etc/nexuslocate/ and restart azure-iot.service
 User=root
-WorkingDirectory=/opt/azure-iot
-ExecStart=/usr/bin/python3 /opt/azure-iot/azure-iot-cert-renew.py
+WorkingDirectory=/opt/nexuslocate/bin
+ExecStart=/usr/bin/python3 /opt/nexuslocate/bin/azure-iot-cert-renew.py
 StandardOutput=journal
 StandardError=journal
 

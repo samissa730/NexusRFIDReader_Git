@@ -3,14 +3,14 @@
 # Nexus RFID — certificate renewal via EST (step-ca / APIM), self-contained shell.
 # No azure-iot-cert-renew.py: uses openssl + curl + jq only.
 #
-# Reads /etc/azureiotpnp/provisioning_config.json (or NEXUS_PROVISIONING_CONFIG):
+# Reads /etc/nexuslocate/config/provisioning_config.json (or NEXUS_PROVISIONING_CONFIG):
 #   estServerUrl, estBootstrapToken, certPath, keyPath, registrationId
 #
 # Exits 0 for SKIP (no config, no EST, no cert, jq/openssl/curl missing, or cert still valid).
 # Attempts renewal when cert expires within NEXUS_CERT_RENEW_THRESHOLD_SECS.
 #
 # Environment (optional):
-#   NEXUS_PROVISIONING_CONFIG          default: /etc/azureiotpnp/provisioning_config.json
+#   NEXUS_PROVISIONING_CONFIG          default: /etc/nexuslocate/config/provisioning_config.json
 #   NEXUS_CERT_RENEW_THRESHOLD_SECS    default: 86400 (renew if less than this many seconds left)
 #
 # Optional:
@@ -20,7 +20,7 @@
 
 set -euo pipefail
 
-: "${NEXUS_PROVISIONING_CONFIG:=/etc/azureiotpnp/provisioning_config.json}"
+: "${NEXUS_PROVISIONING_CONFIG:=/etc/nexuslocate/config/provisioning_config.json}"
 : "${NEXUS_CERT_RENEW_THRESHOLD_SECS:=86400}"
 
 log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*"; }
@@ -97,8 +97,8 @@ main() {
   fi
 
   local cert_path key_path reg_id est_url token
-  cert_path="$(jq -r '.certPath // "/etc/azureiotpnp/device_cert.pem"' "$NEXUS_PROVISIONING_CONFIG")"
-  key_path="$(jq -r '.keyPath // "/etc/azureiotpnp/device_key.pem"' "$NEXUS_PROVISIONING_CONFIG")"
+  cert_path="$(jq -r '.certPath // "/etc/nexuslocate/pki/device.crt"' "$NEXUS_PROVISIONING_CONFIG")"
+  key_path="$(jq -r '.keyPath // "/etc/nexuslocate/pki/device.key"' "$NEXUS_PROVISIONING_CONFIG")"
   reg_id="$(jq -r '.registrationId // ""' "$NEXUS_PROVISIONING_CONFIG" | tr -d '\r\n')"
   est_url="$(jq -r '.estServerUrl // ""' "$NEXUS_PROVISIONING_CONFIG" | tr -d ' \t\r\n')"
   token="$(jq -r '.estBootstrapToken // ""' "$NEXUS_PROVISIONING_CONFIG" | tr -d '\r\n')"

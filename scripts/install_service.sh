@@ -96,19 +96,11 @@ if [ -f "${SERVICE_HOME}/.Xauthority" ]; then
     print_success "Xauthority file configured"
 fi
 
-# Ensure .nexusrfid directory exists and has proper permissions
-print_step "Setting up application data directory..."
-APP_DATA_DIR="${SERVICE_HOME}/.nexusrfid"
-if [ ! -d "${APP_DATA_DIR}" ]; then
-    print_warning "Application data directory not found, creating..."
-    mkdir -p "${APP_DATA_DIR}" 2>/dev/null || true
-fi
-if [ -d "${APP_DATA_DIR}" ]; then
-    # Fix ownership if directory exists but is owned by wrong user
-    sudo chown -R "${SERVICE_USER}:${SERVICE_USER}" "${APP_DATA_DIR}" 2>/dev/null || true
-    chmod 755 "${APP_DATA_DIR}" 2>/dev/null || true
-    print_success "Application data directory configured"
-fi
+# Ensure nexuslocate runtime directories exist with expected permissions
+print_step "Setting up nexuslocate directories..."
+sudo install -d -m 755 /etc/nexuslocate /etc/nexuslocate/config /var/log/nexuslocate /opt/nexuslocate/bin
+sudo install -d -m 700 /etc/nexuslocate/pki /var/lib/nexuslocate /var/lib/nexuslocate/queue
+print_success "nexuslocate directories configured"
 
 # Install Azure IoT service so the socket exists when nexusrfid runs
 AZURE_IOT_UNIT="/etc/systemd/system/azure-iot.service"

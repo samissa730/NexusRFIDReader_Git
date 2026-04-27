@@ -12,7 +12,7 @@ except Exception as exc:  # pragma: no cover
     raise
 
 
-PROVISIONING_CONFIG_PATH = "/etc/azureiotpnp/provisioning_config.json"
+PROVISIONING_CONFIG_PATH = "/etc/nexuslocate/config/provisioning_config.json"
 RASPBERRY_PI_EXECUTABLE_RELATIVE_PATH = "RaspberryPi/NexusRFIDReader"
 DESTINATION_PATH = "/home/NexusRFIDReader"
 

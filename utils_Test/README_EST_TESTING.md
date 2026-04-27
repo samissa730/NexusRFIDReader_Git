@@ -162,7 +162,7 @@ The test reads DPS settings from (first found):
 
 - `utils_Test/provisioning_config_x509.json` with `idScope` and `globalEndpoint`, or  
 - `utils_Test/provisioning_config.json`, or  
-- `/etc/azureiotpnp/provisioning_config.json`, or  
+- `/etc/nexuslocate/config/provisioning_config.json`, or
 - Environment variables: `DPS_ID_SCOPE`, `DPS_GLOBAL_ENDPOINT`.
 
 Example `provisioning_config_x509.json`:
@@ -354,7 +354,7 @@ After successful EST enrollment testing:
 
 1. **Integrate with device_setup.py:**
    - Add EST enrollment function
-   - Save certificates to `/etc/azureiotpnp/`
+   - Save certificates to `/etc/nexuslocate/pki/`
 
 2. **Update iot_service.py:**
    - Add X.509 certificate authentication

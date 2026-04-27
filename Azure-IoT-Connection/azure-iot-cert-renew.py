@@ -22,12 +22,12 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-# Run from /opt/azure-iot; same dir as est_client
+# Run from /opt/nexuslocate/bin; same dir as est_client
 _script_dir = Path(__file__).resolve().parent
 if str(_script_dir) not in sys.path:
     sys.path.insert(0, str(_script_dir))
 
-CONFIG_PATH = Path("/etc/azureiotpnp/provisioning_config.json")
+CONFIG_PATH = Path("/etc/nexuslocate/config/provisioning_config.json")
 DEFAULT_THRESHOLD_SECS = 86400  # 24 hours
 
 
@@ -60,8 +60,8 @@ def main() -> int:
         _log(f"ERROR: Failed to read config: {e}")
         return 1
 
-    cert_path = Path(config.get("certPath") or "/etc/azureiotpnp/device_cert.pem")
-    key_path = Path(config.get("keyPath") or "/etc/azureiotpnp/device_key.pem")
+    cert_path = Path(config.get("certPath") or "/etc/nexuslocate/pki/device.crt")
+    key_path = Path(config.get("keyPath") or "/etc/nexuslocate/pki/device.key")
     registration_id = config.get("registrationId") or ""
     est_server_url = (config.get("estServerUrl") or "").strip()
     est_bootstrap_token = (config.get("estBootstrapToken") or "").strip()

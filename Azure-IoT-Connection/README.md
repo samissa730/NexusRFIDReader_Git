@@ -99,35 +99,36 @@ sudo apt install -y python3-pip
 sudo pip3 install --break-system-packages azure-iot-device
 
 # Create directories
-sudo mkdir -p /opt/azure-iot
-sudo mkdir -p /etc/azureiotpnp
-sudo mkdir -p /var/log
+sudo mkdir -p /opt/nexuslocate/bin
+sudo mkdir -p /etc/nexuslocate/config
+sudo mkdir -p /etc/nexuslocate/pki
+sudo mkdir -p /var/log/nexuslocate
 
 # Copy service files
-sudo cp iot_service.py /opt/azure-iot/
-sudo cp device_setup.py /opt/azure-iot/
-sudo cp download.py /opt/azure-iot/
-sudo cp est_client.py /opt/azure-iot/
-sudo cp azure-iot-cert-renew.py /opt/azure-iot/
+sudo cp iot_service.py /opt/nexuslocate/bin/
+sudo cp device_setup.py /opt/nexuslocate/bin/
+sudo cp download.py /opt/nexuslocate/bin/
+sudo cp est_client.py /opt/nexuslocate/bin/
+sudo cp azure-iot-cert-renew.py /opt/nexuslocate/bin/
 sudo cp azure-iot.service /etc/systemd/system/
 sudo cp azure-iot-cert-renew.service /etc/systemd/system/
 sudo cp azure-iot-cert-renew.timer /etc/systemd/system/
 
 # Set permissions
-sudo chmod +x /opt/azure-iot/iot_service.py
-sudo chmod +x /opt/azure-iot/device_setup.py
-sudo chmod +x /opt/azure-iot/download.py
-sudo chmod +x /opt/azure-iot/azure-iot-cert-renew.py
+sudo chmod +x /opt/nexuslocate/bin/iot_service.py
+sudo chmod +x /opt/nexuslocate/bin/device_setup.py
+sudo chmod +x /opt/nexuslocate/bin/download.py
+sudo chmod +x /opt/nexuslocate/bin/azure-iot-cert-renew.py
 
 # Run device setup
-sudo python3 /opt/azure-iot/device_setup.py
+sudo python3 /opt/nexuslocate/bin/device_setup.py
 
 # Set configuration permissions
-sudo chmod 600 /etc/azureiotpnp/provisioning_config.json
+sudo chmod 600 /etc/nexuslocate/config/provisioning_config.json
 
 # Create log file
-sudo touch /var/log/azure-iot-service.log
-sudo chmod 644 /var/log/azure-iot-service.log
+sudo touch /var/log/nexuslocate/azure-iot-service.log
+sudo chmod 644 /var/log/nexuslocate/azure-iot-service.log
 
 # Setup and start service
 sudo systemctl daemon-reload
@@ -152,7 +153,7 @@ sudo systemctl status azure-iot.service
 sudo journalctl -u azure-iot.service -f
 
 # View log file
-sudo tail -f /var/log/azure-iot-service.log
+sudo tail -f /var/log/nexuslocate/azure-iot-service.log
 ```
 
 ### Control the Service
@@ -172,7 +173,7 @@ sudo systemctl disable azure-iot.service
 
 ### Certificate renewal (systemd timer)
 
-X.509 device certificates can be renewed automatically so the device does not lose connectivity when the cert expires. The setup installs a **systemd timer** that runs the renewal script once per day (at 03:00). If the cert has less than 24 hours left, the script re-enrolls via EST, writes the new cert/key to `/etc/azureiotpnp/`, and restarts `azure-iot.service`.
+X.509 device certificates can be renewed automatically so the device does not lose connectivity when the cert expires. The setup installs a **systemd timer** that runs the renewal script once per day (at 03:00). If the cert has less than 24 hours left, the script re-enrolls via EST, writes the new cert/key to `/etc/nexuslocate/pki/`, and restarts `azure-iot.service`.
 
 **Requirements:** `provisioning_config.json` must contain `estServerUrl` and `estBootstrapToken` (these are saved by `device_setup.py` when you configure the device).
 
@@ -189,9 +190,9 @@ sudo journalctl -u azure-iot-cert-renew.service -n 50
 
 **Manual run (test renewal):**
 ```bash
-sudo python3 /opt/azure-iot/azure-iot-cert-renew.py
+sudo python3 /opt/nexuslocate/bin/azure-iot-cert-renew.py
 # Optional: renew when less than 7 days left
-sudo python3 /opt/azure-iot/azure-iot-cert-renew.py --threshold 604800
+sudo python3 /opt/nexuslocate/bin/azure-iot-cert-renew.py --threshold 604800
 ```
 
 **Change schedule:** Edit `/etc/systemd/system/azure-iot-cert-renew.timer` (e.g. `OnCalendar=*-*-* 03:00:00` for daily at 3am, or `OnCalendar=hourly` for hourly), then `sudo systemctl daemon-reload && sudo systemctl restart azure-iot-cert-renew.timer`.
@@ -199,7 +200,7 @@ sudo python3 /opt/azure-iot/azure-iot-cert-renew.py --threshold 604800
 ## Configuration
 
 ### Main Configuration File
-   - **Location**: `/etc/azureiotpnp/provisioning_config.json`
+   - **Location**: `/etc/nexuslocate/config/provisioning_config.json`
    - **Permissions**: 600 (root read/write only)
    - **Contains**: Azure DPS credentials, device tags, update configuration, and (when set by device_setup) `estServerUrl` and `estBootstrapToken` for automatic certificate renewal
 
@@ -212,7 +213,7 @@ sudo python3 /opt/azure-iot/azure-iot-cert-renew.py --threshold 604800
 
 ### Log Files
    - **System Journal**: `journalctl -u azure-iot.service`
-   - **File Log**: `/var/log/azure-iot-service.log`
+   - **File Log**: `/var/log/nexuslocate/azure-iot-service.log`
    - **Update Logs**: Check background updater activity in system journal
 
 ## Troubleshooting
@@ -220,8 +221,8 @@ sudo python3 /opt/azure-iot/azure-iot-cert-renew.py --threshold 604800
 ### Common Issues
 
 1. **Service won't start**:
-   - Check configuration file syntax: `sudo cat /etc/azureiotpnp/provisioning_config.json | python3 -m json.tool`
-   - Verify file permissions: `ls -la /etc/azureiotpnp/`
+   - Check configuration file syntax: `sudo cat /etc/nexuslocate/config/provisioning_config.json | python3 -m json.tool`
+   - Verify file permissions: `ls -la /etc/nexuslocate/config/ /etc/nexuslocate/pki/`
    - Check service logs: `sudo journalctl -u azure-iot.service -n 50`
 
 2. **Connection failures**:
@@ -230,15 +231,15 @@ sudo python3 /opt/azure-iot/azure-iot-cert-renew.py --threshold 604800
    - Ensure device is registered in Azure DPS
 
 3. **Permission errors**:
-   - Verify script permissions: `ls -la /opt/azure-iot/iot_service.py`
-   - Check configuration file permissions: `ls -la /etc/azureiotpnp/`
+   - Verify script permissions: `ls -la /opt/nexuslocate/bin/iot_service.py`
+   - Check configuration file permissions: `ls -la /etc/nexuslocate/config/ /etc/nexuslocate/pki/`
 
 ### Debug Mode
 
 To run the service manually for debugging:
 ```bash
 sudo systemctl stop azure-iot.service
-cd /opt/azure-iot
+cd /opt/nexuslocate/bin
 sudo python3 iot_service.py
 ```
 

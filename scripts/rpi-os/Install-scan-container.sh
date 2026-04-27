@@ -73,7 +73,8 @@ run_container_raw() {
     -e QT_X11_NO_MITSHM=1 \
     -v /tmp/.X11-unix:/tmp/.X11-unix \
     -v "${XAUTHORITY}:${XAUTHORITY}:ro" \
-    -v /etc/azureiotpnp:/etc/azureiotpnp \
+    -v /etc/nexuslocate/config:/etc/nexuslocate/config \
+    -v /etc/nexuslocate/pki:/etc/nexuslocate/pki \
     -v /var/lib/nexusrfid:/var/lib/nexusrfid \
     --device /dev:/dev \
     "$NEXUS_CONTAINER_IMAGE"

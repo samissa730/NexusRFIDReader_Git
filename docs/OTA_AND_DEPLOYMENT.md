@@ -8,7 +8,7 @@ This guide explains how builds are produced, where they are stored, and how devi
 - **Option B: Cloud-to-device (C2D) message** – Alternative: the pipeline could send a C2D message to each device; the device would run the same “pull from blob and install” flow when it receives the message.
 - **Option C: Polling (cron)** – The device runs a script on a schedule (e.g. every 6 hours) and installs if a newer version is in blob storage.
 
-In **Option A** and **Option B**, the device runs the install **only when notified** (no cron). The device **never receives the SAS token over the wire**; it is stored in the **app config** (`~/.nexusrfid/config.json`) and used only to pull from blob.
+In **Option A** and **Option B**, the device runs the install **only when notified** (no cron). The device **never receives the SAS token over the wire**; it is stored in the **app config** (`/etc/nexuslocate/config/config.json`) and used only to pull from blob.
 
 ---
 
@@ -142,13 +142,13 @@ Prepend `?` if the output does not include it.
 
 ## 5. Device config (all options)
 
-OTA uses the **same app config** as the application. The application creates **`~/.nexusrfid/config.json`** when it is first run (after the service is installed); see `settings.py` (`load_config()` and `get_default_config()`). You do **not** create a separate OTA config—only **edit** the existing app config and set the **nexus_update** section. The **SAS token stays only on the device**; the cloud never sends it.
+OTA uses the **same app config** as the application. The application creates **`/etc/nexuslocate/config/config.json`** when it is first run (after the service is installed); see `settings.py` (`load_config()` and `get_default_config()`). You do **not** create a separate OTA config—only **edit** the existing app config and set the **nexus_update** section. The **SAS token stays only on the device**; the cloud never sends it.
 
 **What to do (on the device, via SSH or console)**
 
-1. Open the **app config** (e.g. `/home/pi/.nexusrfid/config.json`):
+1. Open the **app config** (e.g. `/etc/nexuslocate/config/config.json`):
    ```bash
-   nano ~/.nexusrfid/config.json
+   sudo nano /etc/nexuslocate/config/config.json
    ```
 
 2. Ensure the JSON has a **nexus_update** section with your blob URL and SAS token (merge into existing config if needed):
@@ -165,7 +165,7 @@ OTA uses the **same app config** as the application. The application creates **`
 
 3. Save and exit (nano: Ctrl+O, Enter, Ctrl+X).
 
-**OTA script and app config:** The update script (`check-and-update-from-test.sh`) must read this file. Run the script with **NEXUS_UPDATE_CONFIG_PATH** set to the app config path (e.g. `NEXUS_UPDATE_CONFIG_PATH=/home/pi/.nexusrfid/config.json`), or configure your OTA listener/cron to set that environment variable so the script uses the app config.
+**OTA script and app config:** The update script (`check-and-update-from-test.sh`) must read this file. Run the script with **NEXUS_UPDATE_CONFIG_PATH** set to the app config path (e.g. `NEXUS_UPDATE_CONFIG_PATH=/etc/nexuslocate/config/config.json`), or configure your OTA listener/cron to set that environment variable so the script uses the app config.
 
 **Reference:** [`scripts/config.json.example`](../scripts/config.json.example). App defaults (including **nexus_update**) are in `settings.get_default_config()` in `settings.py`.
 
@@ -288,7 +288,7 @@ On the device, a **twin desired-properties patch handler** must:
 2. Subscribe to **device twin desired property** patches.
 3. When the patch contains **ota.action = "check_update"**, run the update script that **pulls from blob** using config.
 
-The updater is **`Azure-IoT-Connection/download.py`**: it reads **nexus_update.base_url** and **nexus_update.sas_token** from the **app config** (`~/.nexusrfid/config.json` or **NEXUS_UPDATE_CONFIG_PATH**; see §5), fetches **releases/test/latest.json** from blob, compares version, downloads the .deb and runs **dpkg -i**, then restarts **nexusrfid_production.service**. No Azure Device Update or provisioning_config deviceUpdate required.
+The updater is **`Azure-IoT-Connection/download.py`**: it reads **nexus_update.base_url** and **nexus_update.sas_token** from the **app config** (`/etc/nexuslocate/config/config.json` or **NEXUS_UPDATE_CONFIG_PATH**; see §5), fetches **releases/test/latest.json** from blob, compares version, downloads the .deb and runs **dpkg -i**, then restarts **nexusrfid_production.service**. No Azure Device Update or provisioning_config deviceUpdate required.
 
 **Implementation:** The existing **Azure IoT service** (`Azure-IoT-Connection/iot_service.py`) sets **`on_twin_desired_properties_patch_received`** and runs **download.py** when the patch has **`ota.action == "check_update"`**. No separate listener or scheduled fallback.
 
@@ -436,14 +436,14 @@ The script runs on a **schedule**, not only when a new artifact is uploaded.
 
 - [ ] IoT Hub exists; devices are registered.
 - [ ] Get **IoT Hub connection string** for the pipeline (§3.1); pipeline queries all devices from IoT Hub.
-- [ ] Get read-only **SAS token** for container **deviceupdates** (Portal or CLI). On each device, **edit** the **app config** (**~/.nexusrfid/config.json**, §5) and set **nexus_update.base_url** and **nexus_update.sas_token**; run the OTA script with **NEXUS_UPDATE_CONFIG_PATH** set to that path.
+- [ ] Get read-only **SAS token** for container **deviceupdates** (Portal or CLI). On each device, **edit** the **app config** (**/etc/nexuslocate/config/config.json**, §5) and set **nexus_update.base_url** and **nexus_update.sas_token**; run the OTA script with **NEXUS_UPDATE_CONFIG_PATH** set to that path.
 - [ ] On each device: the **twin patch handler** in `iot_service.py` (Option A) runs **download.py** when twin desired **ota.action** is **check_update**; no extra listener needed.
 - [ ] In Azure DevOps: create/edit **variable group** with **IotHubConnectionString** (secret) (§6.2.1 Step 1–2). No device list needed; pipeline queries all devices from IoT Hub.
 - [ ] In the pipeline: the **NotifyDevicesTwin** job (§6.2.1 Step 3) is already in the DeployTest stage and notifies all devices via device twin after each upload.
 
 ### Option C (Polling)
 
-- [ ] On each device, **edit** the **app config** (~/.nexusrfid/config.json, §5) and set **nexus_update.base_url** and **nexus_update.sas_token**; run the script with **NEXUS_UPDATE_CONFIG_PATH** set to that path.
+- [ ] On each device, **edit** the **app config** (/etc/nexuslocate/config/config.json, §5) and set **nexus_update.base_url** and **nexus_update.sas_token**; run the script with **NEXUS_UPDATE_CONFIG_PATH** set to that path.
 - [ ] Schedule **check-and-update-from-test.sh** via cron (e.g. every 6 hours).
 
 ---

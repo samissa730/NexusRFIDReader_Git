@@ -1,0 +1,2 @@
+# Shell scripts must use LF so they run on Linux/Pi when copied from Windows checkouts.
+*.sh text eol=lf

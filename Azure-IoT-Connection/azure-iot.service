@@ -9,7 +9,7 @@ StartLimitBurst=3
 [Service]
 Type=simple
 User=root
-ExecStart=/usr/bin/python3 /opt/azure-iot/iot_service.py
+ExecStart=/usr/bin/python3 /opt/nexuslocate/bin/iot_service.py
 Restart=always
 RestartSec=30
 StandardOutput=journal

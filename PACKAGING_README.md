@@ -4,7 +4,7 @@ This document describes how to build and install the production-ready Debian
 package for the NexusRFID Reader kiosk application. The packaging flow reuses
 the same service and runtime scripts that are used during development so the
 installed system behaves identically to development mode (auto-start on boot,
-same GUI entry point, networking pre-check, and storage under `~/.nexusrfid`).
+same GUI entry point, networking pre-check, and storage under `/etc/nexuslocate/config` and `/var/lib/nexuslocate/queue`).
 
 > **Important:** The `Azure-IoT-Connection` utilities are not part of the
 > production package by design. They remain available in the repository for
@@ -61,7 +61,7 @@ sudo reboot
 ```
 
 After reboot the service launches automatically. All runtime files (database,
-configuration, crash dumps, logs) remain in `~/.nexusrfid/`, matching the
+configuration, crash dumps, logs) remain in `/etc/nexuslocate/config/`, matching the
 development layout.
 
 ## Uninstall / Upgrade
@@ -72,7 +72,7 @@ To remove the package while preserving configuration data:
 bash scripts/uninstall_pkg_rpi.sh
 ```
 
-Pass `--purge` to also delete `~/.nexusrfid` and desktop entries.
+Pass `--purge` to also delete `/etc/nexuslocate` and `/var/lib/nexuslocate` data plus desktop entries.
 
 For upgrades rerun `create_pkg_rpi.sh` and install the new `.deb` with `apt`.
 APT applies maintainer scripts so it safely reloads the service with the new

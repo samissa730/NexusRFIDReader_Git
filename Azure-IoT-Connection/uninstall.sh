@@ -103,16 +103,16 @@ remove_service_files() {
     print_status "Removing service directories and files..."
     
     # Remove service directory
-    if [[ -d "/opt/azure-iot" ]]; then
-        rm -rf /opt/azure-iot
+    if [[ -d "/opt/nexuslocate/bin" ]]; then
+        rm -rf /opt/nexuslocate/bin
         print_success "Service directory removed"
     else
         print_status "Service directory not found"
     fi
     
     # Remove configuration directory
-    if [[ -d "/etc/azureiotpnp" ]]; then
-        rm -rf /etc/azureiotpnp
+    if [[ -d "/etc/nexuslocate" ]]; then
+        rm -rf /etc/nexuslocate
         print_success "Configuration directory removed"
     else
         print_status "Configuration directory not found"
@@ -124,8 +124,8 @@ remove_logs() {
     print_status "Removing log files..."
     
     # Remove service log file
-    if [[ -f "/var/log/azure-iot-service.log" ]]; then
-        rm -f /var/log/azure-iot-service.log
+    if [[ -f "/var/log/nexuslocate/azure-iot-service.log" ]]; then
+        rm -f /var/log/nexuslocate/azure-iot-service.log
         print_success "Service log file removed"
     else
         print_status "Service log file not found"
@@ -176,19 +176,19 @@ verify_removal() {
     fi
     
     # Check if service directory is removed
-    if [[ -d "/opt/azure-iot" ]]; then
+    if [[ -d "/opt/nexuslocate/bin" ]]; then
         print_warning "Service directory still exists"
         all_removed=false
     fi
     
     # Check if configuration directory is removed
-    if [[ -d "/etc/azureiotpnp" ]]; then
+    if [[ -d "/etc/nexuslocate" ]]; then
         print_warning "Configuration directory still exists"
         all_removed=false
     fi
     
     # Check if log file is removed
-    if [[ -f "/var/log/azure-iot-service.log" ]]; then
+    if [[ -f "/var/log/nexuslocate/azure-iot-service.log" ]]; then
         print_warning "Log file still exists"
         all_removed=false
     fi

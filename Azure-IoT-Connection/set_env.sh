@@ -107,9 +107,13 @@ install_dependencies() {
 create_directories() {
     print_status "Creating necessary directories..."
     
-    sudo mkdir -p /opt/azure-iot
-    sudo mkdir -p /etc/azureiotpnp
-    sudo mkdir -p /var/log
+    sudo mkdir -p /opt/nexuslocate/bin
+    sudo mkdir -p /etc/nexuslocate/config
+    sudo mkdir -p /etc/nexuslocate/pki
+    sudo mkdir -p /var/lib/nexuslocate/queue
+    sudo mkdir -p /var/log/nexuslocate
+    sudo chmod 755 /opt/nexuslocate/bin /etc/nexuslocate /etc/nexuslocate/config /var/log/nexuslocate
+    sudo chmod 700 /etc/nexuslocate/pki /var/lib/nexuslocate /var/lib/nexuslocate/queue
     
     print_success "Directories created"
 }
@@ -120,8 +124,8 @@ copy_service_files() {
     
     # Copy the main service script (from script directory, not cwd)
     if [[ -f "$SCRIPT_DIR/iot_service.py" ]]; then
-        sudo cp "$SCRIPT_DIR/iot_service.py" /opt/azure-iot/
-        sudo chmod +x /opt/azure-iot/iot_service.py
+        sudo cp "$SCRIPT_DIR/iot_service.py" /opt/nexuslocate/bin/
+        sudo chmod +x /opt/nexuslocate/bin/iot_service.py
         print_success "IoT service script copied"
     else
         print_error "iot_service.py not found in $SCRIPT_DIR"
@@ -130,8 +134,8 @@ copy_service_files() {
     
     # Copy the device setup script
     if [[ -f "$SCRIPT_DIR/device_setup.py" ]]; then
-        sudo cp "$SCRIPT_DIR/device_setup.py" /opt/azure-iot/
-        sudo chmod +x /opt/azure-iot/device_setup.py
+        sudo cp "$SCRIPT_DIR/device_setup.py" /opt/nexuslocate/bin/
+        sudo chmod +x /opt/nexuslocate/bin/device_setup.py
         print_success "Device setup script copied"
     else
         print_error "device_setup.py not found in $SCRIPT_DIR"
@@ -140,8 +144,8 @@ copy_service_files() {
     
     # Copy the download script
     if [[ -f "$SCRIPT_DIR/download.py" ]]; then
-        sudo cp "$SCRIPT_DIR/download.py" /opt/azure-iot/
-        sudo chmod +x /opt/azure-iot/download.py
+        sudo cp "$SCRIPT_DIR/download.py" /opt/nexuslocate/bin/
+        sudo chmod +x /opt/nexuslocate/bin/download.py
         print_success "Download script copied"
     else
         print_error "download.py not found in $SCRIPT_DIR"
@@ -150,19 +154,19 @@ copy_service_files() {
 
     # Copy EST client and cert renewal script (for device_setup and systemd timer)
     if [[ -f "$SCRIPT_DIR/est_client.py" ]]; then
-        sudo cp "$SCRIPT_DIR/est_client.py" /opt/azure-iot/
+        sudo cp "$SCRIPT_DIR/est_client.py" /opt/nexuslocate/bin/
         print_success "EST client copied"
     fi
     if [[ -f "$SCRIPT_DIR/azure-iot-cert-renew.py" ]]; then
-        sudo cp "$SCRIPT_DIR/azure-iot-cert-renew.py" /opt/azure-iot/
-        sudo chmod +x /opt/azure-iot/azure-iot-cert-renew.py
+        sudo cp "$SCRIPT_DIR/azure-iot-cert-renew.py" /opt/nexuslocate/bin/
+        sudo chmod +x /opt/nexuslocate/bin/azure-iot-cert-renew.py
         print_success "Cert renewal script copied"
     fi
     
     # Copy env.json if present; otherwise device_setup will prompt and create it
     if [[ -f "$SCRIPT_DIR/env.json" ]]; then
-        sudo cp "$SCRIPT_DIR/env.json" /opt/azure-iot/
-        sudo chmod 600 /opt/azure-iot/env.json
+        sudo cp "$SCRIPT_DIR/env.json" /opt/nexuslocate/bin/
+        sudo chmod 600 /opt/nexuslocate/bin/env.json
         print_success "Environment configuration copied"
     else
         print_warning "env.json not found; device_setup.py will prompt and create it."
@@ -192,8 +196,8 @@ copy_service_files() {
 setup_logging() {
     print_status "Setting up logging..."
     
-    sudo touch /var/log/azure-iot-service.log
-    sudo chmod 644 /var/log/azure-iot-service.log
+    sudo touch /var/log/nexuslocate/azure-iot-service.log
+    sudo chmod 644 /var/log/nexuslocate/azure-iot-service.log
     
     print_success "Logging setup complete"
 }
@@ -217,7 +221,7 @@ run_device_setup() {
     
     # Run the device setup script
     export NEXUS_PROJECT_DIR="$(pwd)"
-    cd /opt/azure-iot
+    cd /opt/nexuslocate/bin
     python3 device_setup.py
     
     if [[ $? -eq 0 ]]; then
@@ -264,7 +268,7 @@ verify_installation() {
     print_status "Verifying installation..."
     
     # Check if configuration file exists
-    if [[ -f "/etc/azureiotpnp/provisioning_config.json" ]]; then
+    if [[ -f "/etc/nexuslocate/config/provisioning_config.json" ]]; then
         print_success "Configuration file created"
     else
         print_error "Configuration file not found"
@@ -272,7 +276,7 @@ verify_installation() {
     fi
     
     # Check if service files exist
-    if [[ -f "/opt/azure-iot/iot_service.py" ]] && [[ -f "/opt/azure-iot/device_setup.py" ]] && [[ -f "/opt/azure-iot/download.py" ]]; then
+    if [[ -f "/opt/nexuslocate/bin/iot_service.py" ]] && [[ -f "/opt/nexuslocate/bin/device_setup.py" ]] && [[ -f "/opt/nexuslocate/bin/download.py" ]]; then
         print_success "Service files installed"
     else
         print_error "Service files not found"
@@ -280,7 +284,7 @@ verify_installation() {
     fi
     
     # Check if env.json exists (optional)
-    if [[ -f "/opt/azure-iot/env.json" ]]; then
+    if [[ -f "/opt/nexuslocate/bin/env.json" ]]; then
         print_success "Environment configuration present"
     else
         print_warning "Environment configuration not found; it will be created by device_setup.py if needed"

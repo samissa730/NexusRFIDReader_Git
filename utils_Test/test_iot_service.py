@@ -22,7 +22,7 @@ _SCRIPT_DIR = Path(__file__).resolve().parent
 # Config: Pi uses /etc, Windows uses script dir; fallback to script dir on both
 CONFIG_PATHS = []
 if not _IS_WINDOWS:
-    CONFIG_PATHS.append(Path("/etc/azureiotpnp/provisioning_config.json"))
+    CONFIG_PATHS.append(Path("/etc/nexuslocate/config/provisioning_config.json"))
 CONFIG_PATHS.append(_SCRIPT_DIR / "provisioning_config.json")
 
 # IPC: Pi = Unix socket, Windows = TCP host:port

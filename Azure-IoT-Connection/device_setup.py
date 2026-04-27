@@ -15,10 +15,10 @@ _script_dir = Path(__file__).resolve().parent
 if str(_script_dir) not in sys.path:
     sys.path.insert(0, str(_script_dir))
 
-CONFIG_PATH = Path("/etc/azureiotpnp/provisioning_config.json")
+CONFIG_PATH = Path("/etc/nexuslocate/config/provisioning_config.json")
 # X.509 cert/key stored next to config
-DEFAULT_CERT_PATH = CONFIG_PATH.parent / "device_cert.pem"
-DEFAULT_KEY_PATH = CONFIG_PATH.parent / "device_key.pem"
+DEFAULT_CERT_PATH = Path("/etc/nexuslocate/pki/device.crt")
+DEFAULT_KEY_PATH = Path("/etc/nexuslocate/pki/device.key")
 DEFAULT_EST_SERVER_URL = "https://apim-dev-spotlight.azure-api.net/cert/est"
 
 

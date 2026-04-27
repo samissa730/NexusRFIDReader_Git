@@ -57,8 +57,8 @@ class TestGetAppConfigPath(unittest.TestCase):
         with mock.patch.object(self.download.os.path, "expanduser", return_value="/home/pi"):
             path = self.download.get_app_config_path()
         self.assertEqual(path.name, "config.json")
-        self.assertEqual(path.parent.name, ".nexusrfid")
-        self.assertEqual(path.as_posix(), "/home/pi/.nexusrfid/config.json")
+        self.assertEqual(path.parent.name, "config")
+        self.assertEqual(path.as_posix(), "/etc/nexuslocate/config/config.json")
 
 
 class TestGetNexusUpdateConfig(unittest.TestCase):

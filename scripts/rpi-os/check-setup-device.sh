@@ -12,7 +12,7 @@
 #   NEXUS_USB_IFACE           default: usb0
 #   NEXUS_WIFI_METRIC         default: 200 (lower = preferred for internet)
 #   NEXUS_USB_METRIC          default: 300
-#   NEXUS_CONFIG_JSON         default: ~/.nexusrfid/config.json of invoking user or pi
+#   NEXUS_CONFIG_JSON         default: /etc/nexuslocate/config/config.json
 #   NEXUS_CHECK_STRICT        if 1, exit 1 when RFID ping fails
 #
 # Optional:
@@ -55,7 +55,7 @@ rfid_hosts_from_config() {
     local home
     home="$(getent passwd "$u" 2>/dev/null | cut -d: -f6 || true)"
     [[ -z "$home" ]] && home="/home/$u"
-    cfg="${home}/.nexusrfid/config.json"
+    cfg="/etc/nexuslocate/config/config.json"
   fi
   if [[ ! -f "$cfg" ]]; then
     return 1
